@@ -8,9 +8,10 @@ import { createPortal } from 'react-dom';
 interface RejoiceModalProps {
   shareId: string;
   onClose: () => void;
+  onViewCommunity?: () => void;
 }
 
-export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose }) => {
+export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, onViewCommunity }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -21,10 +22,26 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose }) 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const docRef = doc(db, 'shared_merits', shareId);
-        const docSnap = await getDoc(docRef);
+        // First check community_posts
+        let docRef = doc(db, 'community_posts', shareId);
+        let docSnap = await getDoc(docRef);
+        let isCommunity = true;
+        
+        if (!docSnap.exists()) {
+          // Fallback to shared_merits
+          docRef = doc(db, 'shared_merits', shareId);
+          docSnap = await getDoc(docRef);
+          isCommunity = false;
+        }
+        
         if (docSnap.exists()) {
-          setData({ id: docSnap.id, ...docSnap.data() });
+          const data = docSnap.data();
+          setData({ 
+            id: docSnap.id, 
+            isCommunity,
+            ...data,
+            rejoiceCount: isCommunity ? (data.likes || 0) : (data.rejoiceCount || 0)
+          });
         } else {
           setError('该功德记录不存在或已被删除。');
         }
@@ -42,10 +59,24 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose }) 
     if (rejoicing || rejoiced || !data) return;
     setRejoicing(true);
     try {
-      const docRef = doc(db, 'shared_merits', shareId);
-      await updateDoc(docRef, {
-        rejoiceCount: increment(1)
-      });
+      if (data.isCommunity) {
+        const docRef = doc(db, 'community_posts', shareId);
+        await updateDoc(docRef, {
+          likes: increment(1)
+        });
+        // Also update shared_merits if it exists there
+        const sharedRef = doc(db, 'shared_merits', shareId);
+        const sharedSnap = await getDoc(sharedRef);
+        if (sharedSnap.exists()) {
+          await updateDoc(sharedRef, { rejoiceCount: increment(1) });
+        }
+      } else {
+        const docRef = doc(db, 'shared_merits', shareId);
+        await updateDoc(docRef, {
+          rejoiceCount: increment(1)
+        });
+      }
+      
       setData((prev: any) => ({ ...prev, rejoiceCount: (prev.rejoiceCount || 0) + 1 }));
       setRejoiced(true);
       setShowSparkles(true);
@@ -113,11 +144,11 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose }) 
                     <span className="font-bold text-zen-ink">{data.userName}</span> 完成了
                   </p>
                   <h4 className="text-2xl font-serif font-bold text-zen-accent mb-4">
-                    {data.title}
+                    {data.title || `${data.chant || data.type} ${data.count ? data.count + '次' : ''}`}
                   </h4>
-                  {data.description && (
+                  {(data.description || data.dedication) && (
                     <div className="bg-white/50 p-4 rounded-xl text-sm text-zen-ink/80 italic border border-zen-accent/10">
-                      "{data.description}"
+                      "{data.description || data.dedication}"
                     </div>
                   )}
                   <div className="mt-4 text-xs text-zen-ink/40">
@@ -156,6 +187,17 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose }) 
                   >
                     我也要修行
                   </button>
+                  {data.isCommunity && onViewCommunity && (
+                    <button
+                      onClick={() => {
+                        handleClose();
+                        onViewCommunity();
+                      }}
+                      className="w-full py-3 text-sm text-zen-accent/80 hover:text-zen-accent transition-colors font-bold"
+                    >
+                      在社区中查看此功德
+                    </button>
+                  )}
                 </div>
               </div>
             ) : null}

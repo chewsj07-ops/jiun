@@ -263,23 +263,40 @@ export default function App() {
     if (isSharing) return;
     setIsSharing(true);
     try {
-      let shareUrl = window.location.href;
+      let shareUrl = 'https://jiun-qg8i.vercel.app';
       
       if (fbUser) {
-        const shareId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
-        const shareDoc = {
-          userId: fbUser.uid,
-          userName: userProfile.name || '同修',
-          type: meritData.type || '修行',
-          title: `${meritData.chant || meritData.type} ${meritData.count ? meritData.count + '次' : ''}`,
-          description: meritData.dedication || meritData.vow || '',
-          rejoiceCount: 0,
-          timestamp: Date.now()
-        };
+        // If it's already a community post with an id, we could use it, but let's create a shared_merits doc for consistency or use the existing id if it's a community post
+        const shareId = meritData.id && meritData.userName ? meritData.id : Date.now().toString() + Math.random().toString(36).substring(2, 9);
         
-        await setDoc(doc(db, 'shared_merits', shareId), shareDoc);
+        if (!meritData.id || !meritData.userName) {
+          const shareDoc = {
+            userId: fbUser.uid,
+            userName: userProfile.name || '同修',
+            type: meritData.type || '修行',
+            title: `${meritData.chant || meritData.type} ${meritData.count ? meritData.count + '次' : ''}`,
+            description: meritData.dedication || meritData.vow || '',
+            rejoiceCount: 0,
+            timestamp: Date.now()
+          };
+          
+          await setDoc(doc(db, 'shared_merits', shareId), shareDoc);
+        } else {
+          // It's a community post, let's also ensure it exists in shared_merits for the RejoiceModal, or RejoiceModal can fetch from community_posts.
+          // Actually, let's just save it to shared_merits to be safe, so RejoiceModal always works.
+          const shareDoc = {
+            userId: meritData.userId || fbUser.uid,
+            userName: meritData.userName || userProfile.name || '同修',
+            type: meritData.type || '修行',
+            title: `${meritData.chant || meritData.type} ${meritData.count ? meritData.count + '次' : ''}`,
+            description: meritData.dedication || meritData.vow || '',
+            rejoiceCount: meritData.likes || 0,
+            timestamp: meritData.timestamp || Date.now()
+          };
+          await setDoc(doc(db, 'shared_merits', shareId), shareDoc, { merge: true });
+        }
         
-        const url = new URL(window.location.href);
+        const url = new URL('https://jiun-qg8i.vercel.app');
         url.searchParams.set('rejoice', shareId);
         shareUrl = url.toString();
       }
@@ -713,7 +730,8 @@ export default function App() {
     setSessionFlowStep('dedication');
     setShowSummary(true);
 
-    // Generate AI Reflection
+    // Generate AI Reflection (Temporarily Disabled)
+    /*
     setIsGeneratingReflection(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -728,6 +746,7 @@ export default function App() {
     } finally {
       setIsGeneratingReflection(false);
     }
+    */
   };
 
   const buddhaNames = getScriptures(language).filter(s => s.category === 'name');
@@ -956,6 +975,7 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* AI Reflection Block - Temporarily Disabled
                   <div className="bg-zen-bg/50 p-5 rounded-3xl mb-8 relative">
                     <div className="absolute -top-2 -left-2 bg-zen-accent text-white p-1 rounded-lg">
                       <MessageCircle className="w-3 h-3" />
@@ -971,6 +991,7 @@ export default function App() {
                       </p>
                     )}
                   </div>
+                  */}
 
                   <div className="mb-6 bg-white rounded-2xl border border-zen-accent/10 divide-y divide-zen-accent/5">
                     <label className="flex items-center justify-between p-4 cursor-pointer hover:bg-zen-bg/50 transition-colors rounded-t-2xl">
@@ -1859,7 +1880,7 @@ export default function App() {
                             <button
                               onClick={() => shareMerit(item)}
                               disabled={isSharing}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-zen-accent/30 hover:text-zen-accent transition-all disabled:opacity-50"
+                              className="p-1 text-zen-accent/30 hover:text-zen-accent transition-all disabled:opacity-50"
                               title="分享此功德"
                             >
                               <Share2 className="w-3 h-3" />
@@ -1871,7 +1892,7 @@ export default function App() {
                                   setCount(prev => Math.max(0, prev - item.count));
                                 }
                               }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-zen-accent/30 hover:text-red-500 transition-all"
+                              className="p-1 text-zen-accent/30 hover:text-red-500 transition-all"
                               title="删除记录"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -3080,7 +3101,13 @@ export default function App() {
       <ChangePasswordModal isOpen={showChangePasswordModal} onClose={() => setShowChangePasswordModal(false)} />
       <ExportModal isOpen={showExportModal} onClose={() => setShowExportModal(false)} />
       <LegalModals />
-      {rejoiceId && <RejoiceModal shareId={rejoiceId} onClose={() => setRejoiceId(null)} />}
+      {rejoiceId && (
+        <RejoiceModal 
+          shareId={rejoiceId} 
+          onClose={() => setRejoiceId(null)} 
+          onViewCommunity={() => setActiveTab('community')}
+        />
+      )}
 
     </div>
   );
