@@ -61,6 +61,8 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         setError('登录已取消 (Login cancelled)');
       } else if (err.code === 'auth/popup-blocked') {
         setError('弹窗被浏览器拦截，请允许弹出窗口 (Popup blocked by browser)');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError('域名未授权，请联系管理员在 Firebase 控制台添加此域名 (Unauthorized domain)');
       } else {
         setError(err.message || t('auth_error_google'));
       }
@@ -140,7 +142,7 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         
         // Save email to user profile
         const savedProfile = localStorage.getItem('zen_user_profile');
-        let profile = savedProfile ? JSON.parse(savedProfile) : { name: '', email: '', birthday: '', gender: 'other', role: 'Employee' };
+        let profile = savedProfile ? JSON.parse(savedProfile) : { name: '', email: '', birthday: '', gender: '', role: 'Employee' };
         profile.email = email;
         localStorage.setItem('zen_user_profile', JSON.stringify(profile));
         window.dispatchEvent(new CustomEvent('user_profile_updated'));
@@ -180,7 +182,7 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
       
       // Save country, city, and name to user profile
       const savedProfile = localStorage.getItem('zen_user_profile');
-      let profile = savedProfile ? JSON.parse(savedProfile) : { name: '', email: '', birthday: '', gender: 'other', role: 'Employee' };
+      let profile = savedProfile ? JSON.parse(savedProfile) : { name: '', email: '', birthday: '', gender: '', role: 'Employee' };
       profile.email = email;
       profile.country = country;
       profile.location = city;
@@ -205,7 +207,7 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         
         // Save name to user profile
         const savedProfile = localStorage.getItem('zen_user_profile');
-        let profile = savedProfile ? JSON.parse(savedProfile) : { name: '', email: '', birthday: '', gender: 'other', role: 'Employee' };
+        let profile = savedProfile ? JSON.parse(savedProfile) : { name: '', email: '', birthday: '', gender: '', role: 'Employee' };
         if (event.data.user.name) {
           profile.name = event.data.user.name;
         }

@@ -25,6 +25,7 @@ import { AuthModal } from './components/AuthModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { ExportModal } from './components/ExportModal';
 import { LegalModals } from './components/LegalModals';
+import { RejoiceModal } from './components/RejoiceModal';
 import { reportService } from './services/reportService';
 import { identityService } from './services/identityService';
 import { Country, City } from 'country-state-city';
@@ -69,6 +70,16 @@ export default function App() {
   });
   
   const [vowInitialSection, setVowInitialSection] = useState<'menu' | 'coach' | 'wisdom'>('menu');
+
+  const [rejoiceId, setRejoiceId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const rejoice = urlParams.get('rejoice');
+    if (rejoice) {
+      setRejoiceId(rejoice);
+    }
+  }, []);
 
   const [activeTab, setActiveTab] = useState<'fish' | 'scripture' | 'assistant' | 'history' | 'meditation' | 'settings' | 'community' | 'vow' | 'merit' | 'dashboard'>('dashboard');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
@@ -128,11 +139,18 @@ export default function App() {
 
   const [userProfile, setUserProfile] = useState(() => {
     const saved = localStorage.getItem('zen_user_profile');
-    return saved ? JSON.parse(saved) : {
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.gender === 'other') {
+        parsed.gender = '';
+      }
+      return parsed;
+    }
+    return {
       name: '',
       email: '',
       birthday: '',
-      gender: 'other',
+      gender: '',
       role: 'Employee'
     };
   });
@@ -148,6 +166,23 @@ export default function App() {
       return post;
     }));
   }, [userProfile]);
+
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      const saved = localStorage.getItem('zen_user_profile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setUserProfile(prev => {
+          if (JSON.stringify(prev) !== JSON.stringify(parsed)) {
+            return parsed;
+          }
+          return prev;
+        });
+      }
+    };
+    window.addEventListener('user_profile_updated', handleProfileUpdate);
+    return () => window.removeEventListener('user_profile_updated', handleProfileUpdate);
+  }, []);
 
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>(() => {
     return (localStorage.getItem('zen_font_size') as any) || 'medium';
@@ -223,6 +258,48 @@ export default function App() {
   });
 
   const { user: fbUser } = useFirebase();
+
+  const shareMerit = async (meritData: any) => {
+    if (isSharing) return;
+    setIsSharing(true);
+    try {
+      let shareUrl = window.location.href;
+      
+      if (fbUser) {
+        const shareId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+        const shareDoc = {
+          userId: fbUser.uid,
+          userName: userProfile.name || '同修',
+          type: meritData.type || '修行',
+          title: `${meritData.chant || meritData.type} ${meritData.count ? meritData.count + '次' : ''}`,
+          description: meritData.dedication || meritData.vow || '',
+          rejoiceCount: 0,
+          timestamp: Date.now()
+        };
+        
+        await setDoc(doc(db, 'shared_merits', shareId), shareDoc);
+        
+        const url = new URL(window.location.href);
+        url.searchParams.set('rejoice', shareId);
+        shareUrl = url.toString();
+      }
+
+      if (navigator.share) {
+        await navigator.share({
+          title: '随喜赞叹',
+          text: `我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！`,
+          url: shareUrl
+        });
+      } else {
+        await navigator.clipboard.writeText(`我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！\n\n${shareUrl}`);
+        alert('链接已复制到剪贴板，快去分享给好友吧！');
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   const addHistoryItem = async (item: any) => {
     setHistory(prev => [item, ...prev]);
@@ -937,25 +1014,7 @@ export default function App() {
                       诵经圆满
                     </button>
                     <button
-                      onClick={async () => {
-                        if (isSharing) return;
-                        if (navigator.share) {
-                          try {
-                            setIsSharing(true);
-                            await navigator.share({
-                              title: '修行圆满',
-                              text: `我刚刚完成了 ${lastSession.count} 次 ${lastSession.chant} 的念诵。愿以此功德，普及于一切。邀请您一同随喜赞叹！`,
-                              url: window.location.href
-                            });
-                          } catch (error) {
-                            console.error(error);
-                          } finally {
-                            setIsSharing(false);
-                          }
-                        } else {
-                          alert('您的浏览器不支持分享功能');
-                        }
-                      }}
+                      onClick={() => shareMerit(lastSession)}
                       disabled={isSharing}
                       className="w-14 flex items-center justify-center bg-zen-bg text-zen-accent rounded-2xl font-bold hover:bg-zen-accent/10 transition-colors border border-zen-accent/20 disabled:opacity-50"
                     >
@@ -1023,7 +1082,10 @@ export default function App() {
                 <p className="text-xs sm:text-lg font-serif font-bold leading-none" title="连续修行天数">
                   {(() => {
                     if (history.length === 0) return "0 天";
-                    const dates = history.map(h => new Date(h.startTime).toDateString());
+                    const dates = history.map(h => {
+                      const ts = h.startTime || h.endTime || h.timestamp || h.id;
+                      return ts ? new Date(ts).toDateString() : null;
+                    }).filter(Boolean) as string[];
                     const uniqueDates = [...new Set(dates)].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
                     
                     let streak = 0;
@@ -1795,6 +1857,14 @@ export default function App() {
                             )}
                             <p className="font-medium text-sm">{item.chant}</p>
                             <button
+                              onClick={() => shareMerit(item)}
+                              disabled={isSharing}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-zen-accent/30 hover:text-zen-accent transition-all disabled:opacity-50"
+                              title="分享此功德"
+                            >
+                              <Share2 className="w-3 h-3" />
+                            </button>
+                            <button
                               onClick={() => {
                                 if (confirm('确定要删除这条记录吗？')) {
                                   deleteHistoryItem(item.id);
@@ -1961,25 +2031,7 @@ export default function App() {
 
                     <div className="flex items-center justify-between gap-4 border-t border-zen-accent/5 pt-4 mt-4">
                       <button
-                        onClick={async () => {
-                          if (isSharing) return;
-                          if (navigator.share) {
-                            try {
-                              setIsSharing(true);
-                              await navigator.share({
-                                title: '随喜赞叹',
-                                text: `随喜赞叹 ${post.userName} 的修行功德：${post.count} 次 ${post.chant}。${post.dedication}`,
-                                url: window.location.href
-                              });
-                            } catch (error) {
-                              console.error(error);
-                            } finally {
-                              setIsSharing(false);
-                            }
-                          } else {
-                            alert('您的浏览器不支持分享功能');
-                          }
-                        }}
+                        onClick={() => shareMerit(post)}
                         disabled={isSharing}
                         className="flex items-center gap-2 text-sm font-bold text-zen-accent/40 hover:text-zen-accent transition-colors disabled:opacity-50"
                       >
@@ -2111,11 +2163,14 @@ export default function App() {
                                 <option key={c.name} value={c.name}>{c.name}</option>
                               ))}
                             </select>
-                            <input type="date" placeholder={t('birthday')} value={userProfile.birthday} onChange={(e) => setUserProfile({...userProfile, birthday: e.target.value})} className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent" />
+                            <div className="flex items-center bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 focus-within:border-zen-accent transition-colors">
+                              <span className="text-sm text-zen-accent/70 mr-3 whitespace-nowrap">{t('birthday')}</span>
+                              <input type="date" value={userProfile.birthday} onChange={(e) => setUserProfile({...userProfile, birthday: e.target.value})} className="w-full bg-transparent text-sm focus:outline-none" />
+                            </div>
                             <select value={userProfile.gender} onChange={(e) => setUserProfile({...userProfile, gender: e.target.value})} className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent">
+                              <option value="" disabled>{t('gender')}</option>
                               <option value="male">{t('male')}</option>
                               <option value="female">{t('female')}</option>
-                              <option value="other">{t('other')}</option>
                             </select>
                             <select value={userProfile.role} onChange={(e) => setUserProfile({...userProfile, role: e.target.value})} className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent">
                               <option value="homemaker">{t('role_homemaker')}</option>
@@ -3025,6 +3080,7 @@ export default function App() {
       <ChangePasswordModal isOpen={showChangePasswordModal} onClose={() => setShowChangePasswordModal(false)} />
       <ExportModal isOpen={showExportModal} onClose={() => setShowExportModal(false)} />
       <LegalModals />
+      {rejoiceId && <RejoiceModal shareId={rejoiceId} onClose={() => setRejoiceId(null)} />}
 
     </div>
   );

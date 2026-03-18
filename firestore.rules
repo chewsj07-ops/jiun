@@ -126,9 +126,34 @@ service cloud.firestore {
              data.isDefault is bool;
     }
 
+    function isValidSharedMerit() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['userId', 'userName', 'type', 'title', 'rejoiceCount', 'timestamp']) &&
+             data.userId is string &&
+             data.userName is string &&
+             data.type is string &&
+             data.title is string &&
+             (!('description' in data) || data.description is string) &&
+             data.rejoiceCount is number &&
+             data.timestamp is number;
+    }
+
+    function isIncrementingRejoiceCount() {
+      let diff = request.resource.data.diff(resource.data);
+      return diff.affectedKeys().hasOnly(['rejoiceCount']) &&
+             request.resource.data.rejoiceCount == resource.data.rejoiceCount + 1;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /shared_merits/{shareId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid && isValidSharedMerit();
+      allow update: if isIncrementingRejoiceCount() || (isAuthenticated() && resource.data.userId == request.auth.uid && isValidSharedMerit());
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
 
     match /users/{userId} {
       allow read: if isOwner(userId);

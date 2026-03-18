@@ -28,6 +28,51 @@ export const ZenAssistant: React.FC<{
 
   const heartMethods = ['感恩心', '孝心', '菩提心', '平等心', '慈心', '悲心', '无常观'];
 
+  const getStreak = () => {
+    try {
+      const saved = localStorage.getItem('zen_history');
+      if (!saved) return 0;
+      const history = JSON.parse(saved);
+      if (!history || history.length === 0) return 0;
+      
+      const dates = history.map((h: any) => {
+        const ts = h.startTime || h.endTime || h.timestamp || h.id;
+        return ts ? new Date(ts).toDateString() : null;
+      }).filter(Boolean) as string[];
+      const uniqueDates = [...new Set(dates)].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+      
+      let streak = 0;
+      let lastDate = new Date();
+      
+      if (uniqueDates[0] === lastDate.toDateString()) {
+        streak = 1;
+        lastDate.setDate(lastDate.getDate() - 1);
+      } else {
+        let yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (uniqueDates[0] === yesterday.toDateString()) {
+          streak = 1;
+          lastDate = yesterday;
+          lastDate.setDate(lastDate.getDate() - 1);
+        } else {
+          return 0;
+        }
+      }
+      
+      for (let i = 1; i < uniqueDates.length; i++) {
+        if (new Date(uniqueDates[i]).toDateString() === lastDate.toDateString()) {
+          streak++;
+          lastDate.setDate(lastDate.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+      return streak;
+    } catch (e) {
+      return 0;
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -38,10 +83,11 @@ export const ZenAssistant: React.FC<{
     setIsLoading(true);
 
     try {
+      const daily_streak = getStreak();
       const result = await handleUserPractice(
         userMsg, 
         user, 
-        { selected_heart_method: selectedHeartMethod, daily_streak: 5, userRole: user.role },
+        { selected_heart_method: selectedHeartMethod, daily_streak, userRole: user?.role },
         onLevelUp
       );
       

@@ -33,7 +33,17 @@ export function useFirebaseSync(
           const profileDoc = await getDoc(doc(db, 'users', user.uid));
           if (profileDoc.exists()) {
             const data = profileDoc.data();
-            if (data.name) setUserProfile((prev: any) => ({ ...prev, name: data.name, avatar: data.avatar }));
+            setUserProfile((prev: any) => ({
+              ...prev,
+              name: data.name ?? prev.name,
+              avatar: data.avatar ?? prev.avatar,
+              email: data.email ?? prev.email,
+              birthday: data.birthday ?? prev.birthday,
+              gender: data.gender ?? prev.gender,
+              role: data.role ?? prev.role,
+              country: data.country ?? prev.country,
+              location: data.location ?? prev.location
+            }));
             if (data.personalVow !== undefined) setPersonalVow(data.personalVow);
             if (data.totalMerit !== undefined) setCount(data.totalMerit);
             if (data.userExp !== undefined) setUserExp(data.userExp);
@@ -50,6 +60,13 @@ export function useFirebaseSync(
           if (historyData.length > 0) {
             setHistory(historyData);
             localStorage.setItem('zen_history', JSON.stringify(historyData));
+          } else if (history && history.length > 0) {
+            const batch = writeBatch(db);
+            history.forEach(item => {
+              const docRef = doc(db, `users/${user.uid}/history`, item.id.toString());
+              batch.set(docRef, item);
+            });
+            await batch.commit();
           }
 
           // Fetch Vows
@@ -58,6 +75,13 @@ export function useFirebaseSync(
           if (vowsData.length > 0) {
             setVows(vowsData);
             localStorage.setItem('zen_vows', JSON.stringify(vowsData));
+          } else if (vows && vows.length > 0) {
+            const batch = writeBatch(db);
+            vows.forEach(item => {
+              const docRef = doc(db, `users/${user.uid}/vows`, item.id.toString());
+              batch.set(docRef, item);
+            });
+            await batch.commit();
           }
 
           // Fetch Deeds
@@ -96,6 +120,12 @@ export function useFirebaseSync(
         await setDoc(doc(db, 'users', user.uid), {
           name: userProfile.name || '',
           avatar: userProfile.avatar || '',
+          email: userProfile.email || '',
+          birthday: userProfile.birthday || '',
+          gender: userProfile.gender || '',
+          role: userProfile.role || 'Employee',
+          country: userProfile.country || '',
+          location: userProfile.location || '',
           personalVow: personalVow || '',
           totalMerit: count || 0,
           userExp: userExp || 0,
