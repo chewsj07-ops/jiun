@@ -150,7 +150,7 @@ service cloud.firestore {
 
     match /shared_merits/{shareId} {
       allow read: if true;
-      allow create: if isValidSharedMerit() && (isAuthenticated() ? request.resource.data.userId == request.auth.uid : request.resource.data.userId.matches('^guest_.*'));
+      allow create: if isValidSharedMerit() && (isAuthenticated() ? request.resource.data.userId == request.auth.uid : (request.resource.data.userId.matches('^guest_.*') || request.resource.data.userId.matches('^email_.*')));
       allow update: if isIncrementingRejoiceCount() || (isAuthenticated() && resource.data.userId == request.auth.uid && isValidSharedMerit());
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }

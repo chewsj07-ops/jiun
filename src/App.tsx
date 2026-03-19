@@ -275,13 +275,39 @@ export default function App() {
       url.searchParams.set('rejoice', shareId);
       shareUrl = url.toString();
 
-      const sharePromise = navigator.share ? navigator.share({
-        title: '随喜赞叹',
-        text: `我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！`,
-        url: shareUrl
-      }) : navigator.clipboard.writeText(`我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！\n\n${shareUrl}`).then(() => {
-        alert('链接已复制到剪贴板，快去分享给好友吧！');
-      });
+      const shareText = `我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！\n\n${shareUrl}`;
+
+      const sharePromise = (async () => {
+        try {
+          if (navigator.share) {
+            await navigator.share({
+              title: '随喜赞叹',
+              text: `我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！`,
+              url: shareUrl
+            });
+          } else if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(shareText);
+            alert('链接已复制到剪贴板，快去分享给好友吧！');
+          } else {
+            const textArea = document.createElement("textarea");
+            textArea.value = shareText;
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+              document.execCommand('copy');
+              alert('链接已复制到剪贴板，快去分享给好友吧！');
+            } catch (err) {
+              alert('复制失败，请手动复制链接:\n\n' + shareUrl);
+            }
+            document.body.removeChild(textArea);
+          }
+        } catch (err: any) {
+          if (err.name !== 'AbortError') {
+            console.error('Share failed:', err);
+          }
+        }
+      })();
 
       const docPromise = (async () => {
         if (!meritData.id || !meritData.userName) {
@@ -289,8 +315,8 @@ export default function App() {
             userId: currentUserId,
             userName: userProfile.name || '同修',
             type: meritData.type || '修行',
-            title: `${meritData.chant || meritData.type} ${meritData.count ? meritData.count + '次' : ''}`,
-            description: meritData.dedication || meritData.vow || '',
+            title: `${meritData.chant || meritData.type || '修行'} ${meritData.count ? meritData.count + '次' : ''}`.trim(),
+            description: meritData.dedication || meritData.vow || meritData.content || '',
             rejoiceCount: 0,
             timestamp: Date.now()
           };
@@ -301,8 +327,8 @@ export default function App() {
             userId: currentUserId,
             userName: meritData.userName || userProfile.name || '同修',
             type: meritData.type || '修行',
-            title: `${meritData.chant || meritData.type} ${meritData.count ? meritData.count + '次' : ''}`,
-            description: meritData.dedication || meritData.vow || '',
+            title: `${meritData.chant || meritData.type || '修行'} ${meritData.count ? meritData.count + '次' : ''}`.trim(),
+            description: meritData.dedication || meritData.vow || meritData.content || '',
             rejoiceCount: meritData.likes || 0,
             timestamp: meritData.timestamp || Date.now(),
             isCommunity: true

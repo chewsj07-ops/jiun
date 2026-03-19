@@ -11,11 +11,11 @@ import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 const ALL_COUNTRIES = Country.getAllCountries();
 
-type AuthView = 'initial' | 'login' | 'signup' | 'forgot_password' | 'verify_code' | 'reset_password';
+type AuthView = 'login' | 'signup' | 'forgot_password' | 'verify_code' | 'reset_password';
 
 export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { t } = useTranslation();
-  const [view, setView] = useState<AuthView>('initial');
+  const [view, setView] = useState<AuthView>('login');
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -314,7 +314,7 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     setIsLoading(false);
     setError('');
     setSuccessMsg('');
-    setView('initial');
+    setView('login');
     setCode('');
     setPassword('');
     setConfirmPassword('');
@@ -334,14 +334,14 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         >
           <div className="flex justify-between items-center p-6 pb-2 shrink-0">
             <div className="flex items-center gap-3">
-              {view !== 'initial' && (
+              {view !== 'login' && view !== 'signup' && (
                 <button 
                   onClick={() => {
                     setError('');
                     setSuccessMsg('');
                     if (view === 'verify_code') setView('signup');
                     else if (view === 'reset_password') setView('forgot_password');
-                    else setView('initial');
+                    else setView('login');
                   }}
                   className="p-1.5 text-zen-ink/60 hover:text-zen-ink rounded-full hover:bg-zen-bg transition-colors"
                 >
@@ -349,8 +349,7 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                 </button>
               )}
               <h3 className="text-xl font-bold font-serif text-zen-ink">
-                {view === 'initial' ? t('auth_title') : 
-                 view === 'login' ? '登录 (Log In)' : 
+                {view === 'login' ? '登录 (Log In)' : 
                  view === 'signup' ? '注册 (Sign Up)' : 
                  view === 'forgot_password' ? '忘记密码 (Forgot Password)' : 
                  view === 'reset_password' ? '重置密码 (Reset Password)' :
@@ -371,29 +370,6 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
             {successMsg && (
               <div className="mb-4 p-3 bg-green-50 text-green-600 text-sm rounded-xl border border-green-100">
                 {successMsg}
-              </div>
-            )}
-
-            {view === 'initial' && (
-              <div className="space-y-4 pt-4">
-                <button
-                  onClick={() => { setView('login'); setError(''); setSuccessMsg(''); }}
-                  className="w-full py-3.5 bg-zen-accent text-white rounded-xl font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                >
-                  登录 (Log In)
-                </button>
-                <button
-                  onClick={() => { setView('signup'); setError(''); setSuccessMsg(''); }}
-                  className="w-full py-3.5 bg-white border-2 border-zen-accent text-zen-accent rounded-xl font-bold hover:bg-zen-bg transition-colors flex items-center justify-center gap-2"
-                >
-                  注册 (Sign Up)
-                </button>
-                <button
-                  onClick={() => { setView('forgot_password'); setError(''); setSuccessMsg(''); }}
-                  className="w-full py-2 text-sm text-zen-ink/60 hover:text-zen-ink transition-colors mt-2"
-                >
-                  忘记密码？ (Forgot Password?)
-                </button>
               </div>
             )}
 
