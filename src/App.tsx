@@ -50,6 +50,8 @@ const LEVELS = [
   { minExp: 10000, nameKey: "level_5_name", title: "Level 5" }
 ];
 
+const ALL_COUNTRIES = Country.getAllCountries();
+
 export default function App() {
   const { t, language, setLanguage } = useTranslation();
 
@@ -263,15 +265,28 @@ export default function App() {
     if (isSharing) return;
     setIsSharing(true);
     try {
-      let shareUrl = 'https://jiun-qg8i.vercel.app';
+      let shareUrl = window.location.origin;
       
-      if (fbUser) {
-        // Always generate a new shareId to avoid permission collisions
-        const shareId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
-        
+      // Always generate a new shareId to avoid permission collisions
+      const shareId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+      const currentUserId = fbUser ? fbUser.uid : identityService.getUserId();
+      
+      const url = new URL(window.location.origin);
+      url.searchParams.set('rejoice', shareId);
+      shareUrl = url.toString();
+
+      const sharePromise = navigator.share ? navigator.share({
+        title: '随喜赞叹',
+        text: `我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！`,
+        url: shareUrl
+      }) : navigator.clipboard.writeText(`我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！\n\n${shareUrl}`).then(() => {
+        alert('链接已复制到剪贴板，快去分享给好友吧！');
+      });
+
+      const docPromise = (async () => {
         if (!meritData.id || !meritData.userName) {
           const shareDoc = {
-            userId: fbUser.uid,
+            userId: currentUserId,
             userName: userProfile.name || '同修',
             type: meritData.type || '修行',
             title: `${meritData.chant || meritData.type} ${meritData.count ? meritData.count + '次' : ''}`,
@@ -282,10 +297,8 @@ export default function App() {
           
           await setDoc(doc(db, 'shared_merits', shareId), shareDoc);
         } else {
-          // It's a community post, let's also ensure it exists in shared_merits for the RejoiceModal, or RejoiceModal can fetch from community_posts.
-          // Actually, let's just save it to shared_merits to be safe, so RejoiceModal always works.
           const shareDoc = {
-            userId: fbUser.uid, // Always use current user's ID to pass security rules
+            userId: currentUserId,
             userName: meritData.userName || userProfile.name || '同修',
             type: meritData.type || '修行',
             title: `${meritData.chant || meritData.type} ${meritData.count ? meritData.count + '次' : ''}`,
@@ -296,22 +309,10 @@ export default function App() {
           };
           await setDoc(doc(db, 'shared_merits', shareId), shareDoc, { merge: true });
         }
-        
-        const url = new URL('https://jiun-qg8i.vercel.app');
-        url.searchParams.set('rejoice', shareId);
-        shareUrl = url.toString();
-      }
+      })();
 
-      if (navigator.share) {
-        await navigator.share({
-          title: '随喜赞叹',
-          text: `我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！`,
-          url: shareUrl
-        });
-      } else {
-        await navigator.clipboard.writeText(`我刚刚完成了 ${meritData.count ? meritData.count + ' 次 ' : ''}${meritData.chant || meritData.type}。愿以此功德，普及于一切。邀请您一同随喜赞叹！\n\n${shareUrl}`);
-        alert('链接已复制到剪贴板，快去分享给好友吧！');
-      }
+      // Execute concurrently
+      await Promise.all([sharePromise, docPromise]);
     } catch (error) {
       console.error(error);
     } finally {
@@ -790,10 +791,16 @@ export default function App() {
     }
   ];
 
-  const countries = Country.getAllCountries();
-  const selectedCountry = countries.find(c => c.name === userProfile.country);
-  const countryCode = selectedCountry ? selectedCountry.isoCode : '';
-  const availableCities = countryCode ? City.getCitiesOfCountry(countryCode) : [];
+  const availableCities = React.useMemo(() => {
+    const selectedCountry = ALL_COUNTRIES.find(c => c.name === userProfile.country);
+    const code = selectedCountry ? selectedCountry.isoCode : '';
+    return code ? City.getCitiesOfCountry(code) : [];
+  }, [userProfile.country]);
+
+  const currentCountryCode = React.useMemo(() => {
+    const selectedCountry = ALL_COUNTRIES.find(c => c.name === userProfile.country);
+    return selectedCountry ? selectedCountry.isoCode : '';
+  }, [userProfile.country]);
 
   return (
     <div className="min-h-screen bg-zen-bg text-zen-ink selection:bg-zen-accent/20">
@@ -2157,10 +2164,10 @@ export default function App() {
                             <input type="text" placeholder={t('name')} value={userProfile.name} onChange={(e) => setUserProfile({...userProfile, name: e.target.value})} className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent" />
                             <input type="email" placeholder={t('email')} value={userProfile.email} onChange={(e) => setUserProfile({...userProfile, email: e.target.value})} className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent" />
                             <select
-                              value={countryCode}
+                              value={currentCountryCode}
                               onChange={(e) => {
                                 const code = e.target.value;
-                                const selected = countries.find(c => c.isoCode === code);
+                                const selected = ALL_COUNTRIES.find(c => c.isoCode === code);
                                 setUserProfile({
                                   ...userProfile,
                                   country: selected ? selected.name : '',
@@ -2170,14 +2177,14 @@ export default function App() {
                               className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent appearance-none"
                             >
                               <option value="">国家 (Country)</option>
-                              {countries.map(c => (
+                              {ALL_COUNTRIES.map(c => (
                                 <option key={c.isoCode} value={c.isoCode}>{c.name}</option>
                               ))}
                             </select>
                             <select
                               value={userProfile.location || ''}
                               onChange={(e) => setUserProfile({...userProfile, location: e.target.value})}
-                              disabled={!countryCode}
+                              disabled={!currentCountryCode}
                               className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent disabled:opacity-50 appearance-none"
                             >
                               <option value="">城市/地区 (City)</option>

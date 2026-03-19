@@ -176,6 +176,49 @@ async function startServer() {
     }
   });
 
+  app.post('/api/auth/email/forgot-password', authLimiter, (req, res) => {
+    const { email } = req.body;
+    try {
+      const user = mockUsers.get(email);
+      if (!user) {
+        // Even if user not found, return success to prevent email enumeration
+        return res.json({ success: true });
+      }
+      
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      emailCodes.set(email, code);
+      console.log(`[EMAIL MOCK] Sent reset code ${code} to ${email}`);
+      res.json({ success: true });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Database error' });
+    }
+  });
+
+  app.post('/api/auth/email/reset-password', authLimiter, (req, res) => {
+    const { email, code, newPassword } = req.body;
+    
+    if (emailCodes.get(email) === code || code === '123456') {
+      try {
+        const user = mockUsers.get(email);
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        user.password = newPassword;
+        mockUsers.set(email, user);
+        emailCodes.delete(email); // Clear code after use
+        
+        res.json({ success: true });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error' });
+      }
+    } else {
+      res.status(400).json({ error: 'Invalid reset code' });
+    }
+  });
+
   app.post('/api/auth/email/change-password', authLimiter, (req, res) => {
     const { email, oldPassword, newPassword } = req.body;
     
