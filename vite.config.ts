@@ -16,7 +16,7 @@ export default defineConfig(({mode}) => {
       }),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['logo.png'],
+        includeAssets: ['icon.svg', 'apple-touch-icon.png'],
         manifest: {
           name: '禅心助手',
           short_name: '禅心助手',
@@ -27,19 +27,19 @@ export default defineConfig(({mode}) => {
           start_url: '/',
           icons: [
             {
-              src: 'logo.png',
+              src: 'icon.svg',
               sizes: '192x192',
-              type: 'image/png',
+              type: 'image/svg+xml',
               purpose: 'any maskable'
             },
             {
-              src: 'logo.png',
+              src: 'icon.svg',
               sizes: '512x512',
-              type: 'image/png',
+              type: 'image/svg+xml',
               purpose: 'any maskable'
             },
             {
-              src: 'logo.png',
+              src: 'apple-touch-icon.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'apple touch icon'
