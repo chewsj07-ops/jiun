@@ -29,9 +29,9 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-zen-bg w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-zen-accent/20"
+          className="bg-zen-bg w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-zen-accent/20 flex flex-col max-h-[90vh]"
         >
-          <div className="p-6 border-b border-zen-accent/10 flex justify-between items-center bg-zen-accent/5">
+          <div className="p-6 border-b border-zen-accent/10 flex justify-between items-center bg-zen-accent/5 shrink-0">
             <h2 className="text-xl font-bold text-zen-accent flex items-center gap-2">
               <Download className="w-5 h-5" />
               下载APP到手机
@@ -44,7 +44,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
             </button>
           </div>
 
-          <div className="p-6 space-y-6">
+          <div className="p-6 space-y-6 overflow-y-auto">
             <p className="text-sm text-zen-accent/80 leading-relaxed">
               禅心助手是一款免安装的轻应用（PWA）。您可以直接将它添加到手机桌面，体验与原生APP完全一致，且不占用手机存储空间。
             </p>
@@ -80,7 +80,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
             )}
           </div>
           
-          <div className="p-6 pt-0">
+          <div className="p-6 pt-4 shrink-0 border-t border-zen-accent/10">
             <button
               onClick={onClose}
               className="w-full py-3 bg-zen-accent text-white rounded-xl font-bold hover:bg-zen-accent/90 transition-colors shadow-md"
