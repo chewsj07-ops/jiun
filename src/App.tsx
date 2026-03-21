@@ -2233,15 +2233,36 @@ export default function App() {
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between gap-4 border-t border-zen-accent/5 pt-4 mt-4">
-                      <button
-                        onClick={() => shareMerit(post)}
-                        disabled={isSharing}
-                        className="flex items-center gap-2 text-sm font-bold text-zen-accent/40 hover:text-zen-accent transition-colors disabled:opacity-50"
-                      >
-                        <Share2 className="w-4 h-4" />
-                        <span>分享</span>
-                      </button>
+                    <div className="flex items-center justify-between gap-2 sm:gap-4 border-t border-zen-accent/5 pt-4 mt-4">
+                      <div className="flex items-center gap-3 sm:gap-6">
+                        <button
+                          onClick={() => shareMerit(post)}
+                          disabled={isSharing}
+                          className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold text-zen-accent/40 hover:text-zen-accent transition-colors disabled:opacity-50"
+                        >
+                          <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <span>分享</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const scripture = allScriptures.find(s => s.title === post.chant);
+                            if (scripture) {
+                              setActiveScriptureId(scripture.id);
+                              if (scripture.category === 'meditation') {
+                                setActiveTab('meditation');
+                              } else {
+                                setActiveTab('fish');
+                              }
+                            } else {
+                              setActiveTab('fish');
+                            }
+                          }}
+                          className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold text-zen-accent/40 hover:text-zen-accent transition-colors"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <span>我也要修行</span>
+                        </button>
+                      </div>
                       <button 
                         onClick={async () => {
                           // Optimistic update
@@ -2298,11 +2319,11 @@ export default function App() {
                           window.dispatchEvent(new CustomEvent('zen_data_updated'));
                         }}
                         className={cn(
-                          "flex items-center gap-2 text-sm font-bold transition-colors",
+                          "flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold transition-colors",
                           "text-zen-accent/40 hover:text-zen-accent"
                         )}
                       >
-                        <ThumbsUp className={cn("w-4 h-4")} />
+                        <ThumbsUp className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4")} />
                         <span>{t('like_dedication')} {post.likes > 0 && post.likes}</span>
                       </button>
                     </div>
@@ -3299,6 +3320,21 @@ export default function App() {
           shareId={rejoiceId} 
           onClose={() => setRejoiceId(null)} 
           onViewCommunity={() => setActiveTab('community')}
+          onPractice={(chantTitle) => {
+            if (chantTitle) {
+              const scripture = allScriptures.find(s => s.title === chantTitle || chantTitle.includes(s.title));
+              if (scripture) {
+                setActiveScriptureId(scripture.id);
+                if (scripture.category === 'meditation') {
+                  setActiveTab('meditation');
+                } else {
+                  setActiveTab('fish');
+                }
+                return;
+              }
+            }
+            setActiveTab('fish');
+          }}
         />
       )}
 

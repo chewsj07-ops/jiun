@@ -9,9 +9,10 @@ interface RejoiceModalProps {
   shareId: string;
   onClose: () => void;
   onViewCommunity?: () => void;
+  onPractice?: (chantTitle?: string) => void;
 }
 
-export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, onViewCommunity }) => {
+export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, onViewCommunity, onPractice }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -165,7 +166,10 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
                   
                   {rejoiced ? (
                     <button
-                      onClick={handleClose}
+                      onClick={() => {
+                        handleClose();
+                        if (onPractice) onPractice(data.title || data.chant || data.type);
+                      }}
                       className="w-full py-3 text-sm text-zen-ink/60 hover:text-zen-ink transition-colors"
                     >
                       开启我的修行之旅
@@ -173,7 +177,10 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
                   ) : (
                     <>
                       <button
-                        onClick={handleClose}
+                        onClick={() => {
+                          handleClose();
+                          if (onPractice) onPractice(data.title || data.chant || data.type);
+                        }}
                         className="w-full py-3 text-sm text-zen-ink/60 hover:text-zen-ink transition-colors"
                       >
                         我也要修行
