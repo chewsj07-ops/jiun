@@ -150,13 +150,13 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
           <motion.div
             key={text.id}
             initial={{ opacity: 1, y: 0, scale: text.isCombo ? 1.2 : 0.8 }}
-            animate={{ opacity: 0, y: -60, scale: text.isCombo ? 1.5 : 1.2 }}
+            animate={{ opacity: 0, y: -80, scale: text.isCombo ? 1.5 : 1.2 }}
             exit={{ opacity: 0 }}
             className={cn(
-              "absolute font-medium pointer-events-none whitespace-nowrap z-10 text-sm sm:text-base max-w-[200px] text-center truncate",
+              "absolute font-medium pointer-events-none whitespace-nowrap z-10 text-3xl sm:text-5xl max-w-[400px] text-center truncate",
               text.isCombo ? "text-amber-500 font-bold drop-shadow-md" : "text-zen-accent"
             )}
-            style={{ left: `50%`, transform: `translateX(calc(-50% + ${text.x}px))`, top: `-20px` }}
+            style={{ left: `50%`, transform: `translateX(calc(-50% + ${text.x}px))`, top: `-40px` }}
           >
             {text.isCombo ? `${t('combo_x')}${text.comboCount} !` : floatingText}
           </motion.div>

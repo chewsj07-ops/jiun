@@ -1641,9 +1641,9 @@ export default function App() {
 
                 {/* Scripture Content Display */}
                 {activeScripture.category !== 'name' && (
-                  <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl border border-zen-accent/5 shadow-sm max-h-32 sm:max-h-64 overflow-y-auto shrink-0">
-                    <h3 className="text-center font-serif font-bold text-zen-accent mb-1 sm:mb-4 text-sm sm:text-base">{activeScripture.title}</h3>
-                    <p className="text-zen-ink/80 font-serif leading-relaxed whitespace-pre-wrap text-center text-[10px] sm:text-sm">
+                  <div className="bg-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-zen-accent/5 shadow-sm max-h-48 sm:max-h-80 overflow-y-auto shrink-0">
+                    <h3 className="text-center font-serif font-bold text-zen-accent mb-2 sm:mb-6 text-xl sm:text-3xl">{activeScripture.title}</h3>
+                    <p className="text-zen-ink/90 font-serif leading-loose whitespace-pre-wrap text-center text-base sm:text-2xl">
                       {activeScripture.content}
                     </p>
                   </div>
@@ -1651,31 +1651,31 @@ export default function App() {
 
                 {/* Session Control */}
                 {isSessionActive && (
-                  <div className="flex justify-center shrink-0">
-                    <div className="flex flex-col items-center gap-1 sm:gap-4">
-                      <div className="flex items-center gap-3 sm:gap-8 bg-white px-4 sm:px-8 py-2 sm:py-4 rounded-full border border-zen-accent/10 shadow-sm">
+                  <div className="flex justify-center shrink-0 mt-4 sm:mt-8">
+                    <div className="flex flex-col items-center gap-2 sm:gap-6">
+                      <div className="flex items-center gap-4 sm:gap-10 bg-white px-6 sm:px-12 py-4 sm:py-6 rounded-full border border-zen-accent/10 shadow-md">
                         <div className="text-center">
-                          <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-zen-accent/40 font-bold">{t('session_merit')}</p>
-                          <p className="text-lg sm:text-2xl font-serif font-bold text-zen-accent">
-                            {sessionCount} / {scriptureGoals[activeScriptureId] || 108}
+                          <p className="text-sm sm:text-base uppercase tracking-widest text-zen-accent/50 font-bold mb-2">{t('session_merit')}</p>
+                          <p className="text-6xl sm:text-8xl font-serif font-bold text-zen-accent tracking-tighter">
+                            {sessionCount} <span className="text-3xl sm:text-5xl text-zen-accent/40">/ {scriptureGoals[activeScriptureId] || 108}</span>
                           </p>
                         </div>
-                        <div className="w-px h-5 sm:h-8 bg-zen-accent/10" />
+                        <div className="w-px h-12 sm:h-16 bg-zen-accent/10" />
                         <button 
                           onClick={finishSession}
-                          className="text-zen-accent font-bold hover:opacity-70 transition-opacity text-xs sm:text-base"
+                          className="text-zen-accent font-bold hover:opacity-70 transition-opacity text-sm sm:text-xl px-2"
                         >
                           {t('finish_practice')}
                         </button>
                       </div>
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-6">
                         <button 
                           onClick={() => setSessionCount(0)}
-                          className="text-[10px] text-zen-accent/30 hover:text-zen-accent/60 transition-colors"
+                          className="text-xs sm:text-sm text-zen-accent/40 hover:text-zen-accent/80 transition-colors font-medium"
                         >
-                          重置
+                          重置计数
                         </button>
-                        <p className="text-[10px] sm:text-xs text-zen-accent/40 animate-pulse italic">{t('practicing')}</p>
+                        <p className="text-xs sm:text-sm text-zen-accent/50 animate-pulse italic font-medium">{t('practicing')}</p>
                       </div>
                     </div>
                   </div>
