@@ -14,6 +14,14 @@
     <title>禅心助手</title>
   </head>
   <body>
+    <script>
+      if (!localStorage.getItem('test_cleared_20260321')) {
+        localStorage.clear();
+        indexedDB.deleteDatabase('ZenMeditationDB');
+        localStorage.setItem('test_cleared_20260321', 'true');
+        console.log('Test data cleared!');
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

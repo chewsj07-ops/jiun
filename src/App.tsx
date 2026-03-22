@@ -781,6 +781,7 @@ export default function App() {
   const [isMeditationSettingsExpanded, setIsMeditationSettingsExpanded] = useState(true);
   const [isVowSettingsExpanded, setIsVowSettingsExpanded] = useState(true);
   const [isFeedbackExpanded, setIsFeedbackExpanded] = useState(true);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isSystemSettingsExpanded, setIsSystemSettingsExpanded] = useState(true);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
@@ -2988,6 +2989,44 @@ export default function App() {
                               />
                             </label>
                           </div>
+                        </div>
+
+                        {/* Clear Data */}
+                        <div className="border-t border-zen-accent/10 pt-6">
+                          <h3 className="text-sm font-bold text-red-500 mb-3 flex items-center gap-2">
+                            <Trash2 className="w-4 h-4" />
+                            清除所有数据
+                          </h3>
+                          <p className="text-xs text-zen-accent/60 mb-4 leading-relaxed">
+                            此操作将清除您设备上的所有本地数据（包括功德、历史记录、设置和冥想音频），且不可恢复。如果您已登录，云端数据不会被删除。
+                          </p>
+                          {!showClearConfirm ? (
+                            <button 
+                              onClick={() => setShowClearConfirm(true)}
+                              className="w-full bg-red-50 border border-red-200 text-red-600 py-3 rounded-2xl font-bold hover:bg-red-100 transition-colors text-sm"
+                            >
+                              清除所有本地数据
+                            </button>
+                          ) : (
+                            <div className="flex gap-4">
+                              <button 
+                                onClick={() => setShowClearConfirm(false)}
+                                className="flex-1 bg-zen-bg border border-zen-accent/20 text-zen-accent py-3 rounded-2xl font-bold hover:bg-zen-accent/5 transition-colors text-sm"
+                              >
+                                取消
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  localStorage.clear();
+                                  indexedDB.deleteDatabase('ZenMeditationDB');
+                                  window.location.reload();
+                                }}
+                                className="flex-1 bg-red-500 text-white py-3 rounded-2xl font-bold hover:bg-red-600 transition-colors text-sm"
+                              >
+                                确认清除
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Auth Status / Logout */}
