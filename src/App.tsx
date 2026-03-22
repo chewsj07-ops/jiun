@@ -1572,17 +1572,17 @@ export default function App() {
             >
               <div className="w-full max-w-md space-y-2 sm:space-y-8 flex flex-col h-full">
                 {/* Scripture Selection */}
-                <div className="bg-white p-3 sm:p-6 rounded-2xl sm:rounded-3xl border border-zen-accent/5 shadow-sm shrink-0">
-                  <div className="flex justify-between items-center mb-2 sm:mb-4">
-                    <p className="text-[10px] uppercase tracking-widest text-zen-accent/50 font-bold">{t('select_scripture')}</p>
+                <div className="bg-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-zen-accent/5 shadow-sm shrink-0">
+                  <div className="flex justify-between items-center mb-3 sm:mb-6">
+                    <p className="text-xs sm:text-sm uppercase tracking-widest text-zen-accent/50 font-bold">{t('select_scripture')}</p>
                     <button 
                       onClick={() => {
                         setEditingGoalValue(scriptureGoals[activeScriptureId] || 108);
                         setShowGoalModal(true);
                       }}
-                      className="text-xs bg-zen-accent/10 text-zen-accent px-2 py-1 rounded-lg hover:bg-zen-accent/20 font-bold flex items-center gap-1"
+                      className="text-sm sm:text-base bg-zen-accent/10 text-zen-accent px-3 py-2 rounded-xl hover:bg-zen-accent/20 font-bold flex items-center gap-1.5"
                     >
-                      <Trophy className="w-3 h-3" />
+                      <Trophy className="w-4 h-4" />
                       {t('set_goal') || "定课"}
                     </button>
                   </div>
@@ -1594,7 +1594,7 @@ export default function App() {
                         const s = allScriptures.find(i => i.id === e.target.value);
                         if (s) setSelectedChant(s.title);
                       }}
-                      className="w-full appearance-none bg-zen-bg/50 border border-zen-accent/10 rounded-xl px-3 py-2 sm:px-4 sm:py-3 text-sm font-medium text-zen-accent focus:outline-none focus:border-zen-accent/30 pr-10 truncate"
+                      className="w-full appearance-none bg-zen-bg/50 border border-zen-accent/10 rounded-xl px-4 py-3 sm:px-6 sm:py-4 text-lg sm:text-2xl font-bold text-zen-accent focus:outline-none focus:border-zen-accent/30 pr-12 truncate"
                     >
                       <optgroup label={t('buddha_name')}>
                         {allScriptures.filter(s => s.category === 'name').map(s => (
@@ -1607,8 +1607,8 @@ export default function App() {
                         ))}
                       </optgroup>
                     </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zen-accent/50">
-                      <ChevronDown className="w-4 h-4" />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zen-accent/50">
+                      <ChevronDown className="w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
                   </div>
                   
