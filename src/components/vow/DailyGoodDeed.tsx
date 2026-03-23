@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Loader2, Send, ShieldCheck, AlertCircle, Calendar, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { parseISO } from 'date-fns';
 import { GoogleGenAI } from "@google/genai";
+import { containsBadWords } from '../../utils/badWords';
 import { practiceService } from '../../services/practiceService';
 import { useFirebase } from '../../contexts/FirebaseContext';
 import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
@@ -37,7 +39,7 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
         try {
           const snapshot = await getDocs(collection(db, `users/${fbUser.uid}/goodDeeds`));
           const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DeedEntry));
-          const sorted = data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          const sorted = data.sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
           setHistory(sorted);
           localStorage.setItem('good_deed_history', JSON.stringify(sorted));
         } catch (error) {
@@ -61,6 +63,11 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
+
+    if (containsBadWords(input)) {
+      alert('您的内容包含不当词汇，请修改后再提交。');
+      return;
+    }
 
     const settings = practiceService.getSettings();
     if (!settings.aiEnabled || !settings.aiApiKey) {
@@ -112,7 +119,7 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
         setResult(res);
         
         // Ensure date is in ISO 8601 format with Z
-        const dateObj = new Date(selectedDate);
+        const dateObj = parseISO(selectedDate);
         const isoDate = dateObj.toISOString();
         
         const newEntry: DeedEntry = {
@@ -122,7 +129,7 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
           content: input,
           result: res
         };
-        const newHistory = [newEntry, ...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const newHistory = [newEntry, ...history].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
         setHistory(newHistory);
         localStorage.setItem('good_deed_history', JSON.stringify(newHistory));
         

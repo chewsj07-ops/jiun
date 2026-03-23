@@ -7,6 +7,7 @@ import { useFirebase } from './contexts/FirebaseContext';
 import { doc, setDoc, deleteDoc, writeBatch, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { handleFirestoreError, OperationType } from './utils/firebaseErrors';
+import { containsBadWords } from './utils/badWords';
 import { Dashboard } from './components/Dashboard';
 import { WoodenFish } from './components/WoodenFish';
 import { practiceService } from './services/practiceService';
@@ -272,6 +273,14 @@ export default function App() {
 
   const shareMerit = async (meritData: any, isCommunity: boolean = false) => {
     if (isSharing) return;
+    
+    // Check for bad words
+    const contentToCheck = `${meritData.chant || ''} ${meritData.type || ''} ${meritData.dedication || ''} ${meritData.vow || ''} ${meritData.content || ''}`;
+    if (containsBadWords(contentToCheck)) {
+      alert('您的内容包含不当词汇，请修改后再分享。');
+      return;
+    }
+    
     setIsSharing(true);
     try {
       let shareUrl = window.location.origin;
@@ -638,14 +647,14 @@ export default function App() {
     
     if (historyPeriod === 'daily') return dateStr === selectedDate;
     if (historyPeriod === 'weekly') {
-      const selected = new Date(selectedDate);
+      const selected = parseISO(selectedDate);
       const day = selected.getDay() || 7; // Convert Sunday (0) to 7
       const startOfWeek = new Date(selected);
       startOfWeek.setDate(selected.getDate() - day + 1);
       const endOfWeek = new Date(startOfWeek);
       endOfWeek.setDate(startOfWeek.getDate() + 6);
       
-      const itemD = new Date(dateStr);
+      const itemD = parseISO(dateStr);
       return itemD >= startOfWeek && itemD <= endOfWeek;
     }
     if (historyPeriod === 'monthly') return dateStr.startsWith(selectedDate.substring(0, 7));
@@ -1157,12 +1166,19 @@ export default function App() {
                     <button 
                       onClick={async () => {
                         if (shareToCommunity) {
+                          const dedicationContent = lastSession.dedication || dedications.find(d => d.isDefault)?.content || dedications[0]?.content || "";
+                          
+                          if (containsBadWords(dedicationContent)) {
+                            alert('您的回向文包含不当词汇，请修改后再分享。');
+                            return;
+                          }
+                          
                           const newPost: CommunityPost = {
                             id: Date.now().toString(),
                             userName: userProfile.name || "静心居士",
                             chant: lastSession.chant,
                             count: lastSession.count,
-                            dedication: lastSession.dedication || dedications.find(d => d.isDefault)?.content || dedications[0]?.content || "",
+                            dedication: dedicationContent,
                             likes: 0,
                             timestamp: Date.now(),
                             isUserPost: true
@@ -1894,7 +1910,7 @@ export default function App() {
                           >
                             {historyPeriod === 'daily' ? selectedDate : 
                              historyPeriod === 'weekly' ? (() => {
-                               const selected = new Date(selectedDate);
+                               const selected = parseISO(selectedDate);
                                const day = selected.getDay() || 7;
                                const start = new Date(selected);
                                start.setDate(selected.getDate() - day + 1);
@@ -1915,7 +1931,7 @@ export default function App() {
                                 className="absolute right-0 top-full mt-2 z-50"
                               >
                                 <CustomCalendar 
-                                  selectedDate={new Date(selectedDate + 'T00:00:00')} 
+                                  selectedDate={parseISO(selectedDate)} 
                                   onSelectDate={(date) => {
                                     setSelectedDate(format(date, 'yyyy-MM-dd'));
                                     setShowCalendarModal(false);
@@ -2216,7 +2232,7 @@ export default function App() {
                               className="absolute right-0 top-full mt-2 z-50"
                             >
                               <CustomCalendar 
-                                selectedDate={new Date(communitySelectedDate + 'T00:00:00')} 
+                                selectedDate={parseISO(communitySelectedDate)} 
                                 onSelectDate={(date) => {
                                   setCommunitySelectedDate(format(date, 'yyyy-MM-dd'));
                                   setShowCommunityCalendarModal(false);
@@ -2342,7 +2358,7 @@ export default function App() {
                             }
                           };
                           
-                          const newHistory = [newEntry, ...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                          const newHistory = [newEntry, ...history].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
                           localStorage.setItem('good_deed_history', JSON.stringify(newHistory));
                           
                           if (fbUser) {
@@ -2877,63 +2893,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Feedback */}
-              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
-                <button 
-                  onClick={() => setIsFeedbackExpanded(!isFeedbackExpanded)}
-                  className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-zen-accent transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <MessageCircle className="w-5 h-5 text-zen-accent" />
-                    用户反馈 (Feedback)
-                  </div>
-                  <ChevronDown className={cn("w-5 h-5 transition-transform", isFeedbackExpanded ? "rotate-180" : "")} />
-                </button>
-                
-                <AnimatePresence>
-                  {isFeedbackExpanded && (
-                    <motion.div 
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="space-y-4 pt-6">
-                        <p className="text-sm text-zen-ink/70">
-                          如果您在使用过程中遇到任何问题，或有任何建议，欢迎告诉我们。您的反馈将帮助我们不断改进。
-                        </p>
-                        <textarea 
-                          placeholder="请在此输入您的反馈意见..." 
-                          value={feedbackText}
-                          onChange={(e) => setFeedbackText(e.target.value)}
-                          className="w-full h-32 bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent resize-none"
-                        ></textarea>
-                        {feedbackSuccess && (
-                          <div className="p-3 bg-green-50 text-green-600 text-sm rounded-xl border border-green-100 flex items-center gap-2">
-                            <Check className="w-4 h-4" />
-                            感谢您的反馈！我们会认真阅读并不断改进。
-                          </div>
-                        )}
-                        <button 
-                          onClick={() => {
-                            if (!feedbackText.trim()) return;
-                            // Mock submit feedback
-                            setFeedbackSuccess(true);
-                            setFeedbackText('');
-                            setTimeout(() => setFeedbackSuccess(false), 3000);
-                          }}
-                          disabled={!feedbackText.trim()}
-                          className="w-full bg-zen-accent text-white py-3 rounded-2xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                          提交反馈
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
               {/* AI Zen Master */}
               <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
                 <button 
@@ -3009,6 +2968,63 @@ export default function App() {
                             </div>
                           </motion.div>
                         )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Feedback */}
+              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
+                <button 
+                  onClick={() => setIsFeedbackExpanded(!isFeedbackExpanded)}
+                  className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-zen-accent transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5 text-zen-accent" />
+                    用户反馈 (Feedback)
+                  </div>
+                  <ChevronDown className={cn("w-5 h-5 transition-transform", isFeedbackExpanded ? "rotate-180" : "")} />
+                </button>
+                
+                <AnimatePresence>
+                  {isFeedbackExpanded && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="space-y-4 pt-6">
+                        <p className="text-sm text-zen-ink/70">
+                          如果您在使用过程中遇到任何问题，或有任何建议，欢迎告诉我们。您的反馈将帮助我们不断改进。
+                        </p>
+                        <textarea 
+                          placeholder="请在此输入您的反馈意见..." 
+                          value={feedbackText}
+                          onChange={(e) => setFeedbackText(e.target.value)}
+                          className="w-full h-32 bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent resize-none"
+                        ></textarea>
+                        {feedbackSuccess && (
+                          <div className="p-3 bg-green-50 text-green-600 text-sm rounded-xl border border-green-100 flex items-center gap-2">
+                            <Check className="w-4 h-4" />
+                            感谢您的反馈！我们会认真阅读并不断改进。
+                          </div>
+                        )}
+                        <button 
+                          onClick={() => {
+                            if (!feedbackText.trim()) return;
+                            // Mock submit feedback
+                            setFeedbackSuccess(true);
+                            setFeedbackText('');
+                            setTimeout(() => setFeedbackSuccess(false), 3000);
+                          }}
+                          disabled={!feedbackText.trim()}
+                          className="w-full bg-zen-accent text-white py-3 rounded-2xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          提交反馈
+                        </button>
                       </div>
                     </motion.div>
                   )}
