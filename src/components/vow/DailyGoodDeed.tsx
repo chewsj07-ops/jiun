@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Loader2, Send, ShieldCheck, AlertCircle, Calendar, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { GoogleGenAI } from "@google/genai";
+import { practiceService } from '../../services/practiceService';
 import { useFirebase } from '../../contexts/FirebaseContext';
 import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -60,11 +61,18 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
+
+    const settings = practiceService.getSettings();
+    if (!settings.aiEnabled || !settings.aiApiKey) {
+      alert("AI 禅师未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启。");
+      return;
+    }
+
     setIsLoading(true);
     setResult(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const ai = new GoogleGenAI({ apiKey: settings.aiApiKey });
       const prompt = `
         用户输入: ${input}
         类型: ${isRepentance ? '忏悔/改过' : '每日一善'}

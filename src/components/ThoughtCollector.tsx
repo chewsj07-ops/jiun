@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { MessageCircle, X, Sparkles, History, Loader2, CheckCircle2, ChevronDown, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { GoogleGenAI } from "@google/genai";
+import { practiceService } from '../services/practiceService';
 
 import { cryptoService } from '../services/cryptoService';
 import { identityService } from '../services/identityService';
@@ -228,9 +229,15 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
   };
 
   const handleGetGuidance = async (thought: Thought) => {
+    const settings = practiceService.getSettings();
+    if (!settings.aiEnabled || !settings.aiApiKey) {
+      alert("AI 禅师未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启。");
+      return;
+    }
+
     setIsLoadingGuidance(thought.id);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const ai = new GoogleGenAI({ apiKey: settings.aiApiKey });
       const emoLabels = thought.emotions.map(id => ALL_EMOTIONS.find(e => e.id === id)?.label).filter(Boolean).join('、') || '未知';
       
       const prompt = `你是一位慈悲的导师以5戒8正道4圣谛和正道的佛法来说法。用户感受到了 ${emoLabels}，因为 ${thought.event}。他尝试用 ${thought.action} 转念。请给予一句最精简、最省字、直击心灵的睿智点评（限30字以内）。`;

@@ -21,6 +21,8 @@ export interface DailyPractice {
 
 export interface PracticeSettings {
   scriptureGoals: Record<string, number>;
+  aiEnabled?: boolean;
+  aiApiKey?: string;
 }
 
 export interface PracticeLevelInfo {

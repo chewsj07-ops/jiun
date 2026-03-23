@@ -106,6 +106,14 @@ export default function App() {
     return practiceService.getSettings().scriptureGoals;
   });
 
+  const [aiEnabled, setAiEnabled] = useState<boolean>(() => {
+    return practiceService.getSettings().aiEnabled || false;
+  });
+
+  const [aiApiKey, setAiApiKey] = useState<string>(() => {
+    return practiceService.getSettings().aiApiKey || '';
+  });
+
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>(() => {
     return practiceService.getDailyPractice().scriptureCounts || {};
   });
@@ -781,6 +789,7 @@ export default function App() {
   const [isMeditationSettingsExpanded, setIsMeditationSettingsExpanded] = useState(true);
   const [isVowSettingsExpanded, setIsVowSettingsExpanded] = useState(true);
   const [isFeedbackExpanded, setIsFeedbackExpanded] = useState(true);
+  const [isAiSettingsExpanded, setIsAiSettingsExpanded] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isSystemSettingsExpanded, setIsSystemSettingsExpanded] = useState(true);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
@@ -855,23 +864,25 @@ export default function App() {
     setSessionFlowStep('dedication');
     setShowSummary(true);
 
-    // Generate AI Reflection (Temporarily Disabled)
-    /*
-    setIsGeneratingReflection(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: `我刚刚完成了一次修行。念诵内容是：${activeScripture.title}，念诵次数：${sessionCount}次，时长：${Math.floor(duration / 60)}分${duration % 60}秒。请作为禅师给我一句最精简、最省字、直击心灵的感悟（限30字以内）。`,
-      });
-      setCurrentReflection(response.text || "心如止水，功德圆满。");
-    } catch (error) {
-      console.error("AI Reflection Error:", error);
-      setCurrentReflection("修行不在于数量，而在于那一刻的清净心。愿此功德，普及于一切。");
-    } finally {
-      setIsGeneratingReflection(false);
+    // Generate AI Reflection if enabled
+    if (aiEnabled && aiApiKey) {
+      setIsGeneratingReflection(true);
+      try {
+        const ai = new GoogleGenAI({ apiKey: aiApiKey });
+        const response = await ai.models.generateContent({
+          model: "gemini-3.1-flash-lite-preview",
+          contents: `我刚刚完成了一次修行。念诵内容是：${activeScripture.title}，念诵次数：${sessionCount}次，时长：${Math.floor(duration / 60)}分${duration % 60}秒。请作为禅师给我一句最精简、最省字、直击心灵的感悟（限30字以内）。`,
+        });
+        setCurrentReflection(response.text || "心如止水，功德圆满。");
+      } catch (error) {
+        console.error("AI Reflection Error:", error);
+        setCurrentReflection("AI 禅师正在闭关，请检查您的 API Key 是否正确。");
+      } finally {
+        setIsGeneratingReflection(false);
+      }
+    } else {
+      setCurrentReflection("心如止水，功德圆满。");
     }
-    */
   };
 
   const buddhaNames = getScriptures(language).filter(s => s.category === 'name');
@@ -2904,6 +2915,87 @@ export default function App() {
                           <MessageCircle className="w-4 h-4" />
                           提交反馈
                         </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* AI Zen Master */}
+              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
+                <button 
+                  onClick={() => setIsAiSettingsExpanded(!isAiSettingsExpanded)}
+                  className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-zen-accent transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Brain className="w-5 h-5 text-zen-accent" />
+                    AI 禅师 (AI Zen Master)
+                  </div>
+                  <ChevronDown className={cn("w-5 h-5 transition-transform", isAiSettingsExpanded ? "rotate-180" : "")} />
+                </button>
+                
+                <AnimatePresence>
+                  {isAiSettingsExpanded && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="space-y-6 pt-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-sm font-bold text-zen-accent/70 mb-1">开启 AI 禅师感悟</h3>
+                            <p className="text-xs text-zen-accent/50">在修行结束后获取专属的禅意感悟</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const newVal = !aiEnabled;
+                              setAiEnabled(newVal);
+                              practiceService.saveSettings({ ...practiceService.getSettings(), aiEnabled: newVal });
+                            }}
+                            className={cn(
+                              "w-12 h-6 rounded-full transition-colors relative",
+                              aiEnabled ? "bg-zen-accent" : "bg-zen-accent/20"
+                            )}
+                          >
+                            <motion.div
+                              className="w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm"
+                              animate={{ left: aiEnabled ? "26px" : "2px" }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                            />
+                          </button>
+                        </div>
+
+                        {aiEnabled && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="space-y-4"
+                          >
+                            <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
+                              <p className="text-xs text-amber-800/80 leading-relaxed">
+                                <b>提示：</b>为了保证应用永久免费，AI 禅师功能需要您提供自己的 Gemini API Key。
+                                <br />
+                                您可以前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-amber-600 underline font-bold">Google AI Studio</a> 免费申请一个 Key。
+                              </p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-zen-accent/60 mb-2">您的 Gemini API Key</label>
+                              <input
+                                type="password"
+                                value={aiApiKey}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setAiApiKey(val);
+                                  practiceService.saveSettings({ ...practiceService.getSettings(), aiApiKey: val });
+                                }}
+                                placeholder="AIzaSy..."
+                                className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent font-mono"
+                              />
+                            </div>
+                          </motion.div>
+                        )}
                       </div>
                     </motion.div>
                   )}

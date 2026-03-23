@@ -4,6 +4,7 @@ import { Brain, Sparkles, Trash2, Edit2, Plus, List } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { PracticeRecord } from '../../types';
 import { GoogleGenAI } from "@google/genai";
+import { practiceService } from '../../services/practiceService';
 
 export const EightfoldPractice = () => {
   const { t } = useTranslation();
@@ -27,9 +28,15 @@ export const EightfoldPractice = () => {
   }, [records]);
 
   const handleAdd = async () => {
+    const settings = practiceService.getSettings();
+    if (!settings.aiEnabled || !settings.aiApiKey) {
+      alert("AI 禅师未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启。");
+      return;
+    }
+
     setLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: settings.aiApiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
         contents: `用户记录了转念过程：行为总结为“${actionSummary}”，心理转折为“${mindShift}”。请作为CEO视角和唯识导师，按照以下JSON格式生成最精简、省字的修行记录：

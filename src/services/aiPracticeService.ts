@@ -90,9 +90,14 @@ export async function handleUserPractice(
   userInput: string, 
   user: any, 
   context: { selected_heart_method?: string; daily_streak: number; userRole?: string },
-  triggerLevelUpAnimation: (msg: string) => void
+  triggerLevelUpAnimation: (msg: string) => void,
+  aiApiKey?: string
 ) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+  if (!aiApiKey) {
+    throw new Error("AI 禅师未开启或未配置 API Key。");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: aiApiKey });
   
   // 增强 Context
   const roleMap: Record<string, string> = {

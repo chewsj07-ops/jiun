@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from "@google/genai";
+import { practiceService } from '../../services/practiceService';
 import { Loader2, Sparkles, Brain, Heart, Leaf, ArrowRight } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
@@ -18,11 +19,17 @@ export const ThoughtCoach = () => {
   const handleAnalyze = async () => {
     if (!emotion.trim()) return;
     
+    const settings = practiceService.getSettings();
+    if (!settings.aiEnabled || !settings.aiApiKey) {
+      alert("AI 禅师未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启。");
+      return;
+    }
+
     setIsLoading(true);
     setResponse(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: settings.aiApiKey });
       const prompt = `
         User is feeling: "${emotion}".
         Current language: "${language}".

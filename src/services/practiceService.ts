@@ -36,7 +36,9 @@ const defaultDailyPractice: DailyPractice = {
 };
 
 const defaultSettings: PracticeSettings = {
-  scriptureGoals: {}
+  scriptureGoals: {},
+  aiEnabled: false,
+  aiApiKey: ''
 };
 
 export const practiceService = {

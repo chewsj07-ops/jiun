@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import { useTranslation } from '../i18n';
 
 import { handleUserPractice } from '../services/aiPracticeService';
+import { practiceService } from '../services/practiceService';
 
 export const ZenAssistant: React.FC<{
   user: any;
@@ -83,12 +84,24 @@ export const ZenAssistant: React.FC<{
     setIsLoading(true);
 
     try {
+      const settings = practiceService.getSettings();
+      if (!settings.aiEnabled || !settings.aiApiKey) {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: "阿弥陀佛。AI 禅师功能目前未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启并填入您的 Gemini API Key。",
+          timestamp: new Date().toLocaleString()
+        }]);
+        setIsLoading(false);
+        return;
+      }
+
       const daily_streak = getStreak();
       const result = await handleUserPractice(
         userMsg, 
         user, 
         { selected_heart_method: selectedHeartMethod, daily_streak, userRole: user?.role },
-        onLevelUp
+        onLevelUp,
+        settings.aiApiKey
       );
       
       const responseNow = new Date().toLocaleString();
