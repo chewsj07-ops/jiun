@@ -181,18 +181,23 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
         
         const { ciphertext, iv } = await cryptoService.encrypt(contentToEncrypt);
         
-        return {
+        const newThought: any = {
           id: t.id,
           uid: t.uid || identityService.getUserId(),
           type: t.type || 'thought_observation',
           record_version: t.record_version || 1,
           emotions: t.emotions,
           timestamp: t.timestamp || new Date(t.id).toISOString(),
-          guidance: t.guidance,
           isEncrypted: true,
           content_encrypted: ciphertext,
           iv: iv
         };
+        
+        if (t.guidance !== undefined) {
+          newThought.guidance = t.guidance;
+        }
+        
+        return newThought;
       }));
       
       localStorage.setItem('zen_thoughts', JSON.stringify(encryptedThoughts));
@@ -204,7 +209,8 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
           const batch = writeBatch(db);
           encryptedThoughts.forEach((t: any) => {
             const docRef = doc(db, `users/${auth.currentUser!.uid}/thoughts`, t.id.toString());
-            batch.set(docRef, t);
+            const cleanT = Object.fromEntries(Object.entries(t).filter(([_, v]) => v !== undefined));
+            batch.set(docRef, cleanT);
           });
           await batch.commit();
         } catch (error) {

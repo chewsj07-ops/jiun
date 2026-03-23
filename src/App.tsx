@@ -405,7 +405,8 @@ export default function App() {
     setHistory(prev => [item, ...prev]);
     if (fbUser) {
       try {
-        await setDoc(doc(db, `users/${fbUser.uid}/history`, item.id.toString()), item);
+        const cleanItem = Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
+        await setDoc(doc(db, `users/${fbUser.uid}/history`, item.id.toString()), cleanItem);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `users/${fbUser.uid}/history`);
       }
@@ -430,7 +431,8 @@ export default function App() {
         const batch = writeBatch(db);
         newHistory.forEach(item => {
           const docRef = doc(db, `users/${fbUser.uid}/history`, item.id.toString());
-          batch.set(docRef, item);
+          const cleanItem = Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
+          batch.set(docRef, cleanItem);
         });
         await batch.commit();
       } catch (error) {
@@ -446,7 +448,8 @@ export default function App() {
         const batch = writeBatch(db);
         newVows.forEach(vow => {
           const docRef = doc(db, `users/${fbUser.uid}/vows`, vow.id.toString());
-          batch.set(docRef, vow);
+          const cleanVow = Object.fromEntries(Object.entries(vow).filter(([_, v]) => v !== undefined));
+          batch.set(docRef, cleanVow);
         });
         await batch.commit();
       } catch (error) {
@@ -2341,6 +2344,16 @@ export default function App() {
                           
                           const newHistory = [newEntry, ...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
                           localStorage.setItem('good_deed_history', JSON.stringify(newHistory));
+                          
+                          if (fbUser) {
+                            try {
+                              const cleanEntry = Object.fromEntries(Object.entries(newEntry).filter(([_, v]) => v !== undefined));
+                              await setDoc(doc(db, `users/${fbUser.uid}/goodDeeds`, newEntry.id), cleanEntry);
+                            } catch (error) {
+                              handleFirestoreError(error, OperationType.WRITE, `users/${fbUser.uid}/goodDeeds`);
+                            }
+                          }
+                          
                           window.dispatchEvent(new CustomEvent('zen_data_updated'));
                         }}
                         className={cn(

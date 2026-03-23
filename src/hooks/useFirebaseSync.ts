@@ -64,7 +64,8 @@ export function useFirebaseSync(
             const batch = writeBatch(db);
             history.forEach(item => {
               const docRef = doc(db, `users/${user.uid}/history`, item.id.toString());
-              batch.set(docRef, item);
+              const cleanItem = Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
+              batch.set(docRef, cleanItem);
             });
             await batch.commit();
           }
@@ -79,7 +80,8 @@ export function useFirebaseSync(
             const batch = writeBatch(db);
             vows.forEach(item => {
               const docRef = doc(db, `users/${user.uid}/vows`, item.id.toString());
-              batch.set(docRef, item);
+              const cleanItem = Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
+              batch.set(docRef, cleanItem);
             });
             await batch.commit();
           }

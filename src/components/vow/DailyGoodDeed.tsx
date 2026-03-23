@@ -128,7 +128,8 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
         
         if (fbUser) {
           try {
-            await setDoc(doc(db, `users/${fbUser.uid}/goodDeeds`, newEntry.id), newEntry);
+            const cleanEntry = Object.fromEntries(Object.entries(newEntry).filter(([_, v]) => v !== undefined));
+            await setDoc(doc(db, `users/${fbUser.uid}/goodDeeds`, newEntry.id), cleanEntry);
           } catch (error) {
             handleFirestoreError(error, OperationType.WRITE, `users/${fbUser.uid}/goodDeeds`);
           }
