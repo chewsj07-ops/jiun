@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Loader2, Send, ShieldCheck, AlertCircle, Calendar, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { parseISO } from 'date-fns';
+import { toast } from 'sonner';
 import { GoogleGenAI } from "@google/genai";
 import { containsBadWords } from '../../utils/badWords';
 import { practiceService } from '../../services/practiceService';
@@ -65,13 +66,13 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
     if (!input.trim() || isLoading) return;
 
     if (containsBadWords(input)) {
-      alert('您的内容包含不当词汇，请修改后再提交。');
+      toast.error('您的内容包含不当词汇，请修改后再提交。');
       return;
     }
 
     const settings = practiceService.getSettings();
     if (!settings.aiEnabled || !settings.aiApiKey) {
-      alert("AI 禅师未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启。");
+      toast.error("AI 禅师未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启。");
       return;
     }
 

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { MessageCircle, X, Sparkles, History, Loader2, CheckCircle2, ChevronDown, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { GoogleGenAI } from "@google/genai";
+import { toast } from 'sonner';
 import { containsBadWords } from '../utils/badWords';
 import { practiceService } from '../services/practiceService';
 
@@ -278,7 +279,7 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
     
     const contentToCheck = `${eventText} ${actionText} ${resultText} ${learningText} ${vowText} ${selectedEmotions.join(' ')}`;
     if (containsBadWords(contentToCheck)) {
-      alert('您的内容包含不当词汇，请修改后再保存。');
+      toast.error('您的内容包含不当词汇，请修改后再保存。');
       return;
     }
     
