@@ -276,7 +276,7 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
   const handleSave = async () => {
     if (selectedEmotions.length === 0 && !eventText && !actionText && !resultText && !learningText && !vowText) return;
     
-    const contentToCheck = `${eventText} ${actionText} ${resultText} ${learningText} ${vowText}`;
+    const contentToCheck = `${eventText} ${actionText} ${resultText} ${learningText} ${vowText} ${selectedEmotions.join(' ')}`;
     if (containsBadWords(contentToCheck)) {
       alert('您的内容包含不当词汇，请修改后再保存。');
       return;
