@@ -239,7 +239,13 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
   const handleGetGuidance = async (thought: Thought) => {
     const settings = practiceService.getSettings();
     if (!settings.aiEnabled || !settings.aiApiKey) {
-      alert("AI 禅师未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启。");
+      toast.error("AI 禅师未开启或未配置 API Key。", {
+        description: "开启后，AI 禅师将为您提供深度修行洞察。若不开启，您仍可记录自己的修行总结。",
+        action: {
+          label: "前往设置",
+          onClick: () => window.dispatchEvent(new CustomEvent('navigate_to_settings', { detail: { section: 'ai-settings' } }))
+        }
+      });
       return;
     }
 
@@ -364,8 +370,14 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
               </div>
             ) : (
               <div className="mt-6 pt-6 border-t border-amber-900/20 flex flex-col items-center justify-center py-4">
-                <Loader2 className="w-6 h-6 animate-spin text-amber-900/40 mb-2" />
-                <p className="text-xs text-amber-900/60 font-bold tracking-widest">导师正在思考...</p>
+                {practiceService.getSettings().aiEnabled && practiceService.getSettings().aiApiKey ? (
+                  <>
+                    <Loader2 className="w-6 h-6 animate-spin text-amber-900/40 mb-2" />
+                    <p className="text-xs text-amber-900/60 font-bold tracking-widest">导师正在思考...</p>
+                  </>
+                ) : (
+                  <p className="text-xs text-amber-900/60 font-bold tracking-widest">（未开启 AI 禅师，暂无导师点评）</p>
+                )}
               </div>
             )}
           </div>

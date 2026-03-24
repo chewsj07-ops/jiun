@@ -11,6 +11,7 @@ import { handleFirestoreError, OperationType } from './utils/firebaseErrors';
 import { containsBadWords } from './utils/badWords';
 import { Dashboard } from './components/Dashboard';
 import { WoodenFish } from './components/WoodenFish';
+import { AudioManagement } from './components/AudioManagement';
 import { practiceService } from './services/practiceService';
 
 import { Meditation } from './components/Meditation';
@@ -805,6 +806,21 @@ export default function App() {
   const [isAiSettingsExpanded, setIsAiSettingsExpanded] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isSystemSettingsExpanded, setIsSystemSettingsExpanded] = useState(true);
+  const aiSettingsRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleNavigateToSettings = (event: any) => {
+      setActiveTab('settings');
+      if (event.detail?.section === 'ai-settings') {
+        setIsAiSettingsExpanded(true);
+        setTimeout(() => {
+          aiSettingsRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }
+    };
+    window.addEventListener('navigate_to_settings', handleNavigateToSettings);
+    return () => window.removeEventListener('navigate_to_settings', handleNavigateToSettings);
+  }, []);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -2403,6 +2419,15 @@ export default function App() {
                 </h2>
 
                 <div className="space-y-8">
+                  {['chewsj07@gmail.com'].includes(auth.currentUser?.email || '') && (
+                    <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
+                      <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                        <Music className="w-5 h-5 text-zen-accent" />
+                        音频管理 (Admin)
+                      </h2>
+                      <AudioManagement />
+                    </div>
+                  )}
                   {/* User Profile */}
                   <div>
                     <button 
@@ -2895,7 +2920,7 @@ export default function App() {
               </div>
 
               {/* AI Zen Master */}
-              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
+              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5" ref={aiSettingsRef}>
                 <button 
                   onClick={() => setIsAiSettingsExpanded(!isAiSettingsExpanded)}
                   className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-zen-accent transition-colors"

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Play, Pause, Wind, Music, Volume2, Timer, Sparkles, Upload, FileAudio, Trash2, Edit2, ArrowUpDown, SortAsc, Clock, Check, X, Link as LinkIcon } from 'lucide-react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 import { practiceService } from '../services/practiceService';
@@ -17,6 +19,7 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
   const [audioError, setAudioError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [localTracks, setLocalTracks] = useState<any[]>([]);
+  const [firestoreTracks, setFirestoreTracks] = useState<any[]>([]);
   const [lastSavedProgress, setLastSavedProgress] = useState<Record<string, { currentTime: number, timeLeft: number }>>({});
   const [selectedDuration, setSelectedDuration] = useState(15); // Default 15 mins
   const [volume, setVolume] = useState(0.7);
@@ -106,6 +109,20 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
     });
   }, []);
 
+  // Load tracks from Firestore
+  useEffect(() => {
+    const q = query(collection(db, 'audioResources'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setFirestoreTracks(snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        url: doc.data().audioUrl,
+        isUrl: true
+      })));
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Load progress from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('meditation_progress');
@@ -133,7 +150,7 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
     localStorage.setItem('meditation_progress', JSON.stringify(newProgress));
   };
 
-  const allTracks = [...localTracks, ...TRACKS].sort((a, b) => {
+  const allTracks = [...firestoreTracks, ...localTracks, ...TRACKS].sort((a, b) => {
     if (sortOrder === 'name') {
       return a.title.localeCompare(b.title);
     }

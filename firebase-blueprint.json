@@ -60,6 +60,29 @@
         "endTime": { "type": "number" }
       },
       "required": ["id", "type", "endTime"]
+    },
+    "AudioResource": {
+      "title": "AudioResource",
+      "description": "An audio resource for meditation or chanting",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the audio" },
+        "description": { "type": "string", "description": "Description of the audio" },
+        "audioUrl": { "type": "string", "description": "URL of the audio file" },
+        "category": { "type": "string", "description": "Category of the audio" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "audioUrl"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "An administrator",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Admin user UID" },
+        "email": { "type": "string", "description": "Admin email address" }
+      },
+      "required": ["uid", "email"]
     }
   },
   "firestore": {
@@ -78,6 +101,14 @@
     "/users/{userId}/history/{historyId}": {
       "schema": { "$ref": "#/entities/ZenHistory" },
       "description": "User's zen history records."
+    },
+    "/audioResources/{audioId}": {
+      "schema": { "$ref": "#/entities/AudioResource" },
+      "description": "Public audio resources for meditation or chanting."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "List of authorized administrators."
     }
   }
 }

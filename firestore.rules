@@ -144,9 +144,43 @@ service cloud.firestore {
              request.resource.data.rejoiceCount == resource.data.rejoiceCount + 1;
     }
 
+    function isValidAudioResource() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['title', 'audioUrl']) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.audioUrl is string && data.audioUrl.size() <= 1000 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 100)) &&
+             (!('createdAt' in data) || data.createdAt is string);
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "chewsj07@gmail.com" ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidAdmin() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string &&
+             data.email is string && isValidEmail(data.email);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /admins/{adminId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /audioResources/{audioId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
 
     match /shared_merits/{shareId} {
       allow read: if true;

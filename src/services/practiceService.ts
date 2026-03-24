@@ -32,7 +32,8 @@ const defaultDailyPractice: DailyPractice = {
   rejoicing: 0,
   good_deeds: 0,
   dedication: false,
-  full_dedication: false
+  full_dedication: false,
+  evening_class: false
 };
 
 const defaultSettings: PracticeSettings = {
@@ -201,6 +202,9 @@ export const practiceService = {
     // Full Dedication
     if (practice.full_dedication) progress += PRACTICE_WEIGHTS.full_dedication;
 
+    // Evening Class
+    if (practice.evening_class) progress += PRACTICE_WEIGHTS.evening_class;
+
     return Math.min(100, Math.round(progress));
   },
 
@@ -240,6 +244,9 @@ export const practiceService = {
         break;
       case 'full_dedication':
         practice.full_dedication = (value as boolean);
+        break;
+      case 'evening_class':
+        practice.evening_class = (value as boolean);
         break;
     }
 

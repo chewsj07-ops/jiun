@@ -72,7 +72,13 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
 
     const settings = practiceService.getSettings();
     if (!settings.aiEnabled || !settings.aiApiKey) {
-      toast.error("AI 禅师未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启。");
+      toast.error("AI 禅师未开启或未配置 API Key。", {
+        description: "开启后，AI 禅师将为您提供深度修行洞察。若不开启，您仍可记录自己的修行总结。",
+        action: {
+          label: "前往设置",
+          onClick: () => window.dispatchEvent(new CustomEvent('navigate_to_settings', { detail: { section: 'ai-settings' } }))
+        }
+      });
       return;
     }
 
