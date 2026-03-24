@@ -99,5 +99,10 @@ export const cryptoService = {
       console.warn('Decryption failed for a record (likely created on another device or before login).');
       return '【加密数据无法解密】';
     }
+  },
+
+  // Clear legacy master key from localStorage
+  clearLegacyKey() {
+    localStorage.removeItem('zen_master_key');
   }
 };
