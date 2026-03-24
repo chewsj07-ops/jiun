@@ -1,114 +1,57 @@
 {
   "entities": {
-    "UserProfile": {
-      "title": "User Profile",
-      "description": "Stores user settings, preferences, and total merit.",
+    "User": {
+      "title": "User",
+      "description": "用户众生相",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "description": "User's display name" },
-        "avatar": { "type": "string", "description": "User's avatar URL" },
-        "personalVow": { "type": "string", "description": "User's personal vow" },
-        "theme": { "type": "string" },
-        "woodenFishAppearance": { "type": "string" },
-        "soundType": { "type": "string" },
-        "language": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "Thought": {
-      "title": "Thought",
-      "description": "A thought record",
-      "type": "object",
-      "properties": {
-        "timestamp": { "type": "number" },
-        "emotions": { "type": "array", "items": { "type": "string" } },
-        "content_encrypted": { "type": "string" },
-        "iv": { "type": "string" },
-        "isEncrypted": { "type": "boolean" },
-        "guidance": { "type": "string" }
+        "userId": { "type": "string" },
+        "joinDate": { "type": "string", "format": "date-time" },
+        "karmaScore": { "type": "number" },
+        "currentStreak": { "type": "number" }
       },
-      "required": ["timestamp"]
+      "required": ["userId", "joinDate", "karmaScore", "currentStreak"]
     },
-    "Deed": {
-      "title": "Deed",
-      "description": "A good deed or repentance record",
+    "Vow": {
+      "title": "Vow",
+      "description": "愿力契约",
       "type": "object",
       "properties": {
-        "timestamp": { "type": "number" },
-        "date": { "type": "string" },
-        "type": { "type": "string" },
-        "content": { "type": "string" },
-        "category": { "type": "string" },
-        "merit": { "type": "number" },
-        "guidance": { "type": "string" },
-        "result": { "type": "object" }
+        "vowId": { "type": "string" },
+        "userId": { "type": "string" },
+        "vowText": { "type": "string" },
+        "target": { "type": "string", "enum": ["self", "family", "others"] },
+        "status": { "type": "string", "enum": ["active", "completed", "broken"] }
       },
-      "required": ["type"]
+      "required": ["vowId", "userId", "vowText", "target", "status"]
     },
-    "ZenHistory": {
-      "title": "ZenHistory",
-      "description": "Meditation or chanting history",
+    "Session": {
+      "title": "Session",
+      "description": "实修记录",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "type": { "type": "string" },
-        "chant": { "type": "string" },
-        "count": { "type": "number" },
-        "dedication": { "type": "string" },
-        "vow": { "type": "string" },
-        "endTime": { "type": "number" }
+        "sessionId": { "type": "string" },
+        "vowId": { "type": "string" },
+        "duration": { "type": "number" },
+        "actualDuration": { "type": "number" },
+        "isCompleted": { "type": "boolean" },
+        "reflection": { "type": "string" }
       },
-      "required": ["id", "type", "endTime"]
-    },
-    "AudioResource": {
-      "title": "AudioResource",
-      "description": "An audio resource for meditation or chanting",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string", "description": "Title of the audio" },
-        "description": { "type": "string", "description": "Description of the audio" },
-        "audioUrl": { "type": "string", "description": "URL of the audio file" },
-        "category": { "type": "string", "description": "Category of the audio" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["title", "audioUrl"]
-    },
-    "Admin": {
-      "title": "Admin",
-      "description": "An administrator",
-      "type": "object",
-      "properties": {
-        "uid": { "type": "string", "description": "Admin user UID" },
-        "email": { "type": "string", "description": "Admin email address" }
-      },
-      "required": ["uid", "email"]
+      "required": ["sessionId", "vowId", "duration", "actualDuration", "isCompleted"]
     }
   },
   "firestore": {
     "/users/{userId}": {
-      "schema": { "$ref": "#/entities/UserProfile" },
-      "description": "User profile and settings."
+      "schema": "User",
+      "description": "用户数据"
     },
-    "/users/{userId}/thoughts/{thoughtId}": {
-      "schema": { "$ref": "#/entities/Thought" },
-      "description": "User's thought records."
+    "/vows/{vowId}": {
+      "schema": "Vow",
+      "description": "愿力契约"
     },
-    "/users/{userId}/deeds/{deedId}": {
-      "schema": { "$ref": "#/entities/Deed" },
-      "description": "User's good deed history records."
-    },
-    "/users/{userId}/history/{historyId}": {
-      "schema": { "$ref": "#/entities/ZenHistory" },
-      "description": "User's zen history records."
-    },
-    "/audioResources/{audioId}": {
-      "schema": { "$ref": "#/entities/AudioResource" },
-      "description": "Public audio resources for meditation or chanting."
-    },
-    "/admins/{adminId}": {
-      "schema": { "$ref": "#/entities/Admin" },
-      "description": "List of authorized administrators."
+    "/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "实修记录"
     }
   }
 }

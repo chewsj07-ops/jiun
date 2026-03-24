@@ -923,33 +923,33 @@ export default function App() {
 
   const onboardingSteps = [
     {
-      title: "欢迎来到念经助手",
-      description: "在这里，您可以放下尘嚣，开启一段宁静的数字修行之旅。",
+      title: "欢迎来到 VowZen",
+      description: "在这里，我们将“愿”作为修行的核心，以愿导行，开启一段真实的改变之旅。",
       icon: Heart,
       color: "bg-zen-accent/10 text-zen-accent"
     },
     {
-      title: "电子木鱼 · 积攒功德",
-      description: "点击木鱼，伴随清脆声响积攒功德。您可以自由选择佛号，系统将为您记录每一次至诚念诵。",
-      icon: Heart,
+      title: "发下你的愿 (Vow)",
+      description: "修行不只是放松，而是为了解决生命中的困惑。请选择一个你今日的愿，作为你修行的动力。",
+      icon: Target,
       color: "bg-amber-100 text-amber-600"
     },
     {
-      title: "经典经文 · 深入经藏",
-      description: "内置多种经典经文、神咒与佛号。支持分类浏览与沉浸式阅读，助您深入佛法智慧。",
+      title: "以愿导行",
+      description: "无论诵经、禅修还是持咒，都将围绕你的“愿”展开。让每一次修行都成为对愿望的坚定。",
       icon: Book,
       color: "bg-emerald-100 text-emerald-600"
     },
     {
-      title: "禅修引导 · 寻找宁静",
-      description: "提供多种禅修氛围音乐与呼吸引导。在喧嚣中寻找片刻宁静，让心灵回归本真。",
+      title: "每日精进",
+      description: "通过每日的记录与反馈，将“愿”转化为日常的习惯，在精进中感受内心的力量。",
       icon: Wind,
       color: "bg-purple-100 text-purple-600"
     },
     {
-      title: "AI 禅师 · 智慧指引",
-      description: "修行结束后，AI 禅师将根据您的修行情况生成专属感悟，为您提供心灵的指引与回想。",
-      icon: MessageCircle,
+      title: "智慧指引",
+      description: "AI 禅师将根据你的“愿”与修行状态，为你提供个性化的智慧指引。",
+      icon: Brain,
       color: "bg-blue-100 text-blue-600"
     }
   ];
