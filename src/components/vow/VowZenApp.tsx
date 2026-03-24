@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Howl } from 'howler';
 import { db, auth } from '../../firebase';
 import { doc, setDoc, collection } from 'firebase/firestore';
 
@@ -73,6 +71,14 @@ const PracticeToolsBlock = ({ onNext }: { onNext: () => void }) => {
   const [scale, setScale] = useState(1);
 
   React.useEffect(() => {
+    // Initialize Howl with a placeholder meditation audio
+    const sound = new Howl({
+      src: ['https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg'], // Placeholder audio
+      loop: true,
+      volume: 0.5,
+    });
+    sound.play();
+
     const startTime = Date.now();
     const interval = setInterval(() => {
       const t = Math.floor((Date.now() - startTime) / 1000) % 19;
@@ -91,7 +97,10 @@ const PracticeToolsBlock = ({ onNext }: { onNext: () => void }) => {
       
       console.log(`Breathing Debug: t=${t}, phase=${newPhase}, scale=${newScale}`);
     }, 100);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      sound.stop();
+    };
   }, []);
 
   return (
@@ -108,6 +117,7 @@ const PracticeToolsBlock = ({ onNext }: { onNext: () => void }) => {
     </motion.div>
   );
 };
+
 
 // 7. 【复盘系统】 (Reflection)
 const ReflectionBlock = ({ onFinish, vowId }: { onFinish: () => void, vowId: string }) => {
