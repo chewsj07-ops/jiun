@@ -5,7 +5,7 @@ import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Loader
 import { GoogleGenAI } from "@google/genai";
 import { useFirebaseSync } from './hooks/useFirebaseSync';
 import { useFirebase } from './contexts/FirebaseContext';
-import { doc, setDoc, deleteDoc, writeBatch, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, writeBatch, collection, query, where, orderBy, limit, onSnapshot, getDocs } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { handleFirestoreError, OperationType } from './utils/firebaseErrors';
 import { containsBadWords } from './utils/badWords';
@@ -798,6 +798,31 @@ export default function App() {
   const [isGeneratingReflection, setIsGeneratingReflection] = useState(false);
   const [currentReflection, setCurrentReflection] = useState("");
   const [isProfileExpanded, setIsProfileExpanded] = useState(true);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  const resetAccount = async () => {
+    if (auth.currentUser) {
+      const uid = auth.currentUser.uid;
+      const collections = ['history', 'vows', 'goodDeeds', 'thoughts'];
+      const batch = writeBatch(db);
+      
+      for (const colName of collections) {
+        const colRef = collection(db, `users/${uid}/${colName}`);
+        const snapshot = await getDocs(colRef);
+        snapshot.docs.forEach((doc) => {
+          batch.delete(doc.ref);
+        });
+      }
+      
+      // Also delete the user document itself
+      batch.delete(doc(db, 'users', uid));
+      
+      await batch.commit();
+    }
+    localStorage.clear();
+    await auth.signOut();
+    window.location.reload();
+  };
   const [isPersonalSettingsExpanded, setIsPersonalSettingsExpanded] = useState(true);
   const [isChantingSettingsExpanded, setIsChantingSettingsExpanded] = useState(true);
   const [isMeditationSettingsExpanded, setIsMeditationSettingsExpanded] = useState(true);
@@ -1303,7 +1328,7 @@ export default function App() {
               </div>
               <div className="text-left flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm sm:text-base font-serif font-bold text-zen-ink truncate">禅心助手</p>
+                  <p className="text-sm sm:text-base font-serif font-bold text-zen-ink truncate">愿禅助手</p>
                   <p className="text-xs text-zen-ink/70 font-medium hidden sm:block truncate">
                     {(() => {
                       const hour = new Date().getHours();
@@ -1423,7 +1448,7 @@ export default function App() {
                   <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-zen-accent flex items-center justify-center text-white shrink-0">
                     <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current" />
                   </div>
-                  <span className="font-serif font-bold text-base sm:text-lg whitespace-nowrap">禅心助手</span>
+                  <span className="font-serif font-bold text-base sm:text-lg whitespace-nowrap">愿禅助手</span>
                 </div>
                 <button 
                   onClick={() => setIsSideMenuOpen(false)}
