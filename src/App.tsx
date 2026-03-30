@@ -1726,10 +1726,13 @@ export default function App() {
                   <div className="flex justify-center shrink-0 mt-4 sm:mt-8">
                     <div className="flex flex-col items-center gap-2 sm:gap-6">
                       <div className="flex items-center gap-4 sm:gap-10 bg-white px-6 sm:px-12 py-4 sm:py-6 rounded-full border border-zen-accent/10 shadow-md">
-                        <div className="text-center">
+                        <div className="text-center flex flex-col items-center">
                           <p className="text-sm sm:text-base uppercase tracking-widest text-zen-accent/50 font-bold mb-2">{t('session_merit')}</p>
-                          <p className="text-6xl sm:text-8xl font-serif font-bold text-zen-accent tracking-tighter">
-                            {sessionCount} <span className="text-3xl sm:text-5xl text-zen-accent/40">/ {scriptureGoals[activeScriptureId] || 108}</span>
+                          <p className="text-6xl sm:text-8xl font-serif font-bold text-zen-accent tracking-tighter leading-none">
+                            {sessionCount}
+                          </p>
+                          <p className="text-3xl sm:text-5xl text-zen-accent/40 font-serif font-bold tracking-tighter mt-1">
+                            / {scriptureGoals[activeScriptureId] || 108}
                           </p>
                         </div>
                         <div className="w-px h-12 sm:h-16 bg-zen-accent/10" />
