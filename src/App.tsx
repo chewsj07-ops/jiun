@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
 import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Loader2, Music, Play, Pause, Volume2, Wind, Plus, Trash2, Check, ChevronDown, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Clock, Sun, Download } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { useFirebaseSync } from './hooks/useFirebaseSync';
 import { useFirebase } from './contexts/FirebaseContext';
-import { doc, setDoc, deleteDoc, writeBatch, collection, query, where, orderBy, limit, onSnapshot, getDocs } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, writeBatch, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { handleFirestoreError, OperationType } from './utils/firebaseErrors';
 import { containsBadWords } from './utils/badWords';
@@ -30,6 +30,8 @@ import { ExportModal } from './components/ExportModal';
 import { InstallAppModal } from './components/InstallAppModal';
 import { LegalModals } from './components/LegalModals';
 import { RejoiceModal } from './components/RejoiceModal';
+import { ChantingProvider } from './features/chanting/ChantingContext';
+import { ZenOnboarding } from './components/ZenOnboarding';
 import { reportService } from './services/reportService';
 import { identityService } from './services/identityService';
 import { Country, City } from 'country-state-city';
@@ -57,6 +59,7 @@ const LEVELS = [
 const ALL_COUNTRIES = Country.getAllCountries();
 
 export default function App() {
+  const woodenFishRef = useRef<HTMLDivElement>(null);
   const { t, language, setLanguage } = useTranslation();
 
   const [personalVow, setPersonalVow] = useState(() => localStorage.getItem('personal_vow') || "");
@@ -801,24 +804,6 @@ export default function App() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const resetAccount = async () => {
-    if (auth.currentUser) {
-      const uid = auth.currentUser.uid;
-      const collections = ['history', 'vows', 'goodDeeds', 'thoughts'];
-      const batch = writeBatch(db);
-      
-      for (const colName of collections) {
-        const colRef = collection(db, `users/${uid}/${colName}`);
-        const snapshot = await getDocs(colRef);
-        snapshot.docs.forEach((doc) => {
-          batch.delete(doc.ref);
-        });
-      }
-      
-      // Also delete the user document itself
-      batch.delete(doc(db, 'users', uid));
-      
-      await batch.commit();
-    }
     localStorage.clear();
     await auth.signOut();
     window.location.reload();
@@ -880,6 +865,9 @@ export default function App() {
     setSessionStartTime(Date.now());
     setSessionCount(0);
     setCurrentReflection("");
+    setTimeout(() => {
+      woodenFishRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   const finishSession = async () => {
@@ -991,84 +979,16 @@ export default function App() {
   }, [userProfile.country]);
 
   return (
-    <div className="min-h-screen bg-zen-bg text-zen-ink selection:bg-zen-accent/20">
-      {/* Onboarding Modal */}
-      <AnimatePresence>
-        {showOnboarding && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-zen-bg/80 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-md rounded-[40px] p-10 shadow-2xl border border-zen-accent/5 relative overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 w-full h-1 bg-zen-bg">
-                <motion.div 
-                  className="h-full bg-zen-accent"
-                  initial={{ width: "0%" }}
-                  animate={{ width: `${((onboardingStep + 1) / onboardingSteps.length) * 100}%` }}
-                />
-              </div>
-
-              <div className="text-center">
-                <motion.div
-                  key={onboardingStep}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className={cn(
-                    "w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 transition-colors duration-500",
-                    onboardingSteps[onboardingStep].color
-                  )}
-                >
-                  {React.createElement(onboardingSteps[onboardingStep].icon, { className: "w-10 h-10" })}
-                </motion.div>
-
-                <motion.h2 
-                  key={`t-${onboardingStep}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-2xl font-serif font-bold mb-4"
-                >
-                  {onboardingSteps[onboardingStep].title}
-                </motion.h2>
-
-                <motion.p 
-                  key={`d-${onboardingStep}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="text-zen-accent/60 leading-relaxed mb-10 text-sm"
-                >
-                  {onboardingSteps[onboardingStep].description}
-                </motion.p>
-              </div>
-
-              <div className="flex gap-3">
-                {onboardingStep > 0 && (
-                  <button
-                    onClick={() => setOnboardingStep(prev => prev - 1)}
-                    className="flex-1 py-4 rounded-2xl font-bold text-zen-accent/60 hover:bg-zen-bg transition-colors"
-                  >
-                    上一步
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    if (onboardingStep < onboardingSteps.length - 1) {
-                      setOnboardingStep(prev => prev + 1);
-                    } else {
-                      finishOnboarding();
-                    }
-                  }}
-                  className="flex-[2] bg-zen-accent text-white py-4 rounded-2xl font-bold hover:opacity-90 transition-opacity"
-                >
-                  {onboardingStep === onboardingSteps.length - 1 ? "开启修行" : "下一步"}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+    <ChantingProvider>
+      <div className="min-h-screen bg-zen-bg text-zen-ink selection:bg-zen-accent/20">
+        <ZenOnboarding 
+          showOnboarding={showOnboarding}
+          onboardingStep={onboardingStep}
+          onboardingSteps={onboardingSteps}
+          onNext={() => setOnboardingStep(prev => prev + 1)}
+          onFinish={finishOnboarding}
+        />
+        {/* ... rest of the app ... */}
 
       {/* Summary / Dedication / Vow Modal */}
       <AnimatePresence>
@@ -1118,6 +1038,7 @@ export default function App() {
                   >
                     至诚回向
                   </button>
+
                 </motion.div>
               )}
 
@@ -1143,6 +1064,7 @@ export default function App() {
                   >
                     至诚发愿
                   </button>
+
                 </motion.div>
               )}
 
@@ -1726,12 +1648,12 @@ export default function App() {
                   <div className="flex justify-center shrink-0 mt-4 sm:mt-8">
                     <div className="flex flex-col items-center gap-2 sm:gap-6">
                       <div className="flex items-center gap-4 sm:gap-10 bg-white px-6 sm:px-12 py-4 sm:py-6 rounded-full border border-zen-accent/10 shadow-md">
-                        <div className="text-center flex flex-col items-center">
+                        <div className="text-center">
                           <p className="text-sm sm:text-base uppercase tracking-widest text-zen-accent/50 font-bold mb-2">{t('session_merit')}</p>
-                          <p className="text-6xl sm:text-8xl font-serif font-bold text-zen-accent tracking-tighter leading-none">
+                          <p className="text-6xl sm:text-8xl font-serif font-bold text-zen-accent tracking-tighter">
                             {sessionCount}
                           </p>
-                          <p className="text-3xl sm:text-5xl text-zen-accent/40 font-serif font-bold tracking-tighter mt-1">
+                          <p className="text-3xl sm:text-5xl text-zen-accent/40 mt-1">
                             / {scriptureGoals[activeScriptureId] || 108}
                           </p>
                         </div>
@@ -1757,7 +1679,7 @@ export default function App() {
                 )}
 
                 {/* Wooden Fish */}
-                <div className="flex-1 flex items-center justify-center min-h-[150px] sm:min-h-[200px]">
+                <div ref={woodenFishRef} className="flex-1 flex items-center justify-center min-h-[150px] sm:min-h-[200px]">
                   <div className="scale-75 sm:scale-90 origin-center">
                     <WoodenFish 
                       onHit={handleHit} 
@@ -3566,6 +3488,7 @@ export default function App() {
         />
       )}
       <Toaster />
-    </div>
+      </div>
+    </ChantingProvider>
   );
 }

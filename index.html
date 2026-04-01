@@ -1,29 +1,12 @@
-<!doctype html>
-<html lang="zh-CN">
+<!DOCTYPE html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#ffffff" />
-    <meta name="description" content="禅心助手 - 您的随身修行助手" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="display" content="standalone" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg?v=4" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4" />
-    <title>禅心助手</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>React App</title>
   </head>
   <body>
-    <script>
-      if (!localStorage.getItem('test_cleared_20260321')) {
-        localStorage.clear();
-        indexedDB.deleteDatabase('ZenMeditationDB');
-        localStorage.setItem('test_cleared_20260321', 'true');
-        console.log('Test data cleared!');
-      }
-    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

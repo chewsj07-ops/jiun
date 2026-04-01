@@ -43,11 +43,11 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
     // Adjust rate slightly for different instruments if needed
     if (appearance === 'bowl') rate *= 0.8; 
 
-    soundRef.current = new Howl({
+      soundRef.current = new Howl({
       src: [
         appearance === 'bowl' 
-          ? 'https://actions.google.com/sounds/v1/foley/bell_small.ogg' // Singing bowl sound
-          : 'https://actions.google.com/sounds/v1/foley/wood_block_hit.ogg' // Wooden fish / Lotus sound
+          ? 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3' // Singing bowl sound
+          : 'https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3' // Wooden fish sound
       ],
       volume: volume,
       rate: rate,
