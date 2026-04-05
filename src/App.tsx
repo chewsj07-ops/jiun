@@ -61,12 +61,22 @@ const ALL_COUNTRIES = Country.getAllCountries();
 
 // Trigger Vercel Production Deployment
 export default function App() {
-  const [hashPath, setHashPath] = useState(window.location.hash);
+  const [showPrivacy, setShowPrivacy] = useState(() => 
+    window.location.pathname === '/privacy' || window.location.hash === '#/privacy' || window.location.pathname === '/privacy.html'
+  );
+  const [showTerms, setShowTerms] = useState(() => 
+    window.location.pathname === '/terms' || window.location.hash === '#/terms' || window.location.pathname === '/terms.html'
+  );
 
   useEffect(() => {
-    const handleHashChange = () => setHashPath(window.location.hash);
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    const handleOpenPrivacy = () => setShowPrivacy(true);
+    const handleOpenTerms = () => setShowTerms(true);
+    window.addEventListener('open-privacy', handleOpenPrivacy);
+    window.addEventListener('open-terms', handleOpenTerms);
+    return () => {
+      window.removeEventListener('open-privacy', handleOpenPrivacy);
+      window.removeEventListener('open-terms', handleOpenTerms);
+    };
   }, []);
 
   const woodenFishRef = useRef<HTMLDivElement>(null);
@@ -1060,12 +1070,18 @@ export default function App() {
     return selectedCountry ? selectedCountry.isoCode : '';
   }, [userProfile.country]);
 
-  if (hashPath === '#/privacy') {
-    return <PrivacyPolicy onBack={() => window.location.hash = ''} />;
+  if (showPrivacy) {
+    return <PrivacyPolicy onBack={() => {
+      setShowPrivacy(false);
+      window.history.pushState({}, '', '/');
+    }} />;
   }
 
-  if (hashPath === '#/terms') {
-    return <TermsOfService onBack={() => window.location.hash = ''} />;
+  if (showTerms) {
+    return <TermsOfService onBack={() => {
+      setShowTerms(false);
+      window.history.pushState({}, '', '/');
+    }} />;
   }
 
   return (
@@ -3388,19 +3404,19 @@ export default function App() {
                         {/* Version and Legal */}
                         <div className="border-t border-zen-accent/10 pt-6 text-center space-y-3">
                           <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-zen-accent/60">
-                            <a 
-                              href="#/terms" 
+                            <button 
+                              onClick={() => window.dispatchEvent(new CustomEvent('open-terms'))}
                               className="hover:text-zen-accent underline transition-colors"
                             >
                               服务条款 (Terms of Service)
-                            </a>
+                            </button>
                             <span>|</span>
-                            <a 
-                              href="#/privacy" 
+                            <button 
+                              onClick={() => window.dispatchEvent(new CustomEvent('open-privacy'))}
                               className="hover:text-zen-accent underline transition-colors"
                             >
                               隐私政策 (Privacy Policy)
-                            </a>
+                            </button>
                             <span>|</span>
                             <button onClick={() => window.dispatchEvent(new CustomEvent('open-ai-modal'))} className="hover:text-zen-accent underline transition-colors">
                               AI使用说明 (AI Usage Policy)
