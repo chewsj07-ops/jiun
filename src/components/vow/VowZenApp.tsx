@@ -76,6 +76,7 @@ const PracticeToolsBlock = ({ onNext }: { onNext: () => void }) => {
       src: ['https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg'], // Placeholder audio
       loop: true,
       volume: 0.5,
+      html5: true,
     });
     sound.play();
 

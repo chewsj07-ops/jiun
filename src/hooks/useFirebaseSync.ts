@@ -15,7 +15,8 @@ export function useFirebaseSync(
   selectedChant: string, setSelectedChant: (data: string) => void,
   volume: number, setVolume: (data: number) => void,
   soundType: string, setSoundType: (data: any) => void,
-  woodenFishAppearance: string, setWoodenFishAppearance: (data: any) => void
+  woodenFishAppearance: string, setWoodenFishAppearance: (data: any) => void,
+  customScriptures: any[], setCustomScriptures: (data: any[]) => void
 ) {
   const { user, isAuthReady } = useFirebase();
   const isInitialSyncDone = useRef(false);
@@ -52,6 +53,7 @@ export function useFirebaseSync(
             if (data.soundType !== undefined) setSoundType(data.soundType);
             if (data.woodenFishAppearance !== undefined) setWoodenFishAppearance(data.woodenFishAppearance);
             if (data.scriptureGoals) setScriptureGoals(data.scriptureGoals);
+            if (data.customScriptures) setCustomScriptures(data.customScriptures);
           }
 
           // Fetch History
@@ -136,6 +138,7 @@ export function useFirebaseSync(
           soundType: soundType || 'standard',
           woodenFishAppearance: woodenFishAppearance || 'standard',
           scriptureGoals: scriptureGoals || {},
+          customScriptures: customScriptures || [],
           updatedAt: new Date().toISOString()
         }, { merge: true });
       } catch (error) {
@@ -147,6 +150,6 @@ export function useFirebaseSync(
     return () => clearTimeout(timeoutId);
   }, [
     user, isInitialSyncDone, userProfile, personalVow, count, userExp, selectedChant, 
-    volume, soundType, woodenFishAppearance, scriptureGoals
+    volume, soundType, woodenFishAppearance, scriptureGoals, customScriptures
   ]);
 } 

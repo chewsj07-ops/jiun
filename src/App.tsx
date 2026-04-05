@@ -522,7 +522,8 @@ export default function App() {
     selectedChant, setSelectedChant,
     volume, setVolume,
     soundType, setSoundType,
-    woodenFishAppearance, setWoodenFishAppearance
+    woodenFishAppearance, setWoodenFishAppearance,
+    customScriptures, setCustomScriptures
   );
 
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(() => {
@@ -811,6 +812,7 @@ export default function App() {
           if (window.Notification && Notification.permission === "granted") {
             new Notification("修行圆满", { body: `${activeScripture.title} 次数已达标` });
           }
+          setShowGoalAchievedModal(true);
         }
         return newCount;
       });
@@ -826,6 +828,7 @@ export default function App() {
   const [currentReflection, setCurrentReflection] = useState("");
   const [isProfileExpanded, setIsProfileExpanded] = useState(true);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showGoalAchievedModal, setShowGoalAchievedModal] = useState(false);
 
   const resetAccount = async () => {
     localStorage.clear();
@@ -919,6 +922,7 @@ export default function App() {
             if (window.Notification && Notification.permission === "granted") {
               new Notification("修行圆满", { body: `${activeScripture.title} 计时结束` });
             }
+            setShowGoalAchievedModal(true);
             return 0;
           }
           return prev - 1;
@@ -1789,6 +1793,45 @@ export default function App() {
                 </div>
                 */}
 
+
+                {/* Goal Achieved Modal */}
+                <AnimatePresence>
+                  {showGoalAchievedModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                        className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl text-center"
+                      >
+                        <div className="w-20 h-20 mx-auto bg-zen-accent/10 rounded-full flex items-center justify-center mb-6">
+                          <Trophy className="w-10 h-10 text-zen-accent" />
+                        </div>
+                        <h3 className="text-2xl font-serif font-bold text-zen-accent mb-2">修行圆满</h3>
+                        <p className="text-zen-ink/70 mb-8">
+                          您已完成设定的 <span className="font-bold text-zen-accent">{activeScripture.title}</span> 目标。功德无量，法喜充满。
+                        </p>
+                        <div className="flex gap-4">
+                          <button
+                            onClick={() => setShowGoalAchievedModal(false)}
+                            className="flex-1 py-3 rounded-xl font-bold border border-zen-accent/20 text-zen-accent hover:bg-zen-accent/5 transition-colors"
+                          >
+                            继续修行
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowGoalAchievedModal(false);
+                              finishSession();
+                            }}
+                            className="flex-1 py-3 rounded-xl font-bold bg-zen-accent text-white hover:opacity-90 transition-opacity shadow-lg shadow-zen-accent/20"
+                          >
+                            圆满回向
+                          </button>
+                        </div>
+                      </motion.div>
+                    </div>
+                  )}
+                </AnimatePresence>
 
                 {/* Goal Modal */}
                 <AnimatePresence>

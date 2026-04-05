@@ -53,9 +53,10 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
       ],
       volume: volume,
       rate: rate,
+      html5: true, // Use HTML5 Audio to avoid CORS issues
       onload: () => setIsLoading(false), // Set loading to false when sound is loaded
-      onloaderror: () => {
-        console.error('Failed to load sound');
+      onloaderror: (id, err) => {
+        console.error('Failed to load sound', err);
         setIsLoading(false);
       }
     });
