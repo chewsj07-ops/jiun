@@ -47,6 +47,8 @@ interface CommunityPost {
   isUserPost?: boolean;
 }
 
+import { PrivacyPolicy, TermsOfService } from './components/Legal';
+
 const LEVELS = [
   { minExp: 0, nameKey: "level_1_name", title: "Level 1" },
   { minExp: 1000, nameKey: "level_2_name", title: "Level 2" },
@@ -57,7 +59,16 @@ const LEVELS = [
 
 const ALL_COUNTRIES = Country.getAllCountries();
 
+// Trigger Vercel Production Deployment
 export default function App() {
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const handlePopState = () => setCurrentPath(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const woodenFishRef = useRef<HTMLDivElement>(null);
   const { t, language, setLanguage } = useTranslation();
 
@@ -1048,6 +1059,14 @@ export default function App() {
     const selectedCountry = ALL_COUNTRIES.find(c => c.name === userProfile.country);
     return selectedCountry ? selectedCountry.isoCode : '';
   }, [userProfile.country]);
+
+  if (currentPath === '/privacy' || currentPath === '/privacy/') {
+    return <PrivacyPolicy onBack={() => { window.history.pushState({}, '', '/'); setCurrentPath('/'); }} />;
+  }
+
+  if (currentPath === '/terms' || currentPath === '/terms/') {
+    return <TermsOfService onBack={() => { window.history.pushState({}, '', '/'); setCurrentPath('/'); }} />;
+  }
 
   return (
     <ChantingProvider>
@@ -3369,13 +3388,13 @@ export default function App() {
                         {/* Version and Legal */}
                         <div className="border-t border-zen-accent/10 pt-6 text-center space-y-3">
                           <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-zen-accent/60">
-                            <button onClick={() => window.dispatchEvent(new CustomEvent('open-terms-modal'))} className="hover:text-zen-accent underline transition-colors">
+                            <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-zen-accent underline transition-colors">
                               服务条款 (Terms of Service)
-                            </button>
+                            </a>
                             <span>|</span>
-                            <button onClick={() => window.dispatchEvent(new CustomEvent('open-privacy-modal'))} className="hover:text-zen-accent underline transition-colors">
+                            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-zen-accent underline transition-colors">
                               隐私政策 (Privacy Policy)
-                            </button>
+                            </a>
                             <span>|</span>
                             <button onClick={() => window.dispatchEvent(new CustomEvent('open-ai-modal'))} className="hover:text-zen-accent underline transition-colors">
                               AI使用说明 (AI Usage Policy)
