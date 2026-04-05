@@ -515,25 +515,19 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                   <label htmlFor="terms" className="text-xs text-zen-ink/70 leading-relaxed">
                     {t('auth_agree_prefix')}
                     <a 
-                      href="/terms"
+                      href="/terms.html"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="text-zen-accent hover:underline mx-1"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.history.pushState({}, '', '/terms');
-                        window.dispatchEvent(new PopStateEvent('popstate'));
-                      }}
                     >
                       {t('auth_terms')}
                     </a>
                     {t('auth_and')}
                     <a 
-                      href="/privacy"
+                      href="/privacy.html"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="text-zen-accent hover:underline mx-1"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.history.pushState({}, '', '/privacy');
-                        window.dispatchEvent(new PopStateEvent('popstate'));
-                      }}
                     >
                       {t('auth_privacy')}
                     </a>
