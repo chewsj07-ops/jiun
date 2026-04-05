@@ -61,6 +61,14 @@ const ALL_COUNTRIES = Country.getAllCountries();
 
 // Trigger Vercel Production Deployment
 export default function App() {
+  const [hashPath, setHashPath] = useState(window.location.hash);
+
+  useEffect(() => {
+    const handleHashChange = () => setHashPath(window.location.hash);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
   const woodenFishRef = useRef<HTMLDivElement>(null);
   const { t, language, setLanguage } = useTranslation();
 
@@ -1051,6 +1059,14 @@ export default function App() {
     const selectedCountry = ALL_COUNTRIES.find(c => c.name === userProfile.country);
     return selectedCountry ? selectedCountry.isoCode : '';
   }, [userProfile.country]);
+
+  if (hashPath === '#/privacy') {
+    return <PrivacyPolicy onBack={() => window.location.hash = ''} />;
+  }
+
+  if (hashPath === '#/terms') {
+    return <TermsOfService onBack={() => window.location.hash = ''} />;
+  }
 
   return (
     <ChantingProvider>
@@ -3373,18 +3389,14 @@ export default function App() {
                         <div className="border-t border-zen-accent/10 pt-6 text-center space-y-3">
                           <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-zen-accent/60">
                             <a 
-                              href="/terms.html" 
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              href="#/terms" 
                               className="hover:text-zen-accent underline transition-colors"
                             >
                               服务条款 (Terms of Service)
                             </a>
                             <span>|</span>
                             <a 
-                              href="/privacy.html" 
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              href="#/privacy" 
                               className="hover:text-zen-accent underline transition-colors"
                             >
                               隐私政策 (Privacy Policy)

@@ -515,18 +515,14 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                   <label htmlFor="terms" className="text-xs text-zen-ink/70 leading-relaxed">
                     {t('auth_agree_prefix')}
                     <a 
-                      href="/terms.html"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href="#/terms"
                       className="text-zen-accent hover:underline mx-1"
                     >
                       {t('auth_terms')}
                     </a>
                     {t('auth_and')}
                     <a 
-                      href="/privacy.html"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href="#/privacy"
                       className="text-zen-accent hover:underline mx-1"
                     >
                       {t('auth_privacy')}
