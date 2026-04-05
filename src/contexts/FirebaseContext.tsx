@@ -44,4 +44,4 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       {children}
     </FirebaseContext.Provider>
   );
-};
+}; 

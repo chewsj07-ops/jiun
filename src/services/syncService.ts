@@ -22,4 +22,4 @@ export const syncService = {
       return null;
     }
   }
-};
+}; 

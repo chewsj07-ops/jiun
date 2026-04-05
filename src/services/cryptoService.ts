@@ -104,5 +104,5 @@ export const cryptoService = {
   // Clear legacy master key from localStorage
   clearLegacyKey() {
     localStorage.removeItem('zen_master_key');
-  }
+  } 
 };

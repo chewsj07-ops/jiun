@@ -474,4 +474,4 @@ export const getScriptures = (lang: Language): Scripture[] => {
 };
 
 // Default export for backward compatibility
-export const SCRIPTURES = SCRIPTURES_CN;
+export const SCRIPTURES = SCRIPTURES_CN; 

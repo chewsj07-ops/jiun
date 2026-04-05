@@ -2928,7 +2928,7 @@ export const useTranslation = () => {
   }, []);
 
   const t = (key: keyof typeof translations['zh-CN']) => {
-    return translations[language]?.[key] || translations['en-US']?.[key] || translations['zh-CN']?.[key] || key;
+    return (translations[language] as any)?.[key] || (translations['en-US'] as any)?.[key] || (translations['zh-CN'] as any)?.[key] || key;
   };
 
   return { t, language, setLanguage };
@@ -2936,5 +2936,5 @@ export const useTranslation = () => {
 
 // Helper to get translation outside of hook if needed (not recommended for reactive UI)
 export const getTranslation = (lang: Language, key: keyof typeof translations['zh-CN']) => {
-  return translations[lang][key] || translations['zh-CN'][key] || key;
-};
+  return (translations[lang] as any)?.[key] || (translations['zh-CN'] as any)?.[key] || key;
+}; 

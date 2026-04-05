@@ -1,95 +1,76 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Apple, Smartphone } from 'lucide-react';
+import { X, Download, Share, PlusSquare } from 'lucide-react';
+import { cn } from '../lib/utils';
 
-interface InstallAppModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
-export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClose }) => {
+export const InstallAppModal = ({ isOpen, onClose }: any) => {
   if (!isOpen) return null;
-
-  // Detect iOS
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-  // Detect Android
-  const isAndroid = /android/i.test(navigator.userAgent);
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      >
+      <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
         <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-zen-bg w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-zen-accent/20 flex flex-col max-h-[80vh]"
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden relative"
         >
-          <div className="p-6 border-b border-zen-accent/10 flex justify-between items-center bg-zen-accent/5 shrink-0">
-            <h2 className="text-xl font-bold text-zen-accent flex items-center gap-2">
-              <Download className="w-5 h-5" />
-              下载APP到手机
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-zen-accent/10 rounded-full transition-colors text-zen-accent/60 hover:text-zen-accent"
-            >
+          <div className="flex justify-between items-center p-6 pb-4 border-b border-zen-accent/10">
+            <h3 className="text-xl font-bold font-serif text-zen-ink flex items-center gap-2">
+              <Download className="w-5 h-5 text-zen-accent" />
+              安装到手机
+            </h3>
+            <button onClick={onClose} className="p-2 text-zen-ink/40 hover:text-zen-ink rounded-full hover:bg-zen-bg transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="p-6 space-y-6 overflow-y-auto">
-            <p className="text-sm text-zen-accent/80 leading-relaxed">
-              禅心助手是一款免安装的轻应用（PWA）。您可以直接将它添加到手机桌面，体验与原生APP完全一致，且不占用手机存储空间。
-            </p>
-
-            {(!isAndroid || isIOS) && (
-              <div className="bg-white/50 rounded-2xl p-5 border border-zen-accent/10">
-                <h3 className="font-bold text-zen-accent mb-3 flex items-center gap-2">
-                  <Apple className="w-5 h-5" />
-                  iOS / 苹果手机安装教程
-                </h3>
-                <ol className="list-decimal list-inside space-y-3 text-sm text-zen-accent/80">
-                  <li>请确保您正在使用 <strong>Safari 浏览器</strong> 打开本网页</li>
-                  <li>点击浏览器底部的 <span className="inline-block px-2 py-1 bg-gray-100 rounded border border-gray-200 text-xs mx-1">分享图标 ⍗</span></li>
-                  <li>在弹出的菜单中向上滑动，找到并点击 <strong>“添加到主屏幕”</strong></li>
-                  <li>点击右上角的 <strong>“添加”</strong> 即可在桌面看到禅心助手</li>
-                </ol>
+          <div className="p-6 space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 bg-zen-accent rounded-2xl mx-auto flex items-center justify-center text-white mb-4 shadow-lg">
+                <span className="font-serif text-3xl font-bold">愿</span>
               </div>
-            )}
+              <h4 className="font-bold text-lg text-zen-ink">愿禅助手 (Zen Assistant)</h4>
+              <p className="text-sm text-zen-ink/60">将应用添加到主屏幕，随时随地开启修行</p>
+            </div>
 
-            {(!isIOS || isAndroid) && (
-              <div className="bg-white/50 rounded-2xl p-5 border border-zen-accent/10">
-                <h3 className="font-bold text-zen-accent mb-3 flex items-center gap-2">
-                  <Smartphone className="w-5 h-5" />
-                  Android / 安卓手机安装教程
-                </h3>
-                <ol className="list-decimal list-inside space-y-3 text-sm text-zen-accent/80">
-                  <li>请使用 <strong>Chrome 浏览器</strong> 或手机自带浏览器打开本网页</li>
-                  <li>点击浏览器右上角的 <span className="inline-block px-2 py-1 bg-gray-100 rounded border border-gray-200 text-xs mx-1">菜单 ⋮</span></li>
-                  <li>在弹出的菜单中选择 <strong>“安装应用”</strong> 或 <strong>“添加到主屏幕”</strong></li>
-                  <li>确认添加后，即可在手机桌面看到禅心助手</li>
-                </ol>
+            <div className="space-y-4 bg-zen-bg/50 p-4 rounded-2xl">
+              <h5 className="font-bold text-sm text-zen-ink flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-zen-accent/10 text-zen-accent flex items-center justify-center text-xs">1</span>
+                iOS (Safari) 安装方法
+              </h5>
+              <div className="text-sm text-zen-ink/70 pl-8 space-y-2">
+                <p className="flex items-center gap-2">
+                  点击底部工具栏的分享按钮 <Share className="w-4 h-4" />
+                </p>
+                <p className="flex items-center gap-2">
+                  向下滑动，选择「添加到主屏幕」 <PlusSquare className="w-4 h-4" />
+                </p>
               </div>
-            )}
+            </div>
+
+            <div className="space-y-4 bg-zen-bg/50 p-4 rounded-2xl">
+              <h5 className="font-bold text-sm text-zen-ink flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-zen-accent/10 text-zen-accent flex items-center justify-center text-xs">2</span>
+                Android (Chrome) 安装方法
+              </h5>
+              <div className="text-sm text-zen-ink/70 pl-8 space-y-2">
+                <p>点击浏览器右上角的菜单 (⋮)</p>
+                <p>选择「添加到主屏幕」或「安装应用」</p>
+              </div>
+            </div>
           </div>
-          
-          <div className="p-6 pt-4 shrink-0 border-t border-zen-accent/10">
+
+          <div className="p-6 pt-4 border-t border-zen-accent/10 bg-white">
             <button
               onClick={onClose}
-              className="w-full py-3 bg-zen-accent text-white rounded-xl font-bold hover:bg-zen-accent/90 transition-colors shadow-md"
+              className="w-full py-3.5 bg-zen-accent text-white rounded-xl font-bold hover:opacity-90 transition-opacity"
             >
               我知道了
             </button>
           </div>
         </motion.div>
-      </motion.div>
+      </div>
     </AnimatePresence>
   );
 };

@@ -57,5 +57,5 @@ export const identityService = {
 
   isEmailUser(): boolean {
     return this.getUserId().startsWith('email_');
-  }
+  } 
 };

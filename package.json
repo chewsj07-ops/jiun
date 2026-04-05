@@ -3,8 +3,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx server.ts",
     "build": "tsc && vite build",
+    "start": "node server.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -41,7 +42,11 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/howler": "^2.2.12",
     "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/react-simple-maps": "^3.0.6",
     "@vitejs/plugin-legacy": "^5.4.3",
     "autoprefixer": "^10.4.27",
     "sharp": "^0.34.5",

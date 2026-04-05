@@ -30,7 +30,7 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
   const [importUrl, setImportUrl] = useState("");
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
-  const [isLooping, setIsLooping] = useState(true);
+  const [isLooping, setIsLooping] = useState(false);
   const [showDedicationModal, setShowDedicationModal] = useState(false);
   const [sessionDuration, setSessionDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -40,7 +40,7 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
   const completionSoundRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    completionSoundRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); // Gentle bell sound
+    completionSoundRef.current = new Audio('https://actions.google.com/sounds/v1/bells/toll_bell.ogg'); // Gentle bell sound
     completionSoundRef.current.volume = 0.5;
   }, []);
   const DB_NAME = 'ZenMeditationDB';
@@ -301,15 +301,23 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
   };
 
   useEffect(() => {
-    let interval: any;
+    let timeout: any;
     if (isPlaying) {
-      interval = setInterval(() => {
-        setBreathingText(prev => prev === t('inhale') ? t('exhale') : t('inhale'));
-      }, 4000); // 4 seconds inhale, 4 seconds exhale
+      const runBreathingCycle = () => {
+        setBreathingText(t('inhale'));
+        timeout = setTimeout(() => {
+          setBreathingText('屏息'); // Hold
+          timeout = setTimeout(() => {
+            setBreathingText(t('exhale'));
+            timeout = setTimeout(runBreathingCycle, 8000); // Exhale for 8s
+          }, 7000); // Hold for 7s
+        }, 4000); // Inhale for 4s
+      };
+      runBreathingCycle();
     } else {
       setBreathingText(t('inhale'));
     }
-    return () => clearInterval(interval);
+    return () => clearTimeout(timeout);
   }, [isPlaying, t]);
 
   useEffect(() => {
@@ -328,9 +336,14 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
         completionSoundRef.current.play().catch(e => {
           console.error("Failed to play completion sound", e);
           // Fallback: try playing a new audio instance if the ref one fails
-          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          const audio = new Audio('https://actions.google.com/sounds/v1/bells/toll_bell.ogg');
           audio.play().catch(e2 => console.error("Fallback sound failed", e2));
         });
+      }
+
+      // Show notification
+      if (window.Notification && Notification.permission === "granted") {
+        new Notification(t('meditation_completed'), { body: t('meditation_title') });
       }
 
       // Record practice progress
@@ -345,6 +358,9 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
   }, [isTimerRunning, timeLeft, selectedDuration]);
 
   const togglePlay = () => {
+    if (!isPlaying && window.Notification && Notification.permission !== "granted" && Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
     setIsPlaying(!isPlaying);
     setIsTimerRunning(!isPlaying);
   };
@@ -534,8 +550,9 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
             }
           }}
           onEnded={() => {
-            setIsPlaying(false);
-            setIsTimerRunning(false);
+            // Audio finished playing, but we keep the timer running
+            // We don't set isPlaying to false so breathing animation continues
+            // The audio won't loop because isLooping is false by default
           }}
           onLoadStart={() => setIsLoading(true)}
           onCanPlay={() => {
@@ -579,11 +596,12 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
                   {/* Outer Glow */}
                   <motion.div
                     animate={{ 
-                      scale: [1, 1.8, 1],
-                      opacity: [0.05, 0.15, 0.05]
+                      scale: [1, 1.8, 1.8, 1],
+                      opacity: [0.05, 0.15, 0.15, 0.05]
                     }}
                     transition={{ 
-                      duration: 8, 
+                      duration: 19, 
+                      times: [0, 4/19, 11/19, 1],
                       repeat: Infinity,
                       ease: "easeInOut"
                     }}
@@ -592,10 +610,11 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
                   {/* Main Breathing Circle */}
                   <motion.div
                     animate={{ 
-                      scale: [1, 1.4, 1],
+                      scale: [1, 1.4, 1.4, 1],
                     }}
                     transition={{ 
-                      duration: 8, 
+                      duration: 19, 
+                      times: [0, 4/19, 11/19, 1],
                       repeat: Infinity,
                       ease: "easeInOut"
                     }}
@@ -604,11 +623,12 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
                   {/* Inner Label */}
                   <motion.div
                     animate={{ 
-                      opacity: [0.4, 1, 0.4],
-                      y: [0, -5, 0]
+                      opacity: [0.4, 1, 1, 0.4],
+                      y: [0, -5, -5, 0]
                     }}
                     transition={{ 
-                      duration: 4, 
+                      duration: 19, 
+                      times: [0, 4/19, 11/19, 1],
                       repeat: Infinity,
                       ease: "easeInOut"
                     }}
@@ -1001,3 +1021,4 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
     </div>
   );
 };
+ 

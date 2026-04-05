@@ -177,7 +177,7 @@ export const LegalModals = () => {
                 <p>Major changes will be notified to users through the app. (重大变更将通过应用通知用户。)</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">12. Contact (联系我们)</h3>
-                <p><a href="mailto:support@zenassistant.app" className="text-zen-accent hover:underline">support@zenassistant.app</a></p>
+                <p><a href="mailto:vowzen91@gmail.com" className="text-zen-accent hover:underline">vowzen91@gmail.com</a></p>
 
                 <div className="mt-8 p-4 bg-zen-bg/50 rounded-xl border border-zen-accent/10">
                   <h4 className="font-bold text-zen-ink mb-2">App Store / Google Play Compliance (应用商店合规)</h4>
@@ -247,6 +247,9 @@ export const LegalModals = () => {
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">8. Governing Law (管辖法律)</h3>
                 <p>These terms are governed by the laws of Malaysia. (本条款受马来西亚法律管辖。)</p>
+
+                <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">9. Contact (联系我们)</h3>
+                <p><a href="mailto:vowzen91@gmail.com" className="text-zen-accent hover:underline">vowzen91@gmail.com</a></p>
               </>
             )}
 
@@ -266,6 +269,9 @@ export const LegalModals = () => {
                   <li>Does not provide medical diagnosis (不提供医疗诊断)</li>
                 </ul>
                 <p>AI answers are for reference only. (AI回答仅供参考。)</p>
+
+                <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">Contact (联系我们)</h3>
+                <p><a href="mailto:vowzen91@gmail.com" className="text-zen-accent hover:underline">vowzen91@gmail.com</a></p>
               </>
             )}
 
@@ -283,6 +289,9 @@ export const LegalModals = () => {
                   <li>Data in the main database is deleted (主数据库数据删除)</li>
                   <li>Backup data is deleted within a reasonable period (备份数据在合理周期内删除)</li>
                 </ul>
+
+                <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">Contact (联系我们)</h3>
+                <p><a href="mailto:vowzen91@gmail.com" className="text-zen-accent hover:underline">vowzen91@gmail.com</a></p>
               </>
             )}
           </div>

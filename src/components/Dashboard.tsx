@@ -310,4 +310,4 @@ export const Dashboard = ({ onNavigate }: { onNavigate?: (tab: string) => void }
       {/* <PracticeGrowthMap /> */}
     </motion.div>
   );
-};
+}; 

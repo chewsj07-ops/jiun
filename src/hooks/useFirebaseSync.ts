@@ -149,4 +149,4 @@ export function useFirebaseSync(
     user, isInitialSyncDone, userProfile, personalVow, count, userExp, selectedChant, 
     volume, soundType, woodenFishAppearance, scriptureGoals
   ]);
-}
+} 

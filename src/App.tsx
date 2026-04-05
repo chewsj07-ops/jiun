@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
-import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Loader2, Music, Play, Pause, Volume2, Wind, Plus, Trash2, Check, ChevronDown, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Clock, Sun, Download } from 'lucide-react';
+import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Music, Wind, Plus, Trash2, Check, ChevronDown, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Download } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { useFirebaseSync } from './hooks/useFirebaseSync';
 import { useFirebase } from './contexts/FirebaseContext';
-import { doc, setDoc, deleteDoc, writeBatch, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, writeBatch, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { handleFirestoreError, OperationType } from './utils/firebaseErrors';
 import { containsBadWords } from './utils/badWords';
@@ -18,7 +18,7 @@ import { Meditation } from './components/Meditation';
 import { MeritMap } from './components/MeritMap';
 import { VowPractice } from './components/vow/VowPractice';
 import { getScriptures, Scripture } from './constants';
-import { useTranslation, LANGUAGES, Language } from './i18n';
+import { useTranslation, LANGUAGES } from './i18n';
 import { CustomCalendar } from './components/CustomCalendar';
 import { parseISO, format } from 'date-fns';
 import { cn } from './lib/utils';
@@ -32,7 +32,6 @@ import { LegalModals } from './components/LegalModals';
 import { RejoiceModal } from './components/RejoiceModal';
 import { ChantingProvider } from './features/chanting/ChantingContext';
 import { ZenOnboarding } from './components/ZenOnboarding';
-import { reportService } from './services/reportService';
 import { identityService } from './services/identityService';
 import { Country, City } from 'country-state-city';
 
@@ -78,7 +77,7 @@ export default function App() {
     return saved ? parseInt(saved, 10) : 0;
   });
   
-  const [vowInitialSection, setVowInitialSection] = useState<'menu' | 'coach' | 'wisdom'>('menu');
+  const [vowInitialSection, setVowInitialSection] = useState<'menu' | 'coach' | 'wisdom' | 'setup_vow'>('menu');
 
   const [rejoiceId, setRejoiceId] = useState<string | null>(null);
 
@@ -112,6 +111,10 @@ export default function App() {
     return practiceService.getSettings().scriptureGoals;
   });
 
+  const [scriptureGoalTypes, setScriptureGoalTypes] = useState<Record<string, 'count' | 'time'>>(() => {
+    return practiceService.getSettings().scriptureGoalTypes || {};
+  });
+
   const [aiEnabled, setAiEnabled] = useState<boolean>(() => {
     return practiceService.getSettings().aiEnabled || false;
   });
@@ -126,6 +129,7 @@ export default function App() {
 
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [editingGoalValue, setEditingGoalValue] = useState(108);
+  const [editingGoalType, setEditingGoalType] = useState<'count' | 'time'>('count');
 
   const activeScripture = allScriptures.find(s => s.id === activeScriptureId) || allScriptures[0];
 
@@ -189,7 +193,7 @@ export default function App() {
       const saved = localStorage.getItem('zen_user_profile');
       if (saved) {
         const parsed = JSON.parse(saved);
-        setUserProfile(prev => {
+        setUserProfile((prev: any) => {
           if (JSON.stringify(prev) !== JSON.stringify(parsed)) {
             return parsed;
           }
@@ -262,6 +266,7 @@ export default function App() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [sessionCount, setSessionCount] = useState(0);
+  const [sessionTimeLeft, setSessionTimeLeft] = useState<number | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem('zen_onboarding_seen');
@@ -779,8 +784,10 @@ export default function App() {
 
   const handleSaveGoal = () => {
     const newGoals = { ...scriptureGoals, [activeScriptureId]: editingGoalValue };
+    const newGoalTypes = { ...scriptureGoalTypes, [activeScriptureId]: editingGoalType };
     setScriptureGoals(newGoals);
-    practiceService.saveSettings({ scriptureGoals: newGoals });
+    setScriptureGoalTypes(newGoalTypes);
+    practiceService.saveSettings({ scriptureGoals: newGoals, scriptureGoalTypes: newGoalTypes });
     setShowGoalModal(false);
   };
 
@@ -789,7 +796,24 @@ export default function App() {
 
     setCount(prev => prev + increment);
     if (isSessionActive) {
-      setSessionCount(prev => prev + increment);
+      setSessionCount(prev => {
+        const newCount = prev + increment;
+        const goalType = (scriptureGoalTypes || {})[activeScriptureId] || 'count';
+        const goalValue = (scriptureGoals || {})[activeScriptureId] || 108;
+        
+        if (goalType === 'count' && newCount === goalValue) {
+          // Play a bell sound when count is reached
+          if (bellSoundRef.current) {
+            bellSoundRef.current.currentTime = 0;
+            bellSoundRef.current.play().catch(e => console.log('Audio play failed:', e));
+          }
+          // Show notification
+          if (window.Notification && Notification.permission === "granted") {
+            new Notification("修行圆满", { body: `${activeScripture.title} 次数已达标` });
+          }
+        }
+        return newCount;
+      });
     }
     const practice = practiceService.updateActivity('chanting', increment, activeScriptureId);
     practiceService.logMerit('chanting');
@@ -860,17 +884,60 @@ export default function App() {
     };
   }, [fbUser]);
 
+  const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const bellSoundRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    bellSoundRef.current = new Audio('https://actions.google.com/sounds/v1/bells/toll_bell.ogg');
+    bellSoundRef.current.volume = 0.8;
+  }, []);
+
   const startSession = () => {
+    if (window.Notification && Notification.permission !== "granted" && Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
     setIsSessionActive(true);
     setSessionStartTime(Date.now());
     setSessionCount(0);
     setCurrentReflection("");
+    
+    const goalType = (scriptureGoalTypes || {})[activeScriptureId] || 'count';
+    const goalValue = (scriptureGoals || {})[activeScriptureId] || 108;
+    
+    if (goalType === 'time') {
+      setSessionTimeLeft(goalValue * 60);
+      sessionTimerRef.current = setInterval(() => {
+        setSessionTimeLeft(prev => {
+          if (prev === null || prev <= 1) {
+            if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
+            // Play a bell sound when time is up
+            if (bellSoundRef.current) {
+              bellSoundRef.current.currentTime = 0;
+              bellSoundRef.current.play().catch(e => console.log('Audio play failed:', e));
+            }
+            // Show notification
+            if (window.Notification && Notification.permission === "granted") {
+              new Notification("修行圆满", { body: `${activeScripture.title} 计时结束` });
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      setSessionTimeLeft(null);
+    }
+
     setTimeout(() => {
       woodenFishRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   };
 
   const finishSession = async () => {
+    if (sessionTimerRef.current) {
+      clearInterval(sessionTimerRef.current);
+      sessionTimerRef.current = null;
+    }
     const endTime = Date.now();
     const duration = Math.floor((endTime - (sessionStartTime || endTime)) / 1000);
     
@@ -1415,7 +1482,7 @@ export default function App() {
                         onClick={() => {
                           setActiveTab(item.id as any);
                           setIsSideMenuOpen(false);
-                          if (item.id === 'vow') setVowInitialSection('menu');
+                          if (item.id === 'vow') setVowInitialSection('setup_vow');
                         }}
                         className={cn(
                           "w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all",
@@ -1571,7 +1638,7 @@ export default function App() {
                     <p className="text-xs sm:text-sm uppercase tracking-widest text-zen-accent/50 font-bold">{t('select_scripture')}</p>
                     <button 
                       onClick={() => {
-                        setEditingGoalValue(scriptureGoals[activeScriptureId] || 108);
+                        setEditingGoalValue((scriptureGoals || {})[activeScriptureId] || 108);
                         setShowGoalModal(true);
                       }}
                       className="text-sm sm:text-base bg-zen-accent/10 text-zen-accent px-3 py-2 rounded-xl hover:bg-zen-accent/20 font-bold flex items-center gap-1.5"
@@ -1609,7 +1676,7 @@ export default function App() {
                   {/* Session Control */}
                   {!isSessionActive && (
                     <div className="flex justify-center mt-2 sm:mt-4">
-                      {!scriptureGoals[activeScriptureId] ? (
+                      {!(scriptureGoals || {})[activeScriptureId] ? (
                         <button 
                           onClick={() => {
                             setEditingGoalValue(108);
@@ -1645,22 +1712,32 @@ export default function App() {
 
                 {/* Session Control */}
                 {isSessionActive && (
-                  <div className="flex justify-center shrink-0 mt-4 sm:mt-8">
-                    <div className="flex flex-col items-center gap-2 sm:gap-6">
-                      <div className="flex items-center gap-4 sm:gap-10 bg-white px-6 sm:px-12 py-4 sm:py-6 rounded-full border border-zen-accent/10 shadow-md">
-                        <div className="text-center">
-                          <p className="text-sm sm:text-base uppercase tracking-widest text-zen-accent/50 font-bold mb-2">{t('session_merit')}</p>
-                          <p className="text-6xl sm:text-8xl font-serif font-bold text-zen-accent tracking-tighter">
-                            {sessionCount}
-                          </p>
-                          <p className="text-3xl sm:text-5xl text-zen-accent/40 mt-1">
-                            / {scriptureGoals[activeScriptureId] || 108}
-                          </p>
+                  <div className="flex justify-center shrink-0 mt-2 sm:mt-4">
+                    <div className="flex flex-col items-center gap-2 sm:gap-4">
+                      <div className="flex items-center gap-4 sm:gap-8 bg-white px-6 sm:px-10 py-3 sm:py-4 rounded-full border border-zen-accent/10 shadow-md">
+                        <div className="text-center flex items-center gap-3">
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-zen-accent/10 text-zen-accent flex items-center justify-center text-xs sm:text-sm font-bold shrink-0">
+                            次数
+                          </div>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-5xl sm:text-7xl font-serif font-bold text-zen-accent tracking-tighter leading-none">
+                              {sessionCount}
+                            </span>
+                            {(scriptureGoalTypes || {})[activeScriptureId] === 'time' ? (
+                              <span className="text-lg sm:text-2xl text-zen-accent/60 font-mono">
+                                {sessionTimeLeft !== null ? `${Math.floor(sessionTimeLeft / 60)}:${(sessionTimeLeft % 60).toString().padStart(2, '0')}` : '0:00'}
+                              </span>
+                            ) : (
+                              <span className="text-2xl sm:text-4xl text-zen-accent/40">
+                                / {(scriptureGoals || {})[activeScriptureId] || 108}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="w-px h-12 sm:h-16 bg-zen-accent/10" />
+                        <div className="w-px h-10 sm:h-12 bg-zen-accent/10" />
                         <button 
                           onClick={finishSession}
-                          className="text-zen-accent font-bold hover:opacity-70 transition-opacity text-sm sm:text-xl px-2"
+                          className="text-zen-accent font-bold hover:opacity-70 transition-opacity text-sm sm:text-lg px-2 whitespace-nowrap"
                         >
                           {t('finish_practice')}
                         </button>
@@ -1724,31 +1801,71 @@ export default function App() {
                         className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl"
                       >
                         <h3 className="text-lg font-bold mb-4 text-center">设定每日目标</h3>
-                        <p className="text-sm text-center text-zen-accent/60 mb-6">{activeScripture.title}</p>
+                        <p className="text-sm text-center text-zen-accent/60 mb-4">{activeScripture.title}</p>
                         
-                        <div className="flex justify-center flex-wrap gap-4 mb-6">
-                          {[21, 49, 108, 1000, 10000, 100000].map(val => (
-                            <button
-                              key={val}
-                              onClick={() => setEditingGoalValue(val)}
-                              className={cn(
-                                "px-4 py-2 rounded-xl text-sm font-bold border transition-colors",
-                                editingGoalValue === val 
-                                  ? "bg-zen-accent text-white border-zen-accent" 
-                                  : "border-zen-accent/20 text-zen-accent/60"
-                              )}
-                            >
-                              {val >= 1000 ? `${val / 1000}k` : val}
-                            </button>
-                          ))}
+                        <div className="flex bg-zen-bg/50 p-1 rounded-xl mb-6">
+                          <button
+                            onClick={() => setEditingGoalType('count')}
+                            className={cn(
+                              "flex-1 py-2 text-sm font-bold rounded-lg transition-colors",
+                              editingGoalType === 'count' ? "bg-white text-zen-accent shadow-sm" : "text-zen-accent/60"
+                            )}
+                          >
+                            算次数 (自由时间)
+                          </button>
+                          <button
+                            onClick={() => setEditingGoalType('time')}
+                            className={cn(
+                              "flex-1 py-2 text-sm font-bold rounded-lg transition-colors",
+                              editingGoalType === 'time' ? "bg-white text-zen-accent shadow-sm" : "text-zen-accent/60"
+                            )}
+                          >
+                            订时间 (自由次数)
+                          </button>
                         </div>
 
-                        <input
-                          type="number"
-                          value={editingGoalValue}
-                          onChange={(e) => setEditingGoalValue(parseInt(e.target.value) || 0)}
-                          className="w-full text-center text-3xl font-serif font-bold bg-transparent border-b-2 border-zen-accent/10 focus:border-zen-accent outline-none py-2 mb-8"
-                        />
+                        <div className="flex justify-center flex-wrap gap-4 mb-6">
+                          {editingGoalType === 'count' 
+                            ? [21, 49, 108, 1000, 10000, 100000].map(val => (
+                                <button
+                                  key={val}
+                                  onClick={() => setEditingGoalValue(val)}
+                                  className={cn(
+                                    "px-4 py-2 rounded-xl text-sm font-bold border transition-colors",
+                                    editingGoalValue === val 
+                                      ? "bg-zen-accent text-white border-zen-accent" 
+                                      : "border-zen-accent/20 text-zen-accent/60"
+                                  )}
+                                >
+                                  {val >= 1000 ? `${val / 1000}k` : val}
+                                </button>
+                              ))
+                            : [5, 10, 15, 30, 45, 60].map(val => (
+                                <button
+                                  key={val}
+                                  onClick={() => setEditingGoalValue(val)}
+                                  className={cn(
+                                    "px-4 py-2 rounded-xl text-sm font-bold border transition-colors",
+                                    editingGoalValue === val 
+                                      ? "bg-zen-accent text-white border-zen-accent" 
+                                      : "border-zen-accent/20 text-zen-accent/60"
+                                  )}
+                                >
+                                  {val} 分钟
+                                </button>
+                              ))
+                          }
+                        </div>
+
+                        <div className="flex items-center justify-center gap-2 mb-8">
+                          <input
+                            type="number"
+                            value={editingGoalValue}
+                            onChange={(e) => setEditingGoalValue(parseInt(e.target.value) || 0)}
+                            className="w-24 text-center text-3xl font-serif font-bold bg-transparent border-b-2 border-zen-accent/10 focus:border-zen-accent outline-none py-2"
+                          />
+                          <span className="text-zen-accent/60 font-bold">{editingGoalType === 'count' ? '次' : '分钟'}</span>
+                        </div>
 
                         <div className="flex gap-3">
                           <button
@@ -1899,7 +2016,7 @@ export default function App() {
                               >
                                 <CustomCalendar 
                                   selectedDate={parseISO(selectedDate)} 
-                                  onSelectDate={(date) => {
+                                  onSelectDate={(date: any) => {
                                     setSelectedDate(format(date, 'yyyy-MM-dd'));
                                     setShowCalendarModal(false);
                                   }}
@@ -2200,7 +2317,7 @@ export default function App() {
                             >
                               <CustomCalendar 
                                 selectedDate={parseISO(communitySelectedDate)} 
-                                onSelectDate={(date) => {
+                                onSelectDate={(date: any) => {
                                   setCommunitySelectedDate(format(date, 'yyyy-MM-dd'));
                                   setShowCommunityCalendarModal(false);
                                 }}
@@ -2370,8 +2487,8 @@ export default function App() {
 
                 <div className="space-y-8">
                   {['chewsj07@gmail.com'].includes(auth.currentUser?.email || '') && (
-                    <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
-                      <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                    <div className="bg-white rounded-[30px] sm:rounded-[40px] p-4 sm:p-8 shadow-sm border border-zen-accent/5">
+                      <h2 className="text-lg sm:text-xl font-bold mb-4 sm:mb-6 flex items-center gap-2">
                         <Music className="w-5 h-5 text-zen-accent" />
                         音频管理 (Admin)
                       </h2>
@@ -2505,7 +2622,7 @@ export default function App() {
                             {/* Theme Selection */}
                             <div>
                               <label className="block text-sm font-bold text-zen-accent/70 mb-3">{t('theme')}</label>
-                              <div className="flex gap-3">
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 {[
                                   { id: 'zen', label: t('theme_zen'), color: '#f5f5f0' },
                                   { id: 'lotus', label: t('theme_lotus'), color: '#fff0f5' },
@@ -2516,13 +2633,13 @@ export default function App() {
                                     key={t.id}
                                     onClick={() => setTheme(t.id as any)}
                                     className={cn(
-                                      "flex-1 aspect-square rounded-2xl flex flex-col items-center justify-center gap-2 border-2 transition-all",
+                                      "rounded-2xl flex flex-col items-center justify-center gap-2 border-2 transition-all p-3",
                                       theme === t.id ? "border-zen-accent scale-105 shadow-md" : "border-transparent hover:scale-105"
                                     )}
                                     style={{ backgroundColor: t.color }}
                                   >
                                     <div className={cn("w-4 h-4 rounded-full", theme === t.id ? "bg-zen-accent" : "bg-black/10")} />
-                                    <span className={cn("text-xs font-bold", t.id === 'dark' ? "text-gray-400" : "text-zen-accent")}>{t.label}</span>
+                                    <span className={cn("text-xs font-bold text-center", t.id === 'dark' ? "text-gray-400" : "text-zen-accent")}>{t.label}</span>
                                   </button>
                                 ))}
                               </div>
@@ -3437,6 +3554,7 @@ export default function App() {
             { id: 'dashboard', icon: Target, label: t('tab_dashboard') },
             { id: 'fish', icon: Heart, label: t('tab_chant') },
             { id: 'meditation', icon: Wind, label: t('tab_meditation') },
+            { id: 'vow', icon: Leaf, label: t('tab_vow') },
             { id: 'community', icon: Users, label: t('tab_community') },
           ].map(tab => (
             <button
@@ -3444,7 +3562,7 @@ export default function App() {
               onClick={() => {
                 setActiveTab(tab.id as any);
                 if (tab.id === 'vow') {
-                  setVowInitialSection('menu');
+                  setVowInitialSection('setup_vow');
                 }
               }}
               className={cn(
@@ -3470,7 +3588,7 @@ export default function App() {
           shareId={rejoiceId} 
           onClose={() => setRejoiceId(null)} 
           onViewCommunity={() => setActiveTab('community')}
-          onPractice={(chantTitle) => {
+          onPractice={(chantTitle: any) => {
             if (chantTitle) {
               const scripture = allScriptures.find(s => s.title === chantTitle || chantTitle.includes(s.title));
               if (scripture) {

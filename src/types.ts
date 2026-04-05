@@ -15,4 +15,4 @@ export interface PracticeRecord {
   habit_nudge: string;
   merit_dedication: string;
   status_update: string;
-}
+} 

@@ -175,8 +175,8 @@ export const MeritMap: React.FC<{ theme?: 'zen' | 'lotus' | 'sky' | 'dark' }> = 
           className="w-full h-full"
         >
           <Geographies geography={geoUrl}>
-            {({ geographies }) =>
-              geographies.map((geo) => (
+            {({ geographies }: { geographies: any[] }) =>
+              geographies.map((geo: any) => (
                 <Geography
                   key={geo.rsmKey}
                   geography={geo}

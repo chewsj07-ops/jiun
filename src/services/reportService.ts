@@ -127,7 +127,7 @@ export const reportService = {
     
     thoughts.forEach((t: any) => {
       const date = new Date(t.timestamp || t.id).toLocaleString();
-      const mappedEmotions = t.emotions.map((id: string) => id === 'wronged' ? '委屈' : ALL_EMOTIONS.find(e => e.id === id)?.label || id);
+      const mappedEmotions = t.emotions.map((id: string) => id === 'wronged' ? '委屈' : ALL_EMOTIONS.find((e: any) => e.id === id)?.label || id);
       const content = `[情绪: ${mappedEmotions.join(',')}] ${t.event}`.replace(/"/g, '""');
       const result = `${t.action} -> ${t.learning}`.replace(/"/g, '""');
       csvContent += `"念头觉察","${date}","${content}","${result}"\n`;
@@ -224,7 +224,7 @@ export const reportService = {
         ${thoughts.map((t: any) => `
           <div class="record">
             <div class="record-date">${new Date(t.timestamp || t.id).toLocaleString()}</div>
-            <div class="record-title">情绪：${t.emotions.map((id: string) => id === 'wronged' ? '委屈' : ALL_EMOTIONS.find(e => e.id === id)?.label || id).join('、')}</div>
+            <div class="record-title">情绪：${t.emotions.map((id: string) => id === 'wronged' ? '委屈' : ALL_EMOTIONS.find((e: any) => e.id === id)?.label || id).join('、')}</div>
             <div class="record-content">
               <strong>事件：</strong>${t.event || '无'}<br>
               <strong>转念：</strong>${t.action || '无'}<br>
@@ -293,4 +293,4 @@ export const reportService = {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
-};
+}; 

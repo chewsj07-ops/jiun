@@ -23,6 +23,7 @@ export interface DailyPractice {
 
 export interface PracticeSettings {
   scriptureGoals: Record<string, number>;
+  scriptureGoalTypes?: Record<string, 'count' | 'time'>;
   aiEnabled?: boolean;
   aiApiKey?: string;
 }

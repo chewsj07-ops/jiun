@@ -1,5 +1,5 @@
 {
   "name": "VowZen",
-  "description": "一个以“愿”为核心的修行空间，通过发愿、诵经、禅修与AI指引，帮助用户在修行中获得真实的改变。",
+  "description": "An application for meditation and chanting.",
   "requestFramePermissions": []
 }

@@ -10,7 +10,7 @@ export const VowPractice = ({
   user, 
   onLevelUp 
 }: { 
-  initialSection?: 'menu' | 'coach' | 'wisdom' | 'zen'; 
+  initialSection?: 'menu' | 'coach' | 'wisdom' | 'zen' | 'setup_vow'; 
   user: any; 
   onLevelUp: (msg: string) => void;
 }) => {

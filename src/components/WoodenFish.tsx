@@ -27,6 +27,7 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
 }) => {
   const { t } = useTranslation();
   const [isHitting, setIsHitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Add loading state
   const [showDisabledMsg, setShowDisabledMsg] = useState(false);
   const [floatingTexts, setFloatingTexts] = useState<{ id: number; x: number; y: number; isCombo?: boolean; comboCount?: number }[]>([]);
   const soundRef = useRef<Howl | null>(null);
@@ -43,14 +44,20 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
     // Adjust rate slightly for different instruments if needed
     if (appearance === 'bowl') rate *= 0.8; 
 
-      soundRef.current = new Howl({
+    setIsLoading(true); // Set loading to true when sound changes
+    soundRef.current = new Howl({
       src: [
         appearance === 'bowl' 
-          ? 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3' // Singing bowl sound
-          : 'https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3' // Wooden fish sound
+          ? 'https://actions.google.com/sounds/v1/bells/toll_bell.ogg' // Singing bowl sound
+          : 'https://actions.google.com/sounds/v1/percussion/wood_block_single_hit.ogg' // Wooden fish sound
       ],
       volume: volume,
       rate: rate,
+      onload: () => setIsLoading(false), // Set loading to false when sound is loaded
+      onloaderror: () => {
+        console.error('Failed to load sound');
+        setIsLoading(false);
+      }
     });
     return () => {
       soundRef.current?.unload();
@@ -135,6 +142,11 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
 
   return (
     <div className={cn("relative flex flex-col items-center justify-center cursor-pointer select-none", className)} onClick={handleHit}>
+      {isLoading && (
+        <div className="absolute top-0 text-zen-accent animate-pulse">
+          {t('loading')}...
+        </div>
+      )}
       <AnimatePresence>
         {showDisabledMsg && (
           <motion.div
@@ -272,4 +284,4 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
       </p>
     </div>
   );
-};
+}; 
