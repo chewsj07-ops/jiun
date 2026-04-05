@@ -1060,11 +1060,11 @@ export default function App() {
     return selectedCountry ? selectedCountry.isoCode : '';
   }, [userProfile.country]);
 
-  if (currentPath === '/privacy' || currentPath === '/privacy/') {
+  if (currentPath.startsWith('/privacy')) {
     return <PrivacyPolicy onBack={() => { window.history.pushState({}, '', '/'); setCurrentPath('/'); }} />;
   }
 
-  if (currentPath === '/terms' || currentPath === '/terms/') {
+  if (currentPath.startsWith('/terms')) {
     return <TermsOfService onBack={() => { window.history.pushState({}, '', '/'); setCurrentPath('/'); }} />;
   }
 
@@ -3388,11 +3388,27 @@ export default function App() {
                         {/* Version and Legal */}
                         <div className="border-t border-zen-accent/10 pt-6 text-center space-y-3">
                           <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-zen-accent/60">
-                            <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-zen-accent underline transition-colors">
+                            <a 
+                              href="/terms" 
+                              className="hover:text-zen-accent underline transition-colors"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                window.history.pushState({}, '', '/terms');
+                                window.dispatchEvent(new PopStateEvent('popstate'));
+                              }}
+                            >
                               服务条款 (Terms of Service)
                             </a>
                             <span>|</span>
-                            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-zen-accent underline transition-colors">
+                            <a 
+                              href="/privacy" 
+                              className="hover:text-zen-accent underline transition-colors"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                window.history.pushState({}, '', '/privacy');
+                                window.dispatchEvent(new PopStateEvent('popstate'));
+                              }}
+                            >
                               隐私政策 (Privacy Policy)
                             </a>
                             <span>|</span>
