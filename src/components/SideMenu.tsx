@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Sparkles, LogOut, BookOpen, Settings, Map, Users, History } from 'lucide-react';
+import { X, Sparkles, LogOut, BookOpen, Settings, Map, Users, History, Download } from 'lucide-react';
 
 export const SideMenu = ({ isOpen, onClose, onNavigate }: { isOpen: boolean; onClose: () => void; onNavigate: (tab: string) => void }) => {
   if (!isOpen) return null;
@@ -15,13 +15,14 @@ export const SideMenu = ({ isOpen, onClose, onNavigate }: { isOpen: boolean; onC
         </div>
         
         <nav className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-2">
-          <MenuButton icon={<Sparkles />} label="禅心助手" onClick={() => { onNavigate('assistant'); onClose(); }} />
+          <MenuButton icon={<Sparkles />} label="愿禅助手" onClick={() => { onNavigate('assistant'); onClose(); }} />
           <MenuButton icon={<Map />} label="功德地图" onClick={() => { onNavigate('merit'); onClose(); }} />
           <MenuButton icon={<History />} label="修行记录" onClick={() => { onNavigate('history'); onClose(); }} />
           <MenuButton icon={<Users />} label="共修社区" onClick={() => { onNavigate('community'); onClose(); }} />
           <MenuButton icon={<BookOpen />} label="经文库" onClick={() => { onNavigate('scripture'); onClose(); }} />
           
-          <div className="my-6 border-t border-zen-accent/10 pt-4">
+          <div className="my-6 border-t border-zen-accent/10 pt-4 space-y-2">
+            <MenuButton icon={<Download />} label="下载APP到手机" onClick={() => { window.dispatchEvent(new CustomEvent('open-install-modal')); onClose(); }} />
             <MenuButton icon={<Settings />} label="设置" onClick={() => { onNavigate('settings'); onClose(); }} />
           </div>
         </nav>

@@ -30,7 +30,7 @@ export const InstallAppModal = ({ isOpen, onClose }: any) => {
               <div className="w-16 h-16 bg-zen-accent rounded-2xl mx-auto flex items-center justify-center text-white mb-4 shadow-lg">
                 <span className="font-serif text-3xl font-bold">愿</span>
               </div>
-              <h4 className="font-bold text-lg text-zen-ink">愿禅助手 (Zen Assistant)</h4>
+              <h4 className="font-bold text-lg text-zen-ink">愿禅助手 (Vowzen)</h4>
               <p className="text-sm text-zen-ink/60">将应用添加到主屏幕，随时随地开启修行</p>
             </div>
 

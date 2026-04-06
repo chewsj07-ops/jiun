@@ -868,8 +868,15 @@ export default function App() {
         }, 100);
       }
     };
+    const handleOpenInstallModal = () => setShowInstallModal(true);
+    
     window.addEventListener('navigate_to_settings', handleNavigateToSettings);
-    return () => window.removeEventListener('navigate_to_settings', handleNavigateToSettings);
+    window.addEventListener('open-install-modal', handleOpenInstallModal);
+    
+    return () => {
+      window.removeEventListener('navigate_to_settings', handleNavigateToSettings);
+      window.removeEventListener('open-install-modal', handleOpenInstallModal);
+    };
   }, []);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
