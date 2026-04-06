@@ -16,6 +16,8 @@
 }
 
 body {
-  background-color: var(--theme-bg);
+  background-image: linear-gradient(to bottom, var(--theme-bg), var(--theme-bg));
+  background-color: transparent;
   color: var(--theme-ink);
+  min-height: 100vh;
 }

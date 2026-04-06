@@ -48,7 +48,11 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
             <button
               onClick={() => {
-                localStorage.clear();
+                try {
+                  localStorage.clear();
+                } catch (e) {
+                  console.error("Failed to clear localStorage", e);
+                }
                 window.location.reload();
               }}
               className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold hover:bg-red-100 transition-colors"
