@@ -49,6 +49,7 @@
     "@types/react-simple-maps": "^3.0.6",
     "@vitejs/plugin-legacy": "^5.4.3",
     "autoprefixer": "^10.4.27",
+    "puppeteer": "^24.40.0",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",
     "tsx": "^4.21.0",
