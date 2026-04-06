@@ -77,7 +77,7 @@ const translations = {
     privacy_content_5_title: '5. 数据删除与控制权',
     privacy_content_5_desc: '您对自己的数据拥有完全的控制权。您可以在「设置 -> 系统 -> 账号删除」中随时永久删除您的账号及所有关联数据。删除操作不可逆，数据将在 30 天内从所有备份中彻底抹除。',
     privacy_content_6_title: '6. 精神隐私原则 (Spiritual Privacy Principle)',
-    privacy_content_6_desc: 'ZenAssistant 尊重修行与反思的极度私密性。您的所有记录均被视为私人日记，受到最高级别的隐私保护。',
+    privacy_content_6_desc: 'Vowzen 尊重修行与反思的极度私密性。您的所有记录均被视为私人日记，受到最高级别的隐私保护。',
     btn_understood: '我已了解',
 
     // Vow Practice
@@ -246,7 +246,7 @@ const translations = {
     tip_2: '您可以对禅师说：“我感到很有压力”或“请引导我放松”。',
     tip_3: '禅师会实时倾听并回应您的呼吸与心声。',
     
-    // ZenAssistant
+    // Vowzen
     zen_assistant_title: '禅修指引',
     zen_assistant_placeholder: '“心如止水，鉴常明。”\n有什么困惑想与禅师聊聊吗？',
     ask_zen_master: '向禅师请教...',
@@ -470,7 +470,7 @@ const translations = {
     privacy_content_5_title: '5. 數據刪除與控制權',
     privacy_content_5_desc: '您對自己的數據擁有完全的控制權。您可以在「設置 -> 系統 -> 帳號刪除」中隨時永久刪除您的帳號及所有關聯數據。刪除操作不可逆，數據將在 30 天內從所有備份中徹底抹除。',
     privacy_content_6_title: '6. 精神隱私原則 (Spiritual Privacy Principle)',
-    privacy_content_6_desc: 'ZenAssistant 尊重修行與反思的極度私密性。您的所有記錄均被視為私人日記，受到最高級別的隱私保護。',
+    privacy_content_6_desc: 'Vowzen 尊重修行與反思的極度私密性。您的所有記錄均被視為私人日記，受到最高級別的隱私保護。',
     btn_understood: '我已了解',
 
     // Vow Practice
@@ -605,7 +605,7 @@ const translations = {
     tip_2: '您可以對禪師說：“我感到很有壓力”或“請引導我放鬆”。',
     tip_3: '禪師會實時傾聽並回應您的呼吸與心聲。',
     
-    // ZenAssistant
+    // Vowzen
     zen_assistant_title: '禪修指引',
     zen_assistant_placeholder: '“心如止水，鑑常明。”\n有什麼困惑想與禪師聊聊嗎？',
     ask_zen_master: '向禪師請教...',
@@ -781,7 +781,7 @@ const translations = {
     privacy_content_5_title: '5. Data Deletion & Control',
     privacy_content_5_desc: 'You have full control over your data. You can permanently delete your account and all associated data at any time via "Settings -> System -> Delete Account". This action is irreversible, and data will be completely wiped from all backups within 30 days.',
     privacy_content_6_title: '6. Spiritual Privacy Principle',
-    privacy_content_6_desc: 'ZenAssistant respects the deeply personal nature of reflection and spiritual practice. All your entries are treated as private journals and receive the highest level of privacy protection.',
+    privacy_content_6_desc: 'Vowzen respects the deeply personal nature of reflection and spiritual practice. All your entries are treated as private journals and receive the highest level of privacy protection.',
     btn_understood: 'I Understand',
 
     // Vow Practice
@@ -951,7 +951,7 @@ const translations = {
     tip_2: 'You can say: "I feel stressed" or "Please guide me to relax".',
     tip_3: 'The Zen Master listens and responds to your breath and voice in real-time.',
     
-    // ZenAssistant
+    // Vowzen
     zen_assistant_title: 'Zen Guide',
     zen_assistant_placeholder: '"Mind like still water, reflecting clearly."\nAny confusion to discuss with the Zen Master?',
     ask_zen_master: 'Ask Zen Master...',

@@ -72,11 +72,11 @@ export const LegalModals = () => {
             {activeModal === 'privacy' && (
               <>
                 <p className="text-xs text-zen-accent/60">Last Updated (最后更新): 2026-03-11</p>
-                <p>ZenAssistant (禅心助手) ("we", "us", "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, store, and protect your information when you use the ZenAssistant application and related services.</p>
-                <p>ZenAssistant（禅心助手）（以下简称“我们”）致力于保护您的隐私。本隐私政策说明在您使用 ZenAssistant 应用程序及相关服务时，我们如何收集、使用、存储和保护您的信息。</p>
+                <p>Vowzen (愿禅助手) ("we", "us", "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, store, and protect your information when you use the Vowzen application and related services.</p>
+                <p>Vowzen（愿禅助手）（以下简称“我们”）致力于保护您的隐私。本隐私政策说明在您使用 Vowzen 应用程序及相关服务时，我们如何收集、使用、存储和保护您的信息。</p>
                 
-                <p>ZenAssistant is an application platform for <strong>meditation, awareness, reflection, and spiritual growth</strong>. We understand that the content users input can be highly personal, so protecting this data is our core principle.</p>
-                <p>ZenAssistant 是一个用于 <strong>冥想、觉察、反思与身心成长</strong> 的应用平台。我们理解用户输入的内容可能具有高度个人性，因此保护这些数据是我们的核心原则。</p>
+                <p>Vowzen is an application platform for <strong>meditation, awareness, reflection, and spiritual growth</strong>. We understand that the content users input can be highly personal, so protecting this data is our core principle.</p>
+                <p>Vowzen 是一个用于 <strong>冥想、觉察、反思与身心成长</strong> 的应用平台。我们理解用户输入的内容可能具有高度个人性，因此保护这些数据是我们的核心原则。</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">1. Information We Collect (我们收集的信息)</h3>
                 <h4 className="text-xs font-bold text-zen-ink mt-4 mb-1">Account Information (账户信息)</h4>
@@ -120,7 +120,7 @@ export const LegalModals = () => {
                   <li>Customer support (客户支持)</li>
                   <li>Security monitoring (安全监控)</li>
                 </ul>
-                <p><strong>ZenAssistant does not sell user data. (ZenAssistant 不会出售用户数据。)</strong></p>
+                <p><strong>Vowzen does not sell user data. (Vowzen 不会出售用户数据。)</strong></p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">3. AI Processing (AI 处理)</h3>
                 <p>Some features use AI technology to generate reflections or suggestions. (部分功能使用 AI 技术生成反思或建议。)</p>
@@ -154,7 +154,7 @@ export const LegalModals = () => {
                 <p>Backup data is only used for system recovery. (备份数据仅用于恢复系统。)</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">7. Data Sharing (数据共享)</h3>
-                <p>ZenAssistant does not sell user information. (ZenAssistant 不出售用户信息。)</p>
+                <p>Vowzen does not sell user information. (Vowzen 不出售用户信息。)</p>
                 <p>We may share limited data with technical service providers, such as (我们可能与技术服务提供商共享有限数据，例如):</p>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>Cloud servers (云服务器)</li>
@@ -164,11 +164,11 @@ export const LegalModals = () => {
                 <p>These service providers must comply with data protection obligations. (这些服务提供商必须遵守数据保护义务。)</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">8. Children (儿童)</h3>
-                <p>ZenAssistant is not intended for users <strong>under 13 years old</strong>. (ZenAssistant 不适用于 <strong>13岁以下用户</strong>。)</p>
+                <p>Vowzen is not intended for users <strong>under 13 years old</strong>. (Vowzen 不适用于 <strong>13岁以下用户</strong>。)</p>
                 <p>If data from minors is found, it will be deleted promptly. (若发现未成年人数据，将及时删除。)</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">9. International Transfer (国际传输)</h3>
-                <p>ZenAssistant operates in Malaysia. Data may be stored on secure servers in different regions. (ZenAssistant 在马来西亚运营。数据可能存储在不同地区的安全服务器。)</p>
+                <p>Vowzen operates in Malaysia. Data may be stored on secure servers in different regions. (Vowzen 在马来西亚运营。数据可能存储在不同地区的安全服务器。)</p>
                 <p>By using this service, you consent to data processing. (使用本服务即表示同意数据处理。)</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">10. Your Rights (您的权利)</h3>
@@ -184,12 +184,18 @@ export const LegalModals = () => {
                 <p>We may update this policy. (我们可能更新本政策。)</p>
                 <p>Major changes will be notified to users through the app. (重大变更将通过应用通知用户。)</p>
 
-                <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">12. Contact (联系我们)</h3>
-                <p><a href="mailto:vowzen91@gmail.com" className="text-zen-accent hover:underline">vowzen91@gmail.com</a></p>
+                <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">12. Contact & Data Deletion (联系我们与数据删除)</h3>
+                <p>To request the deletion of your account and associated data, please click the link below or email us directly:</p>
+                <p className="mt-2">
+                  <a href="mailto:vowzen91@gmail.com?subject=Account%20and%20Data%20Deletion%20Request" className="text-zen-accent hover:underline font-bold">
+                    Request Account and Data Deletion (申请删除账户与数据)
+                  </a>
+                </p>
+                <p className="mt-2">Email: <a href="mailto:vowzen91@gmail.com" className="text-zen-accent hover:underline">vowzen91@gmail.com</a></p>
 
                 <div className="mt-8 p-4 bg-zen-bg/50 rounded-xl border border-zen-accent/10">
                   <h4 className="font-bold text-zen-ink mb-2">App Store / Google Play Compliance (应用商店合规)</h4>
-                  <p className="text-sm mb-2">ZenAssistant complies with common app store privacy requirements (ZenAssistant 符合应用商店常见隐私要求):</p>
+                  <p className="text-sm mb-2">Vowzen complies with common app store privacy requirements (Vowzen 符合应用商店常见隐私要求):</p>
                   <ul className="list-disc pl-5 space-y-1 text-sm">
                     <li>User data is accessible (用户数据可访问)</li>
                     <li>User data is deletable (用户数据可删除)</li>
@@ -201,7 +207,7 @@ export const LegalModals = () => {
 
                 <div className="mt-4 p-4 bg-zen-bg/50 rounded-xl border border-zen-accent/10">
                   <h4 className="font-bold text-zen-ink mb-2">Spiritual Privacy Principle (核心隐私原则)</h4>
-                  <p className="text-sm mb-2">ZenAssistant insists on the following (ZenAssistant 坚持):</p>
+                  <p className="text-sm mb-2">Vowzen insists on the following (Vowzen 坚持):</p>
                   <ul className="list-disc pl-5 space-y-1 text-sm">
                     <li>No selling of data (不出售)</li>
                     <li>No use for advertising (不用于广告)</li>
@@ -217,10 +223,10 @@ export const LegalModals = () => {
                 <p className="text-xs text-zen-accent/60">Last Updated (最后更新): 2026-03-11</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">1. Acceptance (接受条款)</h3>
-                <p>By using ZenAssistant, you agree to these terms. (使用 ZenAssistant 即表示您同意本条款。)</p>
+                <p>By using Vowzen, you agree to these terms. (使用 Vowzen 即表示您同意本条款。)</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">2. Service Description (服务描述)</h3>
-                <p>ZenAssistant is an application tool for (ZenAssistant 是一个用于):</p>
+                <p>Vowzen is an application tool for (Vowzen 是一个用于):</p>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>Meditation (冥想)</li>
                   <li>Self-awareness (自我觉察)</li>
@@ -240,7 +246,7 @@ export const LegalModals = () => {
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">4. User Content (用户内容)</h3>
                 <p>User input content belongs to the user. (用户输入内容归用户所有。)</p>
-                <p>Users authorize ZenAssistant to store data to provide the service. (用户授权 ZenAssistant 存储数据以提供服务。)</p>
+                <p>Users authorize Vowzen to store data to provide the service. (用户授权 Vowzen 存储数据以提供服务。)</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">5. AI Responses (AI 回复)</h3>
                 <p>AI responses are for reflection reference only and do not constitute professional advice. (AI回复仅供反思参考，不构成专业建议。)</p>
@@ -250,7 +256,7 @@ export const LegalModals = () => {
                 <p>Accounts violating the terms may be suspended. (违反条款的账户可能被暂停。)</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">7. Limitation of Liability (责任限制)</h3>
-                <p>ZenAssistant provides services "as is". (ZenAssistant 按“现状”提供服务。)</p>
+                <p>Vowzen provides services "as is". (Vowzen 按“现状”提供服务。)</p>
                 <p>We are not liable for indirect losses. (我们不对间接损失承担责任。)</p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">8. Governing Law (管辖法律)</h3>
@@ -263,7 +269,7 @@ export const LegalModals = () => {
 
             {activeModal === 'ai' && (
               <>
-                <p>ZenAssistant uses AI to provide (ZenAssistant 使用 AI 提供):</p>
+                <p>Vowzen uses AI to provide (Vowzen 使用 AI 提供):</p>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>Reflection prompts (反思提示)</li>
                   <li>Emotional awareness (情绪觉察)</li>
@@ -297,6 +303,14 @@ export const LegalModals = () => {
                   <li>Data in the main database is deleted (主数据库数据删除)</li>
                   <li>Backup data is deleted within a reasonable period (备份数据在合理周期内删除)</li>
                 </ul>
+
+                <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">Request Deletion (申请删除)</h3>
+                <p>To request the deletion of your account and associated data, please click the link below:</p>
+                <p className="mt-2 mb-4">
+                  <a href="mailto:vowzen91@gmail.com?subject=Account%20and%20Data%20Deletion%20Request" className="text-zen-accent hover:underline font-bold">
+                    Request Account and Data Deletion (申请删除账户与数据)
+                  </a>
+                </p>
 
                 <h3 className="text-sm font-bold text-zen-ink mt-6 mb-2">Contact (联系我们)</h3>
                 <p><a href="mailto:vowzen91@gmail.com" className="text-zen-accent hover:underline">vowzen91@gmail.com</a></p>

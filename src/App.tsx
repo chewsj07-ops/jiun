@@ -34,6 +34,7 @@ import { ChantingProvider } from './features/chanting/ChantingContext';
 import { ZenOnboarding } from './components/ZenOnboarding';
 import { identityService } from './services/identityService';
 import { Country, City } from 'country-state-city';
+import { DeleteAccountPage } from './components/DeleteAccountPage';
 
 interface CommunityPost {
   id: number | string;
@@ -59,6 +60,14 @@ const ALL_COUNTRIES = Country.getAllCountries();
 
 // Trigger Vercel Production Deployment
 export default function App() {
+  const [isDeleteAccountRoute, setIsDeleteAccountRoute] = useState(false);
+
+  useEffect(() => {
+    if (window.location.pathname === '/delete-account' || window.location.pathname === '/delete-account.html') {
+      setIsDeleteAccountRoute(true);
+    }
+  }, []);
+
   const woodenFishRef = useRef<HTMLDivElement>(null);
   const { t, language, setLanguage } = useTranslation();
 
@@ -101,6 +110,10 @@ export default function App() {
     const saved = localStorage.getItem('zen_custom_scriptures');
     return saved ? JSON.parse(saved) : [];
   });
+
+  if (isDeleteAccountRoute) {
+    return <DeleteAccountPage />;
+  }
 
   const allScriptures = [...getScriptures(language), ...customScriptures];
 
