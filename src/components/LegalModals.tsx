@@ -309,7 +309,7 @@ export const LegalModals = () => {
               onClick={closeModal}
               className="px-6 py-2.5 bg-zen-accent text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
             >
-              I Understand (我已了解)
+              I Agree (我同意)
             </button>
           </div>
         </motion.div>
