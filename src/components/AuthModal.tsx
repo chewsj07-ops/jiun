@@ -516,7 +516,7 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                     {t('auth_agree_prefix')}
                     <button 
                       type="button"
-                      onClick={() => window.dispatchEvent(new CustomEvent('open-terms'))}
+                      onClick={() => window.dispatchEvent(new CustomEvent('open-terms-modal'))}
                       className="text-zen-accent hover:underline mx-1"
                     >
                       {t('auth_terms')}
@@ -524,7 +524,7 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                     {t('auth_and')}
                     <button 
                       type="button"
-                      onClick={() => window.dispatchEvent(new CustomEvent('open-privacy'))}
+                      onClick={() => window.dispatchEvent(new CustomEvent('open-privacy-modal'))}
                       className="text-zen-accent hover:underline mx-1"
                     >
                       {t('auth_privacy')}
