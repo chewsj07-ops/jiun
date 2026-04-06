@@ -798,25 +798,24 @@ export default function App() {
 
     setCount(prev => prev + increment);
     if (isSessionActive) {
-      setSessionCount(prev => {
-        const newCount = prev + increment;
-        const goalType = (scriptureGoalTypes || {})[activeScriptureId] || 'count';
-        const goalValue = (scriptureGoals || {})[activeScriptureId] || 108;
-        
-        if (goalType === 'count' && newCount === goalValue) {
-          // Play a bell sound when count is reached
-          if (bellSoundRef.current) {
-            bellSoundRef.current.currentTime = 0;
-            bellSoundRef.current.play().catch(e => console.log('Audio play failed:', e));
-          }
-          // Show notification
-          if (window.Notification && Notification.permission === "granted") {
-            new Notification("修行圆满", { body: `${activeScripture.title} 次数已达标` });
-          }
-          setShowGoalAchievedModal(true);
+      setSessionCount(prev => prev + increment);
+      
+      const newCount = sessionCount + increment;
+      const goalType = (scriptureGoalTypes || {})[activeScriptureId] || 'count';
+      const goalValue = (scriptureGoals || {})[activeScriptureId] || 108;
+      
+      if (goalType === 'count' && newCount === goalValue) {
+        // Play a bell sound when count is reached
+        if (bellSoundRef.current) {
+          bellSoundRef.current.currentTime = 0;
+          bellSoundRef.current.play().catch(e => console.log('Audio play failed:', e));
         }
-        return newCount;
-      });
+        // Show notification
+        if (window.Notification && Notification.permission === "granted") {
+          new Notification("修行圆满", { body: `${activeScripture.title} 次数已达标` });
+        }
+        setShowGoalAchievedModal(true);
+      }
     }
     const practice = practiceService.updateActivity('chanting', increment, activeScriptureId);
     practiceService.logMerit('chanting');
@@ -896,6 +895,26 @@ export default function App() {
     bellSoundRef.current.volume = 0.8;
   }, []);
 
+  // Handle timer completion
+  useEffect(() => {
+    if (isSessionActive && sessionTimeLeft === 0) {
+      if (sessionTimerRef.current) {
+        clearInterval(sessionTimerRef.current);
+        sessionTimerRef.current = null;
+      }
+      // Play a bell sound when time is up
+      if (bellSoundRef.current) {
+        bellSoundRef.current.currentTime = 0;
+        bellSoundRef.current.play().catch(e => console.log('Audio play failed:', e));
+      }
+      // Show notification
+      if (window.Notification && Notification.permission === "granted") {
+        new Notification("修行圆满", { body: `${activeScripture.title} 计时结束` });
+      }
+      setShowGoalAchievedModal(true);
+    }
+  }, [sessionTimeLeft, isSessionActive, activeScripture.title]);
+
   const startSession = () => {
     if (window.Notification && Notification.permission !== "granted" && Notification.permission !== "denied") {
       Notification.requestPermission();
@@ -913,17 +932,6 @@ export default function App() {
       sessionTimerRef.current = setInterval(() => {
         setSessionTimeLeft(prev => {
           if (prev === null || prev <= 1) {
-            if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
-            // Play a bell sound when time is up
-            if (bellSoundRef.current) {
-              bellSoundRef.current.currentTime = 0;
-              bellSoundRef.current.play().catch(e => console.log('Audio play failed:', e));
-            }
-            // Show notification
-            if (window.Notification && Notification.permission === "granted") {
-              new Notification("修行圆满", { body: `${activeScripture.title} 计时结束` });
-            }
-            setShowGoalAchievedModal(true);
             return 0;
           }
           return prev - 1;

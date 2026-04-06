@@ -16,6 +16,14 @@ export const LegalModals = () => {
     window.addEventListener('open-ai-modal', handleOpenAI);
     window.addEventListener('open-deletion-modal', handleOpenDeletion);
 
+    // Check URL for direct links
+    const path = window.location.pathname;
+    if (path === '/privacy' || path === '/privacy.html') {
+      setActiveModal('privacy');
+    } else if (path === '/terms' || path === '/terms.html') {
+      setActiveModal('terms');
+    }
+
     return () => {
       window.removeEventListener('open-privacy-modal', handleOpenPrivacy);
       window.removeEventListener('open-terms-modal', handleOpenTerms);
