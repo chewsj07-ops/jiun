@@ -47,8 +47,6 @@ interface CommunityPost {
   isUserPost?: boolean;
 }
 
-import { PrivacyPolicy, TermsOfService } from './components/Legal';
-
 const LEVELS = [
   { minExp: 0, nameKey: "level_1_name", title: "Level 1" },
   { minExp: 1000, nameKey: "level_2_name", title: "Level 2" },
