@@ -11,30 +11,33 @@ import { handleFirestoreError, OperationType } from './utils/firebaseErrors';
 import { containsBadWords } from './utils/badWords';
 import { Dashboard } from './components/Dashboard';
 import { WoodenFish } from './components/WoodenFish';
-import { AudioManagement } from './components/AudioManagement';
 import { practiceService } from './services/practiceService';
-
-import { Meditation } from './components/Meditation';
-import { MeritMap } from './components/MeritMap';
-import { VowPractice } from './components/vow/VowPractice';
 import { getScriptures, Scripture } from './constants';
 import { useTranslation, LANGUAGES } from './i18n';
-import { CustomCalendar } from './components/CustomCalendar';
 import { parseISO, format } from 'date-fns';
 import { cn } from './lib/utils';
-import { ThoughtCollector } from './components/ThoughtCollector';
-import { GoodDeedCollector } from './components/GoodDeedCollector';
-import { AuthModal } from './components/AuthModal';
-import { ChangePasswordModal } from './components/ChangePasswordModal';
-import { ExportModal } from './components/ExportModal';
-import { InstallAppModal } from './components/InstallAppModal';
-import { LegalModals } from './components/LegalModals';
-import { RejoiceModal } from './components/RejoiceModal';
 import { ChantingProvider } from './features/chanting/ChantingContext';
 import { ZenOnboarding } from './components/ZenOnboarding';
 import { identityService } from './services/identityService';
-import { Country, City } from 'country-state-city';
-import { DeleteAccountPage } from './components/DeleteAccountPage';
+import { Country, City } from './utils/locationData';
+
+// Lazy-loaded components for optimal mobile Safari startup performance
+const Meditation = React.lazy(() => import('./components/Meditation').then(m => ({ default: m.Meditation })));
+const VowPractice = React.lazy(() => import('./components/vow/VowPractice').then(m => ({ default: m.VowPractice })));
+const MeritMap = React.lazy(() => import('./components/MeritMap').then(m => ({ default: m.MeritMap })));
+const ExportModal = React.lazy(() => import('./components/ExportModal').then(m => ({ default: m.ExportModal })));
+const CustomCalendar = React.lazy(() => import('./components/CustomCalendar').then(m => ({ default: m.CustomCalendar })));
+const ThoughtCollector = React.lazy(() => import('./components/ThoughtCollector').then(m => ({ default: m.ThoughtCollector })));
+const GoodDeedCollector = React.lazy(() => import('./components/GoodDeedCollector').then(m => ({ default: m.GoodDeedCollector })));
+const AudioManagement = React.lazy(() => import('./components/AudioManagement').then(m => ({ default: m.AudioManagement })));
+const AuthModal = React.lazy(() => import('./components/AuthModal').then(m => ({ default: m.AuthModal })));
+const ChangePasswordModal = React.lazy(() => import('./components/ChangePasswordModal').then(m => ({ default: m.ChangePasswordModal })));
+const InstallAppModal = React.lazy(() => import('./components/InstallAppModal').then(m => ({ default: m.InstallAppModal })));
+const LegalModals = React.lazy(() => import('./components/LegalModals').then(m => ({ default: m.LegalModals })));
+const RejoiceModal = React.lazy(() => import('./components/RejoiceModal').then(m => ({ default: m.RejoiceModal })));
+const DeleteAccountPage = React.lazy(() => import('./components/DeleteAccountPage').then(m => ({ default: m.DeleteAccountPage })));
+import { safeStorage } from './utils/safeStorage';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 interface CommunityPost {
   id: number | string;
@@ -58,9 +61,19 @@ const LEVELS = [
 
 const ALL_COUNTRIES = Country.getAllCountries();
 
+const ZenSuspenseFallback: React.FC<{ text?: string }> = ({ text = "正在静心载入..." }) => (
+  <div className="flex flex-col items-center justify-center min-h-[220px] p-6 text-center animate-fade-in">
+    <div className="w-10 h-10 rounded-full bg-zen-accent/10 border border-zen-accent/20 flex items-center justify-center text-zen-accent mb-3 animate-pulse">
+      <Sparkles className="w-5 h-5" />
+    </div>
+    <p className="text-xs font-serif text-zen-accent/70 tracking-widest">{text}</p>
+  </div>
+);
+
 // Trigger Vercel Production Deployment
 export default function App() {
   const [isDeleteAccountRoute, setIsDeleteAccountRoute] = useState(false);
+  const [isAppReady, setIsAppReady] = useState(false);
 
   useEffect(() => {
     if (window.location.pathname === '/delete-account' || window.location.pathname === '/delete-account.html') {
@@ -68,22 +81,30 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    // Safari optimization: yield to browser loop before rendering heavy tree to avoid blank freeze
+    const timer = setTimeout(() => {
+      setIsAppReady(true);
+    }, 40);
+    return () => clearTimeout(timer);
+  }, []);
+
   const woodenFishRef = useRef<HTMLDivElement>(null);
   const { t, language, setLanguage } = useTranslation();
 
-  const [personalVow, setPersonalVow] = useState(() => localStorage.getItem('personal_vow') || "");
+  const [personalVow, setPersonalVow] = useState(() => safeStorage.getItem('personal_vow') || "");
   const [isVowExpanded, setIsVowExpanded] = useState(false);
 
   useEffect(() => {
     const handleVowUpdate = () => {
-      setPersonalVow(localStorage.getItem('personal_vow') || "");
+      setPersonalVow(safeStorage.getItem('personal_vow') || "");
     };
     window.addEventListener('vow_updated', handleVowUpdate);
     return () => window.removeEventListener('vow_updated', handleVowUpdate);
   }, []);
 
   const [count, setCount] = useState(() => {
-    const saved = localStorage.getItem('zen_count');
+    const saved = safeStorage.getItem('zen_count');
     return saved ? parseInt(saved, 10) : 0;
   });
   
@@ -92,10 +113,14 @@ export default function App() {
   const [rejoiceId, setRejoiceId] = useState<string | null>(null);
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const rejoice = urlParams.get('rejoice');
-    if (rejoice) {
-      setRejoiceId(rejoice);
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const rejoice = urlParams.get('rejoice');
+      if (rejoice) {
+        setRejoiceId(rejoice);
+      }
+    } catch (e) {
+      console.warn("URL params notice:", e);
     }
   }, []);
 
@@ -103,22 +128,17 @@ export default function App() {
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
   const [selectedScripture, setSelectedScripture] = useState<Scripture>(getScriptures('zh-CN')[0]);
   const [selectedChant, setSelectedChant] = useState<string>(() => {
-    return localStorage.getItem('zen_selected_chant') || "功德 +1";
+    return safeStorage.getItem('zen_selected_chant') || "功德 +1";
   });
 
   const [customScriptures, setCustomScriptures] = useState<Scripture[]>(() => {
-    const saved = localStorage.getItem('zen_custom_scriptures');
-    return saved ? JSON.parse(saved) : [];
+    return safeStorage.getJSON<Scripture[]>('zen_custom_scriptures', []);
   });
-
-  if (isDeleteAccountRoute) {
-    return <DeleteAccountPage />;
-  }
 
   const allScriptures = [...getScriptures(language), ...customScriptures];
 
   const [activeScriptureId, setActiveScriptureId] = useState<string>(() => {
-    return localStorage.getItem('zen_active_scripture_id') || getScriptures('zh-CN')[0].id;
+    return safeStorage.getItem('zen_active_scripture_id') || getScriptures('zh-CN')[0].id;
   });
 
   const [scriptureGoals, setScriptureGoals] = useState<Record<string, number>>(() => {
@@ -153,33 +173,52 @@ export default function App() {
   const [showAddScripture, setShowAddScripture] = useState(false);
 
   const [volume, setVolume] = useState(() => {
-    const saved = localStorage.getItem('zen_volume');
-    return saved ? parseFloat(saved) : 0.8;
+    try {
+      const saved = safeStorage.getItem('zen_volume');
+      return saved ? parseFloat(saved) : 0.8;
+    } catch {
+      return 0.8;
+    }
   });
 
   const [soundType, setSoundType] = useState<'standard' | 'crisp' | 'deep'>(() => {
-    const saved = localStorage.getItem('zen_sound_type');
-    return (saved as 'standard' | 'crisp' | 'deep') || 'standard';
+    try {
+      const saved = safeStorage.getItem('zen_sound_type');
+      return (saved as 'standard' | 'crisp' | 'deep') || 'standard';
+    } catch {
+      return 'standard';
+    }
   });
 
   const [customChants, setCustomChants] = useState<string[]>(() => {
-    const saved = localStorage.getItem('zen_custom_chants');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      return safeStorage.getJSON<string[]>('zen_custom_chants', []);
+    } catch {
+      return [];
+    }
   });
 
   const [theme, setTheme] = useState<'zen' | 'lotus' | 'sky' | 'dark'>(() => {
-    return (localStorage.getItem('zen_theme') as any) || 'zen';
+    try {
+      return (safeStorage.getItem('zen_theme') as any) || 'zen';
+    } catch {
+      return 'zen';
+    }
   });
   const [isSharing, setIsSharing] = useState(false);
 
   const [userProfile, setUserProfile] = useState(() => {
-    const saved = localStorage.getItem('zen_user_profile');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.gender === 'other') {
-        parsed.gender = '';
+    try {
+      const saved = safeStorage.getItem('zen_user_profile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.gender === 'other') {
+          parsed.gender = '';
+        }
+        return parsed;
       }
-      return parsed;
+    } catch (e) {
+      console.warn("User profile load error:", e);
     }
     return {
       name: '',
@@ -191,28 +230,36 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem('zen_user_profile', JSON.stringify(userProfile));
-    window.dispatchEvent(new CustomEvent('user_profile_updated'));
-    // Update community posts if the user's name changed
-    setCommunityPosts(prev => prev.map(post => {
-      if (post.isUserPost) {
-        return { ...post, userName: userProfile.name || "静心居士" };
-      }
-      return post;
-    }));
+    try {
+      safeStorage.setJSON('zen_user_profile', userProfile);
+      window.dispatchEvent(new CustomEvent('user_profile_updated'));
+      // Update community posts if the user's name changed
+      setCommunityPosts(prev => prev.map(post => {
+        if (post.isUserPost) {
+          return { ...post, userName: userProfile.name || "静心居士" };
+        }
+        return post;
+      }));
+    } catch (e) {
+      console.warn("Save user profile error:", e);
+    }
   }, [userProfile]);
 
   useEffect(() => {
     const handleProfileUpdate = () => {
-      const saved = localStorage.getItem('zen_user_profile');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setUserProfile((prev: any) => {
-          if (JSON.stringify(prev) !== JSON.stringify(parsed)) {
-            return parsed;
-          }
-          return prev;
-        });
+      try {
+        const saved = safeStorage.getItem('zen_user_profile');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setUserProfile((prev: any) => {
+            if (JSON.stringify(prev) !== JSON.stringify(parsed)) {
+              return parsed;
+            }
+            return prev;
+          });
+        }
+      } catch (e) {
+        console.warn("Profile update notice:", e);
       }
     };
     window.addEventListener('user_profile_updated', handleProfileUpdate);
@@ -220,54 +267,97 @@ export default function App() {
   }, []);
 
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>(() => {
-    return (localStorage.getItem('zen_font_size') as any) || 'medium';
+    try {
+      return (safeStorage.getItem('zen_font_size') as any) || 'medium';
+    } catch {
+      return 'medium';
+    }
   });
 
   // Removed internal language state as it is now managed by useTranslation hook
 
   const [woodenFishAppearance, setWoodenFishAppearance] = useState<'fish' | 'lotus' | 'bowl'>(() => {
-    return (localStorage.getItem('zen_fish_appearance') as any) || 'lotus';
+    try {
+      return (safeStorage.getItem('zen_fish_appearance') as any) || 'lotus';
+    } catch {
+      return 'lotus';
+    }
   });
 
   const [meditationWoodenFishAppearance, setMeditationWoodenFishAppearance] = useState<'fish' | 'lotus' | 'bowl'>(() => {
-    return (localStorage.getItem('zen_meditation_fish_appearance') as any) || 'lotus';
+    try {
+      return (safeStorage.getItem('zen_meditation_fish_appearance') as any) || 'lotus';
+    } catch {
+      return 'lotus';
+    }
   });
 
   const [dedications, setDedications] = useState<{id: string, content: string, isDefault: boolean}[]>(() => {
-    const saved = localStorage.getItem('zen_dedications');
-    return saved ? JSON.parse(saved) : [
-      {
-        id: 'default',
-        content: "愿以此功德，庄严佛净土。\n上报四重恩，下济三途苦。\n若有见闻者，悉发菩提心。\n尽此一报身，同生极乐国。",
-        isDefault: true
-      }
-    ];
+    try {
+      return safeStorage.getJSON<{id: string, content: string, isDefault: boolean}[]>('zen_dedications', [
+        {
+          id: 'default',
+          content: "愿以此功德，庄严佛净土。\n上报四重恩，下济三途苦。\n若有见闻者，悉发菩提心。\n尽此一报身，同生极乐国。",
+          isDefault: true
+        }
+      ]);
+    } catch {
+      return [
+        {
+          id: 'default',
+          content: "愿以此功德，庄严佛净土。\n上报四重恩，下济三途苦。\n若有见闻者，悉发菩提心。\n尽此一报身，同生极乐国。",
+          isDefault: true
+        }
+      ];
+    }
   });
 
   const [vows, setVows] = useState<{id: string, content: string, isDefault: boolean}[]>(() => {
-    const saved = localStorage.getItem('zen_vows');
-    return saved ? JSON.parse(saved) : [
-      {
-        id: 'default',
-        content: "众生无边誓愿度，\n烦恼无尽誓愿断，\n法门无量誓愿学，\n佛道无上誓愿成。",
-        isDefault: true
-      }
-    ];
+    try {
+      return safeStorage.getJSON<{id: string, content: string, isDefault: boolean}[]>('zen_vows', [
+        {
+          id: 'default',
+          content: "众生无边誓愿度，\n烦恼无尽誓愿断，\n法门无量誓愿学，\n佛道无上誓愿成。",
+          isDefault: true
+        }
+      ]);
+    } catch {
+      return [
+        {
+          id: 'default',
+          content: "众生无边誓愿度，\n烦恼无尽誓愿断，\n法门无量誓愿学，\n佛道无上誓愿成。",
+          isDefault: true
+        }
+      ];
+    }
   });
 
   const [meditationDedications, setMeditationDedications] = useState<{id: string, content: string, isDefault: boolean}[]>(() => {
-    const saved = localStorage.getItem('zen_meditation_dedications');
-    return saved ? JSON.parse(saved) : [
-      {
-        id: 'default',
-        content: "愿以此禅修功德，\n回向法界众生，\n身心清净，\n福慧增长。",
-        isDefault: true
-      }
-    ];
+    try {
+      return safeStorage.getJSON<{id: string, content: string, isDefault: boolean}[]>('zen_meditation_dedications', [
+        {
+          id: 'default',
+          content: "愿以此禅修功德，\n回向法界众生，\n身心清净，\n福慧增长。",
+          isDefault: true
+        }
+      ]);
+    } catch {
+      return [
+        {
+          id: 'default',
+          content: "愿以此禅修功德，\n回向法界众生，\n身心清净，\n福慧增长。",
+          isDefault: true
+        }
+      ];
+    }
   });
 
   useEffect(() => {
-    localStorage.setItem('zen_meditation_dedications', JSON.stringify(meditationDedications));
+    try {
+      safeStorage.setJSON('zen_meditation_dedications', meditationDedications);
+    } catch (e) {
+      console.warn("Save meditation dedications error:", e);
+    }
   }, [meditationDedications]);
 
   // Legacy state support (can be removed later or used for migration)
@@ -283,14 +373,21 @@ export default function App() {
   const [sessionTimeLeft, setSessionTimeLeft] = useState<number | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => {
-    return !localStorage.getItem('zen_onboarding_seen');
+    try {
+      return !safeStorage.getItem('zen_onboarding_seen');
+    } catch {
+      return false;
+    }
   });
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [sessionFlowStep, setSessionFlowStep] = useState<'none' | 'dedication' | 'vow' | 'summary'>('none');
   const [lastSession, setLastSession] = useState<any>(null);
   const [history, setHistory] = useState<any[]>(() => {
-    const saved = localStorage.getItem('zen_history');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      return safeStorage.getJSON<any[]>('zen_history', []);
+    } catch {
+      return [];
+    }
   });
 
   const { user: fbUser } = useFirebase();
@@ -492,8 +589,12 @@ export default function App() {
   };
 
   const [userExp, setUserExp] = useState(() => {
-    const saved = localStorage.getItem('zen_user_exp');
-    return saved ? parseInt(saved, 10) : 0;
+    try {
+      const saved = safeStorage.getItem('zen_user_exp');
+      return saved ? parseInt(saved, 10) : 0;
+    } catch {
+      return 0;
+    }
   });
 
   const currentLevel = LEVELS.slice().reverse().find(l => userExp >= l.minExp) || LEVELS[0];
@@ -503,14 +604,21 @@ export default function App() {
     : 100;
 
   const [userStats, setUserStats] = useState<Record<string, number>>(() => {
-    const saved = localStorage.getItem('zen_user_stats');
-    return saved ? JSON.parse(saved) : {};
+    try {
+      return safeStorage.getJSON<Record<string, number>>('zen_user_stats', {});
+    } catch {
+      return {};
+    }
   });
 
   const [rejoiceStats, setRejoiceStats] = useState(practiceService.getRejoiceStats());
 
   useEffect(() => {
-    localStorage.setItem('zen_user_stats', JSON.stringify(userStats));
+    try {
+      safeStorage.setJSON('zen_user_stats', userStats);
+    } catch (e) {
+      console.warn("Save user stats notice:", e);
+    }
   }, [userStats]);
 
   const triggerLevelUpAnimation = (msg: string) => {
@@ -541,8 +649,10 @@ export default function App() {
   );
 
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(() => {
-    const saved = localStorage.getItem('zen_community_posts');
-    if (saved) return JSON.parse(saved);
+    try {
+      const saved = safeStorage.getJSON<CommunityPost[] | null>('zen_community_posts', null);
+      if (saved && Array.isArray(saved) && saved.length > 0) return saved;
+    } catch {}
     // Initial fake data
     return [
       { id: 1, userName: userProfile.name || "静心居士", chant: "心经", count: 7, dedication: "愿以此功德，回向给家人身体健康。", likes: 12, timestamp: Date.now() - 3600000, isUserPost: true },
@@ -551,12 +661,20 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem('zen_user_exp', userExp.toString());
-    window.dispatchEvent(new CustomEvent('zen_data_updated'));
+    try {
+      safeStorage.setItem('zen_user_exp', userExp.toString());
+      window.dispatchEvent(new CustomEvent('zen_data_updated'));
+    } catch (e) {
+      console.warn("Save user exp notice:", e);
+    }
   }, [userExp]);
 
   useEffect(() => {
-    localStorage.setItem('zen_community_posts', JSON.stringify(communityPosts));
+    try {
+      safeStorage.setJSON('zen_community_posts', communityPosts);
+    } catch (e) {
+      console.warn("Save community posts notice:", e);
+    }
   }, [communityPosts]);
 
   useEffect(() => {
@@ -690,27 +808,51 @@ export default function App() {
   const dailyTotal = filteredHistory.reduce((sum, item) => sum + item.count, 0);
 
   useEffect(() => {
-    localStorage.setItem('zen_custom_scriptures', JSON.stringify(customScriptures));
+    try {
+      safeStorage.setJSON('zen_custom_scriptures', customScriptures);
+    } catch (e) {
+      console.warn("Save custom scriptures notice:", e);
+    }
   }, [customScriptures]);
 
   useEffect(() => {
-    localStorage.setItem('zen_active_scripture_id', activeScriptureId);
+    try {
+      safeStorage.setItem('zen_active_scripture_id', activeScriptureId);
+    } catch (e) {
+      console.warn("Save active scripture id notice:", e);
+    }
   }, [activeScriptureId]);
 
   useEffect(() => {
-    localStorage.setItem('zen_count', count.toString());
+    try {
+      safeStorage.setItem('zen_count', count.toString());
+    } catch (e) {
+      console.warn("Save count notice:", e);
+    }
   }, [count]);
 
   useEffect(() => {
-    localStorage.setItem('zen_volume', volume.toString());
+    try {
+      safeStorage.setItem('zen_volume', volume.toString());
+    } catch (e) {
+      console.warn("Save volume notice:", e);
+    }
   }, [volume]);
 
   useEffect(() => {
-    localStorage.setItem('zen_sound_type', soundType);
+    try {
+      safeStorage.setItem('zen_sound_type', soundType);
+    } catch (e) {
+      console.warn("Save sound type notice:", e);
+    }
   }, [soundType]);
 
   useEffect(() => {
-    localStorage.setItem('zen_theme', theme);
+    try {
+      safeStorage.setItem('zen_theme', theme);
+    } catch (e) {
+      console.warn("Save theme notice:", e);
+    }
     // Apply theme colors
     const root = document.documentElement;
     if (theme === 'zen') {
@@ -733,7 +875,11 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem('zen_font_size', fontSize);
+    try {
+      safeStorage.setItem('zen_font_size', fontSize);
+    } catch (e) {
+      console.warn("Save font size notice:", e);
+    }
     const root = document.documentElement;
     if (fontSize === 'small') {
       root.style.fontSize = '14px';
@@ -747,39 +893,75 @@ export default function App() {
   // Language persistence is handled by useTranslation hook
 
   useEffect(() => {
-    localStorage.setItem('zen_fish_appearance', woodenFishAppearance);
+    try {
+      safeStorage.setItem('zen_fish_appearance', woodenFishAppearance);
+    } catch (e) {
+      console.warn("Save fish appearance notice:", e);
+    }
   }, [woodenFishAppearance]);
 
   useEffect(() => {
-    localStorage.setItem('zen_meditation_fish_appearance', meditationWoodenFishAppearance);
+    try {
+      safeStorage.setItem('zen_meditation_fish_appearance', meditationWoodenFishAppearance);
+    } catch (e) {
+      console.warn("Save meditation fish appearance notice:", e);
+    }
   }, [meditationWoodenFishAppearance]);
 
   useEffect(() => {
-    localStorage.setItem('zen_dedications', JSON.stringify(dedications));
+    try {
+      safeStorage.setJSON('zen_dedications', dedications);
+    } catch (e) {
+      console.warn("Save dedications notice:", e);
+    }
   }, [dedications]);
 
   useEffect(() => {
-    localStorage.setItem('zen_vows', JSON.stringify(vows));
+    try {
+      safeStorage.setJSON('zen_vows', vows);
+    } catch (e) {
+      console.warn("Save vows notice:", e);
+    }
   }, [vows]);
 
   useEffect(() => {
-    localStorage.setItem('zen_custom_chants', JSON.stringify(customChants));
+    try {
+      safeStorage.setJSON('zen_custom_chants', customChants);
+    } catch (e) {
+      console.warn("Save custom chants notice:", e);
+    }
   }, [customChants]);
 
   useEffect(() => {
-    localStorage.setItem('zen_custom_dedication', customDedication);
+    try {
+      safeStorage.setItem('zen_custom_dedication', customDedication);
+    } catch (e) {
+      console.warn("Save custom dedication notice:", e);
+    }
   }, [customDedication]);
 
   useEffect(() => {
-    localStorage.setItem('zen_custom_vow', customVow);
+    try {
+      safeStorage.setItem('zen_custom_vow', customVow);
+    } catch (e) {
+      console.warn("Save custom vow notice:", e);
+    }
   }, [customVow]);
 
   useEffect(() => {
-    localStorage.setItem('zen_selected_chant', selectedChant);
+    try {
+      safeStorage.setItem('zen_selected_chant', selectedChant);
+    } catch (e) {
+      console.warn("Save selected chant notice:", e);
+    }
   }, [selectedChant]);
 
   useEffect(() => {
-    localStorage.setItem('zen_history', JSON.stringify(history));
+    try {
+      safeStorage.setJSON('zen_history', history);
+    } catch (e) {
+      console.warn("Save history notice:", e);
+    }
   }, [history]);
 
   useEffect(() => {
@@ -844,7 +1026,11 @@ export default function App() {
   const [showGoalAchievedModal, setShowGoalAchievedModal] = useState(false);
 
   const resetAccount = async () => {
-    localStorage.clear();
+    try {
+      safeStorage.clear();
+    } catch (e) {
+      console.warn("Storage clear notice:", e);
+    }
     await auth.signOut();
     window.location.reload();
   };
@@ -1030,7 +1216,11 @@ export default function App() {
   const buddhaNames = getScriptures(language).filter(s => s.category === 'name');
 
   const finishOnboarding = () => {
-    localStorage.setItem('zen_onboarding_seen', 'true');
+    try {
+      safeStorage.setItem('zen_onboarding_seen', 'true');
+    } catch (e) {
+      console.warn("Storage set notice:", e);
+    }
     setShowOnboarding(false);
   };
 
@@ -1077,6 +1267,28 @@ export default function App() {
     const selectedCountry = ALL_COUNTRIES.find(c => c.name === userProfile.country);
     return selectedCountry ? selectedCountry.isoCode : '';
   }, [userProfile.country]);
+
+  if (isDeleteAccountRoute) {
+    return (
+      <React.Suspense fallback={<div className="min-h-screen bg-[#f5f5f0] flex items-center justify-center p-6 text-sm text-[#5A5A40]">载入中...</div>}>
+        <DeleteAccountPage />
+      </React.Suspense>
+    );
+  }
+
+  if (!isAppReady) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#f5f5f0] text-[#2c2c2c] p-6 selection:bg-[#5A5A40]/20 font-serif">
+        <div className="relative flex items-center justify-center mb-6">
+          <div className="w-16 h-16 rounded-full bg-[#5A5A40]/10 border border-[#5A5A40]/20 flex items-center justify-center text-[#5A5A40] animate-pulse">
+            <Sparkles className="w-8 h-8" />
+          </div>
+        </div>
+        <h1 className="text-xl tracking-widest font-serif text-[#2c2c2c] mb-2 font-medium">愿禅助手</h1>
+        <p className="text-xs tracking-widest text-[#5A5A40]/70 font-light">一念清净 · 福慧双修</p>
+      </div>
+    );
+  }
 
   return (
     <ChantingProvider>
@@ -1422,8 +1634,10 @@ export default function App() {
                 </p>
               </div>
               
-              <ThoughtCollector className="!p-1.5 sm:!px-3 sm:!py-1.5 !text-xs rounded-full sm:rounded-full" iconOnlyOnMobile={true} />
-              <GoodDeedCollector />
+              <React.Suspense fallback={null}>
+                <ThoughtCollector className="!p-1.5 sm:!px-3 sm:!py-1.5 !text-xs rounded-full sm:rounded-full" iconOnlyOnMobile={true} />
+                <GoodDeedCollector />
+              </React.Suspense>
 
               <button
                 onClick={async () => {
@@ -1969,22 +2183,23 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="w-full space-y-8"
             >
-              <Meditation onFinish={(session) => {
-                const newSession = {
-                  id: Date.now(),
-                  chant: session.trackTitle,
-                  count: Math.floor(session.duration / 60),
-                  startTime: Date.now() - session.duration * 1000,
-                  endTime: Date.now(),
-                  duration: session.duration,
-                  dedication: session.dedication,
-                  vow: session.vow,
-                  type: '禅修',
-                  source: '禅修',
-                };
-                addHistoryItem(newSession);
-              }} />
-              
+              <React.Suspense fallback={<ZenSuspenseFallback text="正在载入禅修空间..." />}>
+                <Meditation onFinish={(session) => {
+                  const newSession = {
+                    id: Date.now(),
+                    chant: session.trackTitle,
+                    count: Math.floor(session.duration / 60),
+                    startTime: Date.now() - session.duration * 1000,
+                    endTime: Date.now(),
+                    duration: session.duration,
+                    dedication: session.dedication,
+                    vow: session.vow,
+                    type: '禅修',
+                    source: '禅修',
+                  };
+                  addHistoryItem(newSession);
+                }} />
+              </React.Suspense>
             </motion.div>
           )}
 
@@ -1996,11 +2211,13 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="w-full"
             >
-              <VowPractice 
-                initialSection={vowInitialSection} 
-                user={user} 
-                onLevelUp={triggerLevelUpAnimation} 
-              />
+              <React.Suspense fallback={<ZenSuspenseFallback text="正在载入发愿修行..." />}>
+                <VowPractice 
+                  initialSection={vowInitialSection} 
+                  user={user} 
+                  onLevelUp={triggerLevelUpAnimation} 
+                />
+              </React.Suspense>
             </motion.div>
           )}
 
@@ -2013,7 +2230,9 @@ export default function App() {
               transition={{ duration: 0.3 }}
               className="h-full"
             >
-              <MeritMap theme={theme} />
+              <React.Suspense fallback={<div className="flex items-center justify-center min-h-[300px] text-zen-accent/60">正在加载功德地图...</div>}>
+                <MeritMap theme={theme} />
+              </React.Suspense>
             </motion.div>
           )}
 
@@ -2086,14 +2305,16 @@ export default function App() {
                                 exit={{ opacity: 0, y: 10 }}
                                 className="absolute right-0 top-full mt-2 z-50"
                               >
-                                <CustomCalendar 
-                                  selectedDate={parseISO(selectedDate)} 
-                                  onSelectDate={(date: any) => {
-                                    setSelectedDate(format(date, 'yyyy-MM-dd'));
-                                    setShowCalendarModal(false);
-                                  }}
-                                  recordDates={recordDates}
-                                />
+                                <React.Suspense fallback={<div className="p-4 bg-white rounded-2xl shadow-md text-xs text-zen-accent/60 text-center">日历载入中...</div>}>
+                                  <CustomCalendar 
+                                    selectedDate={parseISO(selectedDate)} 
+                                    onSelectDate={(date: any) => {
+                                      setSelectedDate(format(date, 'yyyy-MM-dd'));
+                                      setShowCalendarModal(false);
+                                    }}
+                                    recordDates={recordDates}
+                                  />
+                                </React.Suspense>
                               </motion.div>
                             )}
                           </AnimatePresence>
@@ -2387,14 +2608,16 @@ export default function App() {
                               exit={{ opacity: 0, y: 10 }}
                               className="absolute right-0 top-full mt-2 z-50"
                             >
-                              <CustomCalendar 
-                                selectedDate={parseISO(communitySelectedDate)} 
-                                onSelectDate={(date: any) => {
-                                  setCommunitySelectedDate(format(date, 'yyyy-MM-dd'));
-                                  setShowCommunityCalendarModal(false);
-                                }}
-                                recordDates={[]}
-                              />
+                              <React.Suspense fallback={<div className="p-4 bg-white rounded-2xl shadow-md text-xs text-zen-accent/60 text-center">日历载入中...</div>}>
+                                <CustomCalendar 
+                                  selectedDate={parseISO(communitySelectedDate)} 
+                                  onSelectDate={(date: any) => {
+                                    setCommunitySelectedDate(format(date, 'yyyy-MM-dd'));
+                                    setShowCommunityCalendarModal(false);
+                                  }}
+                                  recordDates={[]}
+                                />
+                              </React.Suspense>
                             </motion.div>
                           )}
                         </AnimatePresence>
@@ -2482,8 +2705,7 @@ export default function App() {
                           setRejoiceStats(practiceService.getRejoiceStats());
                           
                           // Add to good deed history
-                          const saved = localStorage.getItem('good_deed_history');
-                          const history = saved ? JSON.parse(saved) : [];
+                          const history = safeStorage.getJSON<any[]>('good_deed_history', []);
                           const now = new Date();
                           const offset = now.getTimezoneOffset() * 60000;
                           const localDate = new Date(now.getTime() - offset).toISOString().slice(0, 16);
@@ -2515,7 +2737,7 @@ export default function App() {
                           };
                           
                           const newHistory = [newEntry, ...history].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
-                          localStorage.setItem('good_deed_history', JSON.stringify(newHistory));
+                          safeStorage.setJSON('good_deed_history', newHistory);
                           
                           if (fbUser) {
                             try {
@@ -2564,7 +2786,9 @@ export default function App() {
                         <Music className="w-5 h-5 text-zen-accent" />
                         音频管理 (Admin)
                       </h2>
-                      <AudioManagement />
+                      <React.Suspense fallback={<div className="p-4 text-center text-xs text-zen-accent/60">加载音频管理...</div>}>
+                        <AudioManagement />
+                      </React.Suspense>
                     </div>
                   )}
                   {/* User Profile */}
@@ -3303,8 +3527,16 @@ export default function App() {
                               </button>
                               <button 
                                 onClick={() => {
-                                  localStorage.clear();
-                                  indexedDB.deleteDatabase('ZenMeditationDB');
+                                  try {
+                                    safeStorage.clear();
+                                  } catch (e) {
+                                    console.warn("Storage clear notice:", e);
+                                  }
+                                  try {
+                                    indexedDB.deleteDatabase('ZenMeditationDB');
+                                  } catch (e) {
+                                    console.warn("IndexedDB delete notice:", e);
+                                  }
                                   window.location.reload();
                                 }}
                                 className="flex-1 bg-red-500 text-white py-3 rounded-2xl font-bold hover:bg-red-600 transition-colors text-sm"
@@ -3420,8 +3652,8 @@ export default function App() {
                               数据删除政策 (Data Deletion Policy)
                             </button>
                           </div>
-                          <p className="text-xs text-zen-accent/40 font-mono">
-                            Version 1.0.0
+                          <p className="text-xs text-zen-accent/50 font-mono">
+                            v2.5.0-opt (2026.11.12 · 极速轻量版)
                           </p>
                         </div>
                       </div>
@@ -3656,33 +3888,36 @@ export default function App() {
           ))}
         </div>
       </nav>
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
-      <ChangePasswordModal isOpen={showChangePasswordModal} onClose={() => setShowChangePasswordModal(false)} />
-      <ExportModal isOpen={showExportModal} onClose={() => setShowExportModal(false)} />
-      <InstallAppModal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} />
-      <LegalModals />
-      {rejoiceId && (
-        <RejoiceModal 
-          shareId={rejoiceId} 
-          onClose={() => setRejoiceId(null)} 
-          onViewCommunity={() => setActiveTab('community')}
-          onPractice={(chantTitle: any) => {
-            if (chantTitle) {
-              const scripture = allScriptures.find(s => s.title === chantTitle || chantTitle.includes(s.title));
-              if (scripture) {
-                setActiveScriptureId(scripture.id);
-                if (scripture.category === 'meditation') {
-                  setActiveTab('meditation');
-                } else {
-                  setActiveTab('fish');
+      <React.Suspense fallback={null}>
+        <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+        <ChangePasswordModal isOpen={showChangePasswordModal} onClose={() => setShowChangePasswordModal(false)} />
+        <ExportModal isOpen={showExportModal} onClose={() => setShowExportModal(false)} />
+        <InstallAppModal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} />
+        <LegalModals />
+        {rejoiceId && (
+          <RejoiceModal 
+            shareId={rejoiceId} 
+            onClose={() => setRejoiceId(null)} 
+            onViewCommunity={() => setActiveTab('community')}
+            onPractice={(chantTitle: any) => {
+              if (chantTitle) {
+                const scripture = allScriptures.find(s => s.title === chantTitle || chantTitle.includes(s.title));
+                if (scripture) {
+                  setActiveScriptureId(scripture.id);
+                  if (scripture.category === 'meditation') {
+                    setActiveTab('meditation');
+                  } else {
+                    setActiveTab('fish');
+                  }
+                  return;
                 }
-                return;
               }
-            }
-            setActiveTab('fish');
-          }}
-        />
-      )}
+              setActiveTab('fish');
+            }}
+          />
+        )}
+      </React.Suspense>
+      <OfflineIndicator />
       <Toaster />
       </div>
     </ChantingProvider>

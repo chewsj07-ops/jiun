@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 import { practiceService } from '../services/practiceService';
+import { audioStreamService } from '../services/audioStreamService';
 
 const TRACKS: any[] = [];
 
@@ -38,10 +39,45 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
 
   // Sound effect for completion
   const completionSoundRef = useRef<HTMLAudioElement | null>(null);
+  const wakeLockRef = useRef<any>(null);
+  const endTimeRef = useRef<number | null>(null);
+
+  // Universal Web Audio singing bowl bell (works on iOS Safari and all browsers without network/ogg dependencies)
+  const playZenBell = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(528, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(132, ctx.currentTime + 3.2);
+
+      gain.gain.setValueAtTime(0.35, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 3.2);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 3.3);
+    } catch (e) {
+      console.warn("Web Audio chime notice:", e);
+    }
+  };
 
   useEffect(() => {
-    completionSoundRef.current = new Audio('https://actions.google.com/sounds/v1/bells/toll_bell.ogg'); // Gentle bell sound
-    completionSoundRef.current.volume = 0.5;
+    try {
+      completionSoundRef.current = new Audio('https://actions.google.com/sounds/v1/bells/toll_bell.ogg');
+      completionSoundRef.current.volume = 0.5;
+    } catch (e) {
+      console.warn("HTML Audio init notice:", e);
+    }
   }, []);
   const DB_NAME = 'ZenMeditationDB';
   const STORE_NAME = 'tracks';
@@ -111,15 +147,26 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
 
   // Load tracks from Firestore
   useEffect(() => {
-    const q = query(collection(db, 'audioResources'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setFirestoreTracks(snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        url: doc.data().audioUrl,
-        isUrl: true
-      })));
-    });
+    let unsubscribe = () => {};
+    try {
+      const q = query(collection(db, 'audioResources'), orderBy('createdAt', 'desc'));
+      unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          setFirestoreTracks(snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            url: doc.data().audioUrl,
+            isUrl: true
+          })));
+        },
+        (error) => {
+          console.warn("Firestore audioResources snapshot warning:", error);
+        }
+      );
+    } catch (err) {
+      console.warn("Failed to subscribe to audioResources:", err);
+    }
     return () => unsubscribe();
   }, []);
 
@@ -152,10 +199,10 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
 
   const allTracks = [...firestoreTracks, ...localTracks, ...TRACKS].sort((a, b) => {
     if (sortOrder === 'name') {
-      return a.title.localeCompare(b.title);
+      return String(a?.title || '').localeCompare(String(b?.title || ''));
     }
     // Default: newest first (based on id which contains timestamp for local tracks)
-    return b.id.localeCompare(a.id);
+    return String(b?.id || '').localeCompare(String(a?.id || ''));
   });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -320,42 +367,84 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
     return () => clearTimeout(timeout);
   }, [isPlaying, t]);
 
+  // Screen Wake Lock & drift-proof timer
   useEffect(() => {
     let interval: any;
-    if (isTimerRunning && timeLeft > 0) {
+
+    if (isTimerRunning) {
+      // Request screen wake lock so screen stays on during meditation
+      if ('wakeLock' in navigator && !wakeLockRef.current) {
+        (navigator as any).wakeLock.request('screen')
+          .then((lock: any) => {
+            wakeLockRef.current = lock;
+          })
+          .catch((err: any) => console.warn('WakeLock notice:', err));
+      }
+
+      // Initialize timestamp for drift-free countdown
+      if (!endTimeRef.current || Math.abs(endTimeRef.current - (Date.now() + timeLeft * 1000)) > 2000) {
+        endTimeRef.current = Date.now() + timeLeft * 1000;
+      }
+
       interval = setInterval(() => {
-        setTimeLeft(prev => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0 && isTimerRunning) {
-      setIsTimerRunning(false);
-      setIsPlaying(false);
-      if (audioRef.current) audioRef.current.pause();
-      
-      // Play completion sound
-      if (completionSoundRef.current) {
-        completionSoundRef.current.play().catch(e => {
-          console.error("Failed to play completion sound", e);
-          // Fallback: try playing a new audio instance if the ref one fails
-          const audio = new Audio('https://actions.google.com/sounds/v1/bells/toll_bell.ogg');
-          audio.play().catch(e2 => console.error("Fallback sound failed", e2));
-        });
+        if (!endTimeRef.current) return;
+        const now = Date.now();
+        const diff = Math.max(0, Math.round((endTimeRef.current - now) / 1000));
+        setTimeLeft(diff);
+
+        if (diff <= 0) {
+          clearInterval(interval);
+          endTimeRef.current = null;
+          setIsTimerRunning(false);
+          setIsPlaying(false);
+          if (audioRef.current) audioRef.current.pause();
+
+          // Release screen wake lock
+          if (wakeLockRef.current) {
+            wakeLockRef.current.release().catch(() => {});
+            wakeLockRef.current = null;
+          }
+
+          // Play peaceful completion bell (Web Audio + HTML Audio fallback)
+          playZenBell();
+          if (completionSoundRef.current) {
+            completionSoundRef.current.play().catch(() => {});
+          }
+
+          // Show system notification
+          try {
+            if (window.Notification && Notification.permission === "granted") {
+              new Notification(t('meditation_completed'), { body: t('meditation_title') });
+            }
+          } catch (e) {
+            console.warn("Notification notice:", e);
+          }
+
+          // Record practice progress safely
+          try {
+            practiceService.updateActivity('meditation', selectedDuration);
+            practiceService.logMerit('meditation');
+          } catch (e) {
+            console.warn("Practice record notice:", e);
+          }
+
+          // Show dedication modal
+          setSessionDuration(selectedDuration);
+          setShowDedicationModal(true);
+        }
+      }, 500);
+    } else {
+      endTimeRef.current = null;
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
       }
-
-      // Show notification
-      if (window.Notification && Notification.permission === "granted") {
-        new Notification(t('meditation_completed'), { body: t('meditation_title') });
-      }
-
-      // Record practice progress
-      practiceService.updateActivity('meditation', selectedDuration);
-      practiceService.logMerit('meditation');
-
-      // Show dedication modal
-      setSessionDuration(selectedDuration);
-      setShowDedicationModal(true);
     }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, timeLeft, selectedDuration]);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isTimerRunning, selectedDuration, t]);
 
   const togglePlay = () => {
     if (!isPlaying && window.Notification && Notification.permission !== "granted" && Notification.permission !== "denied") {
@@ -373,6 +462,18 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
 
   const selectTrack = (track: any) => {
     setCurrentTrack(track);
+    
+    // Check local progressive cache for instantaneous playback without redownload
+    if (track.url) {
+      audioStreamService.getCachedAudioUrl(track.url).then((streamUrl) => {
+        setCurrentTrack((prev: any) => {
+          if (prev?.id === track.id) {
+            return { ...prev, streamUrl };
+          }
+          return prev;
+        });
+      }).catch(() => {});
+    }
     
     const saved = lastSavedProgress[track.id];
     
@@ -498,14 +599,28 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
                   <h3 className="text-center font-bold text-zen-accent/80 text-sm">{t('dedication')}</h3>
                   <div className="bg-zen-bg/30 p-4 rounded-2xl border border-zen-accent/5">
                     <p className="text-center font-serif text-zen-ink/80 whitespace-pre-wrap leading-relaxed text-sm">
-                      {JSON.parse(localStorage.getItem('zen_meditation_dedications') || '[]').find((d: any) => d.isDefault)?.content || t('default_meditation_dedication')}
+                      {(() => {
+                        try {
+                          const list = JSON.parse(localStorage.getItem('zen_meditation_dedications') || '[]');
+                          return (Array.isArray(list) ? list.find((d: any) => d?.isDefault)?.content : null) || t('default_meditation_dedication');
+                        } catch {
+                          return t('default_meditation_dedication');
+                        }
+                      })()}
                     </p>
                   </div>
                   
                   <h3 className="text-center font-bold text-zen-accent/80 text-sm mt-4">发愿</h3>
                   <div className="bg-zen-bg/30 p-4 rounded-2xl border border-zen-accent/5">
                     <p className="text-center font-serif text-zen-ink/80 whitespace-pre-wrap leading-relaxed text-sm">
-                      {JSON.parse(localStorage.getItem('zen_vows') || '[]').find((v: any) => v.isDefault)?.content || '愿以此禅修功德，回向法界众生，身心清净，福慧增长。'}
+                      {(() => {
+                        try {
+                          const list = JSON.parse(localStorage.getItem('zen_vows') || '[]');
+                          return (Array.isArray(list) ? list.find((v: any) => v?.isDefault)?.content : null) || '愿以此禅修功德，回向法界众生，身心清净，福慧增长。';
+                        } catch {
+                          return '愿以此禅修功德，回向法界众生，身心清净，福慧增长。';
+                        }
+                      })()}
                     </p>
                   </div>
                 </div>
@@ -517,8 +632,22 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
                     practiceService.updateActivity('dedication', true);
                     setShowDedicationModal(false);
                     if (onFinish) {
-                      const dedication = JSON.parse(localStorage.getItem('zen_meditation_dedications') || '[]').find((d: any) => d.isDefault)?.content || t('default_meditation_dedication');
-                      const vow = JSON.parse(localStorage.getItem('zen_vows') || '[]').find((v: any) => v.isDefault)?.content || '愿以此禅修功德，回向法界众生，身心清净，福慧增长。';
+                      let dedication = t('default_meditation_dedication');
+                      try {
+                        const dList = JSON.parse(localStorage.getItem('zen_meditation_dedications') || '[]');
+                        if (Array.isArray(dList)) {
+                          dedication = dList.find((d: any) => d?.isDefault)?.content || dedication;
+                        }
+                      } catch {}
+
+                      let vow = '愿以此禅修功德，回向法界众生，身心清净，福慧增长。';
+                      try {
+                        const vList = JSON.parse(localStorage.getItem('zen_vows') || '[]');
+                        if (Array.isArray(vList)) {
+                          vow = vList.find((v: any) => v?.isDefault)?.content || vow;
+                        }
+                      } catch {}
+
                       onFinish({
                         duration: sessionDuration,
                         trackTitle: currentTrack?.title || '未知音频',
@@ -540,7 +669,7 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
       {currentTrack && (
         <audio 
           ref={audioRef} 
-          src={currentTrack.url} 
+          src={currentTrack.streamUrl || currentTrack.url} 
           loop={isLooping}
           preload="auto"
           onTimeUpdate={handleTimeUpdate}

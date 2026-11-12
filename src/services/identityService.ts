@@ -1,16 +1,18 @@
+import { safeStorage } from '../utils/safeStorage';
+
 export const identityService = {
   getUserId(): string {
-    let uid = localStorage.getItem('zen_user_id');
+    let uid = safeStorage.getItem('zen_user_id');
     if (!uid || (!uid.startsWith('guest_') && !uid.startsWith('email_') && !uid.startsWith('google_'))) {
-      const randomStr = window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+      const randomStr = typeof window !== 'undefined' && window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
       uid = 'guest_' + randomStr;
-      localStorage.setItem('zen_user_id', uid);
+      safeStorage.setItem('zen_user_id', uid);
     }
     return uid;
   },
   
   setUserId(id: string) {
-    localStorage.setItem('zen_user_id', id);
+    safeStorage.setItem('zen_user_id', id);
   },
 
   logout() {
