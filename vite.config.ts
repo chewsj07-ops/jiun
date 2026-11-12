@@ -82,6 +82,9 @@ export default defineConfig({
       }
     })
   ],
+  server: {
+    hmr: false,
+  },
   build: {
     target: 'es2020',
     chunkSizeWarningLimit: 2000,
