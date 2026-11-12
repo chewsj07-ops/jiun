@@ -18,7 +18,6 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const { t } = useTranslation();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Workflow states
   const [workflowState, setWorkflowState] = useState({
@@ -36,7 +35,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [todayTotalMerit, setTodayTotalMerit] = useState(0);
   const [totalRecordsCount, setTotalRecordsCount] = useState(0);
   const [streakDays, setStreakDays] = useState(1);
-  const [vaultStatusMsg, setVaultStatusMsg] = useState<string | null>(null);
+  const [practicedDates, setPracticedDates] = useState<Set<string>>(new Set());
 
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(true);
 
@@ -47,6 +46,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     // 1. History & Check-in records from recordVault
     const records = await recordVault.getRecords();
     setTotalRecordsCount(records.length);
+
+    const pDates = new Set<string>();
+    records.forEach(h => {
+      const ts = h.endTime || h.timestamp || h.startTime || Number(h.id);
+      if (ts) {
+        pDates.add(new Date(ts).toDateString());
+      }
+    });
+    setPracticedDates(pDates);
 
     const todayItems = records.filter(h => {
       const ts = h.endTime || h.timestamp || h.startTime || Number(h.id);
@@ -203,6 +211,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     e.target.value = '';
   };
 
+  // Calculate 7 days for the current week (Monday to Sunday)
+  const getWeekDays = () => {
+    const now = new Date();
+    const currentDay = now.getDay(); // 0 is Sun, 1 is Mon...
+    const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    monday.setHours(0, 0, 0, 0);
+
+    const labels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    return labels.map((label, index) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + index);
+      const dateStr = d.toDateString();
+      const isToday = dateStr === now.toDateString();
+      const isPast = d < now && !isToday;
+      const isFuture = d > now && !isToday;
+      const hasPracticed = practicedDates.has(dateStr);
+      return {
+        label,
+        dateNum: d.getDate(),
+        fullDate: d,
+        isToday,
+        isPast,
+        isFuture,
+        hasPracticed
+      };
+    });
+  };
+
+  const weekDaysList = getWeekDays();
+  const weekPracticedCount = weekDaysList.filter(d => d.hasPracticed).length;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
@@ -213,97 +254,91 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       {/* 1. Daily Zen Wisdom Quote */}
       <DailyZenQuote />
 
-      {/* 2. Today's Practice Check-in Hub (今日修行打卡看板) */}
-      <div className="bg-white rounded-[32px] p-6 sm:p-7 border border-zen-accent/10 shadow-sm relative overflow-hidden">
-        <div className="flex items-center justify-between mb-5">
+      {/* 2. Weekly Practice Check-in Strip (本周修行打卡 - 一周打卡视图，简洁纯净不冗余) */}
+      <div className="bg-white rounded-[32px] p-5 sm:p-7 border border-zen-accent/10 shadow-sm relative overflow-hidden">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <h2 className="text-lg sm:text-xl font-bold font-serif text-zen-ink">
-                今日修行打卡
+              <h2 className="text-base sm:text-lg font-bold font-serif text-zen-ink">
+                本周修持打卡
               </h2>
             </div>
-            <p className="text-xs text-zen-ink/60 mt-1">
-              日日行持，功不唐捐 · 累计修习中
+            <p className="text-xs text-zen-ink/60 mt-0.5">
+              本周已践行 {weekPracticedCount} / 7 天 · 步步踏实
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 rounded-full border border-amber-200/60 text-amber-800 text-xs font-semibold">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 rounded-full border border-amber-200/60 text-amber-900 text-xs font-bold">
             <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
-            <span>连续修持 {streakDays} 天</span>
+            <span>连续打卡 {streakDays} 天</span>
           </div>
         </div>
 
-        {/* 4 Core Stat Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div 
-            onClick={() => onNavigate?.('fish')}
-            className="cursor-pointer bg-gradient-to-br from-amber-50/60 to-white p-3.5 rounded-2xl border border-amber-100/70 hover:shadow-sm transition-all"
-          >
-            <div className="text-[11px] font-semibold text-amber-800/70 flex items-center gap-1">
-              <Heart className="w-3.5 h-3.5 text-amber-600 fill-current" />
-              木鱼念诵
-            </div>
-            <div className="mt-2 text-2xl font-serif font-bold text-amber-900">
-              {todayChantCount}
-              <span className="text-xs font-normal text-amber-700/60 ml-1">次</span>
-            </div>
-          </div>
+        {/* 7-Day Weekly Grid (周一至周日) */}
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2 mb-5">
+          {weekDaysList.map((day, idx) => (
+            <div
+              key={idx}
+              className={cn(
+                "flex flex-col items-center py-2.5 px-1 rounded-2xl transition-all border text-center select-none",
+                day.isToday
+                  ? "bg-amber-50/70 border-amber-300 shadow-2xs"
+                  : day.hasPracticed
+                  ? "bg-emerald-50/40 border-emerald-200/70"
+                  : "bg-zen-bg/30 border-zen-accent/5 opacity-70"
+              )}
+            >
+              <span className={cn(
+                "text-[10px] sm:text-xs font-medium mb-1.5",
+                day.isToday ? "text-amber-900 font-bold" : "text-zen-ink/60"
+              )}>
+                {day.label}
+              </span>
 
-          <div 
-            onClick={() => onNavigate?.('meditation')}
-            className="cursor-pointer bg-gradient-to-br from-sky-50/60 to-white p-3.5 rounded-2xl border border-sky-100/70 hover:shadow-sm transition-all"
-          >
-            <div className="text-[11px] font-semibold text-sky-800/70 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-sky-600" />
-              禅修入定
-            </div>
-            <div className="mt-2 text-2xl font-serif font-bold text-sky-900">
-              {todayMeditationMins}
-              <span className="text-xs font-normal text-sky-700/60 ml-1">分钟</span>
-            </div>
-          </div>
+              {/* Status Circle */}
+              <div className={cn(
+                "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all",
+                day.hasPracticed
+                  ? "bg-emerald-500 text-white shadow-xs"
+                  : day.isToday
+                  ? "bg-amber-100 text-amber-800 border-2 border-dashed border-amber-400 animate-pulse"
+                  : "bg-white/80 text-zen-ink/30 border border-zen-accent/15"
+              )}>
+                {day.hasPracticed ? (
+                  <Check className="w-4 h-4 stroke-[2.5]" />
+                ) : day.isToday ? (
+                  <span className="text-[10px]">今</span>
+                ) : (
+                  <span className="text-[10px] text-zen-ink/40">{day.dateNum}</span>
+                )}
+              </div>
 
-          <div 
-            onClick={() => window.dispatchEvent(new CustomEvent('open-good-deed-collector'))}
-            className="cursor-pointer bg-gradient-to-br from-pink-50/60 to-white p-3.5 rounded-2xl border border-pink-100/70 hover:shadow-sm transition-all"
-          >
-            <div className="text-[11px] font-semibold text-pink-800/70 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-pink-600" />
-              行善积德
+              <span className={cn(
+                "text-[9px] mt-1.5 tracking-tight font-medium",
+                day.hasPracticed 
+                  ? "text-emerald-700 font-semibold" 
+                  : day.isToday 
+                  ? "text-amber-800 font-bold" 
+                  : "text-zen-ink/40"
+              )}>
+                {day.hasPracticed ? "已打卡" : day.isToday ? "待修持" : `${day.dateNum}日`}
+              </span>
             </div>
-            <div className="mt-2 text-2xl font-serif font-bold text-pink-900">
-              {todayDeedsCount}
-              <span className="text-xs font-normal text-pink-700/60 ml-1">件</span>
-            </div>
-          </div>
-
-          <div 
-            onClick={() => window.dispatchEvent(new CustomEvent('open-thought-collector'))}
-            className="cursor-pointer bg-gradient-to-br from-indigo-50/60 to-white p-3.5 rounded-2xl border border-indigo-100/70 hover:shadow-sm transition-all"
-          >
-            <div className="text-[11px] font-semibold text-indigo-800/70 flex items-center gap-1">
-              <Brain className="w-3.5 h-3.5 text-indigo-600" />
-              正念觉察
-            </div>
-            <div className="mt-2 text-2xl font-serif font-bold text-indigo-900">
-              {todayThoughtsCount}
-              <span className="text-xs font-normal text-indigo-700/60 ml-1">条</span>
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* 3 Large Zen Action Buttons (Easy Touch Zone) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <button
             onClick={() => onNavigate?.('fish')}
-            className="flex items-center justify-between p-3.5 bg-zen-accent text-white rounded-2xl shadow-sm hover:opacity-95 transition-all text-left"
+            className="flex items-center justify-between p-3.5 bg-zen-accent text-white rounded-2xl shadow-xs hover:opacity-95 transition-all text-left"
           >
             <div>
-              <div className="font-bold text-sm">敲木鱼念诵</div>
+              <div className="font-bold text-sm">敲木鱼打卡</div>
               <div className="text-[11px] text-white/80">静心持咒 · 功德+1</div>
             </div>
-            <Heart className="w-5 h-5 fill-current shrink-0" />
+            <Heart className="w-4 h-4 fill-current shrink-0" />
           </button>
 
           <button
@@ -311,10 +346,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             className="flex items-center justify-between p-3.5 bg-zen-accent/10 hover:bg-zen-accent/15 text-zen-ink rounded-2xl border border-zen-accent/15 transition-all text-left"
           >
             <div>
-              <div className="font-bold text-sm text-zen-accent">入静禅修</div>
+              <div className="font-bold text-sm text-zen-accent">禅修静心</div>
               <div className="text-[11px] text-zen-ink/60">数息定心 · 止语内观</div>
             </div>
-            <Clock className="w-5 h-5 text-zen-accent shrink-0" />
+            <Clock className="w-4 h-4 text-zen-accent shrink-0" />
           </button>
 
           <button
@@ -323,9 +358,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           >
             <div>
               <div className="font-bold text-sm text-zen-ink">功德打卡簿</div>
-              <div className="text-[11px] text-zen-ink/60">查看记录 ({totalRecordsCount}条)</div>
+              <div className="text-[11px] text-zen-ink/60">查看明细 ({totalRecordsCount}条)</div>
             </div>
-            <History className="w-5 h-5 text-zen-accent shrink-0" />
+            <History className="w-4 h-4 text-zen-accent shrink-0" />
           </button>
         </div>
       </div>
@@ -357,21 +392,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
           <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
             <button
-              onClick={handleExportBackup}
-              title="下载打卡记录备份文件"
-              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-data-sync-modal'))}
+              title="进入数据同步与备份中心"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all"
             >
-              <Download className="w-4 h-4" />
-              <span>导出备份 (JSON)</span>
+              <ShieldCheck className="w-4 h-4" />
+              <span>数据同步 (备份与恢复)</span>
             </button>
 
             <button
-              onClick={() => fileInputRef.current?.click()}
-              title="从本地备份文件恢复"
+              onClick={handleExportBackup}
+              title="一键下载本地打卡备份文件"
               className="flex items-center gap-1.5 px-3 py-2.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-semibold transition-all"
             >
-              <Upload className="w-4 h-4" />
-              <span>导入恢复</span>
+              <Download className="w-4 h-4" />
+              <span>快速导出</span>
             </button>
             <input 
               ref={fileInputRef} 

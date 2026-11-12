@@ -996,11 +996,16 @@ export default function App() {
     const handleAddExp = (e: any) => {
       setUserExp(prev => prev + e.detail);
     };
+    const handleOpenSync = () => {
+      setShowExportModal(true);
+    };
     window.addEventListener('switchTab', handleSwitchTab);
     window.addEventListener('addExp', handleAddExp);
+    window.addEventListener('open-data-sync-modal', handleOpenSync);
     return () => {
       window.removeEventListener('switchTab', handleSwitchTab);
       window.removeEventListener('addExp', handleAddExp);
+      window.removeEventListener('open-data-sync-modal', handleOpenSync);
     };
   }, []);
 
@@ -1847,8 +1852,8 @@ export default function App() {
                   }}
                   className="w-full flex items-center gap-3 text-zen-ink/70 hover:text-zen-accent transition-colors"
                 >
-                  <Book className="w-5 h-5 shrink-0" />
-                  <span className="font-medium truncate">导出修行记录</span>
+                  <ShieldCheck className="w-5 h-5 shrink-0 text-zen-accent" />
+                  <span className="font-medium truncate">{t('data_sync')}</span>
                 </button>
                 
                 {!isGuest ? (
@@ -2290,6 +2295,14 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2 self-end sm:self-auto">
                     <button
+                      onClick={() => setShowExportModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
+                      title="打开数据同步 (备份与恢复)"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>数据同步与备份</span>
+                    </button>
+                    <button
                       onClick={() => {
                         const json = recordVault.exportBackupJSON(history);
                         const blob = new Blob([json], { type: 'application/json' });
@@ -2302,38 +2315,12 @@ export default function App() {
                         document.body.removeChild(a);
                         URL.revokeObjectURL(url);
                       }}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-medium shadow-xs transition-colors"
-                      title="下载打卡记录备份"
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-medium shadow-xs transition-colors"
+                      title="一键下载打卡记录备份"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>下载备份</span>
+                      <span>快速导出</span>
                     </button>
-                    <label className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-medium cursor-pointer transition-colors">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>恢复备份</span>
-                      <input
-                        type="file"
-                        accept=".json"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const reader = new FileReader();
-                          reader.onload = (evt) => {
-                            const content = evt.target?.result as string;
-                            const imported = recordVault.importBackupJSON(content);
-                            if (imported && imported.length > 0) {
-                              restoreHistory(imported);
-                              alert(`已成功从备份恢复 ${imported.length} 条打卡记录！`);
-                            } else {
-                              alert('备份文件格式不正确，无法读取。');
-                            }
-                          };
-                          reader.readAsText(file);
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
                   </div>
                 </div>
 
