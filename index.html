@@ -12,6 +12,26 @@
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Vowzen - 愿禅助手</title>
+    <script>
+      (function() {
+        window.addEventListener('error', function(e) {
+          if (e.message && e.message.includes('WebSocket')) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+        var _origError = console.error;
+        console.error = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            if (typeof arguments[i] === 'string' && arguments[i].includes('WebSocket closed without opened')) {
+              return;
+            }
+          }
+          _origError.apply(console, arguments);
+        };
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
