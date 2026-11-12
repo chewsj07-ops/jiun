@@ -5,7 +5,7 @@ import { X, Mail, Loader2, LogOut, ArrowLeft } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { identityService } from '../services/identityService';
 import { useTranslation } from '../i18n';
-import { Country, City } from 'country-state-city';
+import { Country, City } from '../utils/locationData';
 import { auth } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 

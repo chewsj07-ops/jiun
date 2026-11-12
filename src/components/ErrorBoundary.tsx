@@ -46,19 +46,31 @@ export class ErrorBoundary extends Component<Props, State> {
                 {this.state.errorInfo?.componentStack}
               </pre>
             </div>
-            <button
-              onClick={() => {
-                try {
-                  localStorage.clear();
-                } catch (e) {
-                  console.error("Failed to clear localStorage", e);
-                }
-                window.location.reload();
-              }}
-              className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold hover:bg-red-100 transition-colors"
-            >
-              清除缓存并重试 (Clear Cache & Retry)
-            </button>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  window.location.reload();
+                }}
+                className="w-full bg-zen-accent text-white py-3 rounded-xl font-bold hover:opacity-90 transition-opacity"
+              >
+                刷新并重试 (Reload & Continue)
+              </button>
+              <button
+                onClick={() => {
+                  try {
+                    // Safe cleanup: only remove temporary UI flags, keep identity and practice history
+                    const tempKeys = ['meditation_progress', 'zen_draft', 'zen_workflow'];
+                    tempKeys.forEach(k => localStorage.removeItem(k));
+                  } catch (e) {
+                    console.error("Failed to clear temporary cache", e);
+                  }
+                  window.location.reload();
+                }}
+                className="w-full bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
+              >
+                修复临时缓存 (Repair Temporary Cache)
+              </button>
+            </div>
           </div>
         </div>
       );

@@ -71,6 +71,45 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
     }
   }, [volume]);
 
+  // Instant Web Audio synthesizer fallback for iOS Safari and offline mode
+  const playSynthesizedHit = (isCombo: boolean) => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      if (appearance === 'bowl') {
+        osc.type = 'sine';
+        const baseFreq = soundType === 'crisp' ? 680 : soundType === 'deep' ? 360 : 520;
+        osc.frequency.setValueAtTime(isCombo ? baseFreq * 1.1 : baseFreq, ctx.currentTime);
+        gain.gain.setValueAtTime(Math.min(volume * 0.45, 1.0), ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.8);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 1.9);
+      } else {
+        osc.type = 'triangle';
+        const baseFreq = soundType === 'crisp' ? 880 : soundType === 'deep' ? 440 : 660;
+        osc.frequency.setValueAtTime(isCombo ? baseFreq * 1.15 : baseFreq, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(Math.min(volume * 0.6, 1.0), ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+      }
+    } catch (e) {
+      console.warn("Audio synthesis notice:", e);
+    }
+  };
+
   const handleHit = () => {
     if (disabled) {
       setShowDisabledMsg(true);
@@ -104,16 +143,27 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
     const isCombo = comboCountRef.current >= 3;
     
     // Play sound with dynamic rate/volume based on combo
-    if (soundRef.current) {
-      const baseRate = soundType === 'crisp' ? 1.3 : soundType === 'deep' ? 0.7 : 1.0;
-      let currentRate = isCombo ? baseRate * 1.1 : baseRate;
-      if (appearance === 'bowl') currentRate *= 0.8;
+    let played = false;
+    if (soundRef.current && !isLoading) {
+      try {
+        const baseRate = soundType === 'crisp' ? 1.3 : soundType === 'deep' ? 0.7 : 1.0;
+        let currentRate = isCombo ? baseRate * 1.1 : baseRate;
+        if (appearance === 'bowl') currentRate *= 0.8;
 
-      const currentVolume = isCombo ? Math.min(volume * 1.2, 1.0) : volume;
-      
-      soundRef.current.rate(currentRate);
-      soundRef.current.volume(currentVolume);
-      soundRef.current.play();
+        const currentVolume = isCombo ? Math.min(volume * 1.2, 1.0) : volume;
+        
+        soundRef.current.rate(currentRate);
+        soundRef.current.volume(currentVolume);
+        const pId = soundRef.current.play();
+        if (pId !== null && pId !== undefined) {
+          played = true;
+        }
+      } catch (e) {
+        console.warn("Howler playback notice:", e);
+      }
+    }
+    if (!played) {
+      playSynthesizedHit(isCombo);
     }
     
     // Add haptic feedback if supported

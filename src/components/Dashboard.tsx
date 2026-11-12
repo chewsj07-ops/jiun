@@ -5,6 +5,7 @@ import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import { PracticeGrowthMap } from './PracticeGrowthMap';
 import { practiceService } from '../services/practiceService';
+import { DailyZenQuote } from './DailyZenQuote';
 
 export const Dashboard = ({ onNavigate }: { onNavigate?: (tab: string) => void }) => {
   const { t } = useTranslation();
@@ -97,8 +98,11 @@ export const Dashboard = ({ onNavigate }: { onNavigate?: (tab: string) => void }
       exit={{ opacity: 0, y: -20 }}
       className="max-w-2xl mx-auto w-full space-y-8 pb-12"
     >
+      {/* Daily Zen Wisdom Widget */}
+      <DailyZenQuote />
+
       {/* Workflow Timeline */}
-      <div className="bg-white rounded-[32px] p-6 sm:p-8 border border-zen-accent/10 shadow-sm mt-8">
+      <div className="bg-white rounded-[32px] p-6 sm:p-8 border border-zen-accent/10 shadow-sm">
         <div 
           className="flex justify-between items-center cursor-pointer select-none"
           onClick={() => setIsWorkflowExpanded(!isWorkflowExpanded)}
