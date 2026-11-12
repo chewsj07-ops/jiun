@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster } from 'sonner';
-import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Music, Wind, Plus, Trash2, Check, ChevronDown, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Download } from 'lucide-react';
+import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Music, Wind, Plus, Trash2, Check, ChevronDown, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Download, ShieldCheck, Upload } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { useFirebaseSync } from './hooks/useFirebaseSync';
 import { useFirebase } from './contexts/FirebaseContext';
@@ -37,6 +37,7 @@ const LegalModals = React.lazy(() => import('./components/LegalModals').then(m =
 const RejoiceModal = React.lazy(() => import('./components/RejoiceModal').then(m => ({ default: m.RejoiceModal })));
 const DeleteAccountPage = React.lazy(() => import('./components/DeleteAccountPage').then(m => ({ default: m.DeleteAccountPage })));
 import { safeStorage } from './utils/safeStorage';
+import { recordVault } from './services/recordVault';
 import { OfflineIndicator } from './components/OfflineIndicator';
 
 interface CommunityPost {
@@ -390,6 +391,20 @@ export default function App() {
     }
   });
 
+  // Cross-storage self-healing: verify against IndexedDB vault on startup so records NEVER disappear
+  useEffect(() => {
+    recordVault.getRecords().then(vaultRecords => {
+      if (vaultRecords && vaultRecords.length > 0) {
+        setHistory(prev => {
+          if (prev.length < vaultRecords.length) {
+            return vaultRecords;
+          }
+          return prev;
+        });
+      }
+    }).catch(err => console.warn('Record vault startup recovery:', err));
+  }, []);
+
   const { user: fbUser } = useFirebase();
 
   const shareMerit = async (meritData: any, isCommunity: boolean = false) => {
@@ -532,7 +547,11 @@ export default function App() {
   };
 
   const addHistoryItem = async (item: any) => {
-    setHistory(prev => [item, ...prev]);
+    setHistory(prev => {
+      const next = [item, ...prev];
+      recordVault.saveRecords(next);
+      return next;
+    });
     if (fbUser) {
       try {
         const cleanItem = Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
@@ -544,7 +563,11 @@ export default function App() {
   };
 
   const deleteHistoryItem = async (id: string) => {
-    setHistory(prev => prev.filter(h => h.id !== id));
+    setHistory(prev => {
+      const next = prev.filter(h => h.id !== id);
+      recordVault.saveRecords(next);
+      return next;
+    });
     if (fbUser) {
       try {
         await deleteDoc(doc(db, `users/${fbUser.uid}/history`, id.toString()));
@@ -556,6 +579,7 @@ export default function App() {
 
   const restoreHistory = async (newHistory: any[]) => {
     setHistory(newHistory);
+    recordVault.saveRecords(newHistory);
     if (fbUser) {
       try {
         const batch = writeBatch(db);
@@ -959,6 +983,7 @@ export default function App() {
   useEffect(() => {
     try {
       safeStorage.setJSON('zen_history', history);
+      recordVault.saveRecords(history);
     } catch (e) {
       console.warn("Save history notice:", e);
     }
@@ -1589,10 +1614,10 @@ export default function App() {
               </div>
             </div>
             
-            <div className="flex items-center gap-2 sm:gap-6 shrink-0">
-              <div className="flex flex-col items-end justify-center">
-                <p className="text-[8px] sm:text-[10px] uppercase tracking-widest text-zen-accent/50 font-bold leading-none mb-0.5 sm:mb-1" title="连续修行天数">连续修行</p>
-                <p className="text-xs sm:text-lg font-serif font-bold leading-none" title="连续修行天数">
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-amber-50/80 rounded-full border border-amber-200/60 text-amber-900" title="连续修持天数">
+                <span className="text-xs">🔥</span>
+                <span className="text-xs sm:text-sm font-serif font-bold leading-none">
                   {(() => {
                     if (history.length === 0) return "0 天";
                     const dates = history.map(h => {
@@ -1631,13 +1656,15 @@ export default function App() {
                     }
                     return `${streak} 天`;
                   })()}
-                </p>
+                </span>
               </div>
               
-              <React.Suspense fallback={null}>
-                <ThoughtCollector className="!p-1.5 sm:!px-3 sm:!py-1.5 !text-xs rounded-full sm:rounded-full" iconOnlyOnMobile={true} />
-                <GoodDeedCollector />
-              </React.Suspense>
+              <div className="hidden md:flex items-center gap-2">
+                <React.Suspense fallback={null}>
+                  <ThoughtCollector className="!p-1.5 sm:!px-3 sm:!py-1.5 !text-xs rounded-full" iconOnlyOnMobile={true} />
+                  <GoodDeedCollector />
+                </React.Suspense>
+              </div>
 
               <button
                 onClick={async () => {
@@ -2244,16 +2271,87 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="max-w-2xl mx-auto w-full"
             >
-              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-xl font-bold">功德簿</h2>
+              <div className="bg-white rounded-[40px] p-6 sm:p-8 shadow-sm border border-zen-accent/5">
+                {/* Permanent Vault Safety Banner */}
+                <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-white border border-emerald-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                        打卡记录双重金库 (永久保护)
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      </div>
+                      <p className="text-[11px] text-emerald-800/80">
+                        LocalStorage + IndexedDB 永久保存 · 累计 {history.length} 条打卡记录安全在库
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <button
+                      onClick={() => {
+                        const json = recordVault.exportBackupJSON(history);
+                        const blob = new Blob([json], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `VowZen_功德打卡簿备份_${new Date().toISOString().split('T')[0]}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-medium shadow-xs transition-colors"
+                      title="下载打卡记录备份"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>下载备份</span>
+                    </button>
+                    <label className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-medium cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>恢复备份</span>
+                      <input
+                        type="file"
+                        accept=".json"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            const content = evt.target?.result as string;
+                            const imported = recordVault.importBackupJSON(content);
+                            if (imported && imported.length > 0) {
+                              restoreHistory(imported);
+                              alert(`已成功从备份恢复 ${imported.length} 条打卡记录！`);
+                            } else {
+                              alert('备份文件格式不正确，无法读取。');
+                            }
+                          };
+                          reader.readAsText(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold font-serif text-zen-ink">功德打卡簿</h2>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-zen-accent/10 text-zen-accent font-semibold">
+                      共 {history.length} 条
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setShowAddRecord(!showAddRecord)}
-                      className="p-2 bg-zen-accent/10 text-zen-accent rounded-xl hover:bg-zen-accent/20 transition-colors"
+                      className="p-2 bg-zen-accent/10 text-zen-accent rounded-xl hover:bg-zen-accent/20 transition-colors flex items-center gap-1 text-xs font-semibold"
                       title="补录功德"
                     >
-                      <Plus className="w-5 h-5" />
+                      <Plus className="w-4 h-4" />
+                      <span className="hidden sm:inline">补录</span>
                     </button>
                     <div className="h-8 w-px bg-zen-accent/10 mx-2" />
                     <div className="flex items-center gap-2">
@@ -2466,8 +2564,32 @@ export default function App() {
                 </AnimatePresence>
 
                 {filteredHistory.length === 0 ? (
-                  <div className="text-center py-20 text-zen-accent/30 italic">
-                    该日暂无修行记录。
+                  <div className="text-center py-12 px-4 rounded-3xl bg-zen-bg/20 border border-zen-accent/5 my-4">
+                    <div className="w-12 h-12 rounded-full bg-zen-accent/10 text-zen-accent flex items-center justify-center mx-auto mb-3">
+                      <Heart className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-medium text-zen-ink mb-1">
+                      {historyPeriod === 'daily' ? '所选日期暂无打卡记录' : '当前时段暂无打卡记录'}
+                    </p>
+                    <p className="text-xs text-zen-accent/60 max-w-sm mx-auto mb-4">
+                      您累计已有 <span className="font-bold text-zen-accent">{history.length}</span> 条打卡记录安全保存在双重金库中。
+                    </p>
+                    <div className="flex justify-center gap-2">
+                      {historyPeriod !== 'all' && history.length > 0 && (
+                        <button
+                          onClick={() => setHistoryPeriod('all')}
+                          className="px-4 py-2 bg-white border border-zen-accent/20 rounded-xl text-xs font-semibold text-zen-ink hover:bg-zen-bg transition-colors"
+                        >
+                          查看全部 ({history.length}) 条记录
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setActiveTab('fish')}
+                        className="px-4 py-2 bg-zen-accent text-white rounded-xl text-xs font-bold hover:opacity-90 transition-opacity"
+                      >
+                        去敲木鱼打卡
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -3858,14 +3980,14 @@ export default function App() {
       </main>
 
       {/* Fixed Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-md border-t border-zen-accent/10 pb-safe pt-2 px-4 z-50">
+      <nav className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-zen-accent/10 pb-safe pt-2 px-3 z-50">
         <div className="flex justify-around items-center max-w-2xl mx-auto">
           {[
             { id: 'dashboard', icon: Target, label: t('tab_dashboard') },
             { id: 'fish', icon: Heart, label: t('tab_chant') },
             { id: 'meditation', icon: Wind, label: t('tab_meditation') },
+            { id: 'history', icon: History, label: '功德簿' },
             { id: 'vow', icon: Leaf, label: t('tab_vow') },
-            { id: 'community', icon: Users, label: t('tab_community') },
           ].map(tab => (
             <button
               key={tab.id}

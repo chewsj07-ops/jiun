@@ -1,5 +1,6 @@
 import { DailyPractice, PRACTICE_LEVELS, PRACTICE_WEIGHTS, PracticeActivityType, MERIT_ENERGY_POINTS, PracticeSettings } from '../types/practice';
 import { io, Socket } from 'socket.io-client';
+import { safeStorage } from '../utils/safeStorage';
 
 const STORAGE_KEY_PRACTICE = 'zen_daily_practice';
 const STORAGE_KEY_TOTAL_POINTS = 'zen_total_practice_points';
@@ -45,19 +46,17 @@ const defaultSettings: PracticeSettings = {
 
 export const practiceService = {
   getSettings: (): PracticeSettings => {
-    const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
-    return saved ? JSON.parse(saved) : defaultSettings;
+    return safeStorage.getJSON<PracticeSettings>(STORAGE_KEY_SETTINGS, defaultSettings);
   },
 
   saveSettings: (settings: PracticeSettings) => {
-    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+    safeStorage.setJSON(STORAGE_KEY_SETTINGS, settings);
   },
 
   getDailyPractice: (): DailyPractice => {
     const today = getTodayDate();
-    const saved = localStorage.getItem(STORAGE_KEY_PRACTICE);
-    if (saved) {
-      const parsed = JSON.parse(saved);
+    const parsed = safeStorage.getJSON<DailyPractice | null>(STORAGE_KEY_PRACTICE, null);
+    if (parsed) {
       if (parsed.date === today) {
         if (!parsed.scriptureCounts) parsed.scriptureCounts = {};
         return parsed;
@@ -67,28 +66,27 @@ export const practiceService = {
   },
 
   saveDailyPractice: (practice: DailyPractice) => {
-    localStorage.setItem(STORAGE_KEY_PRACTICE, JSON.stringify(practice));
+    safeStorage.setJSON(STORAGE_KEY_PRACTICE, practice);
   },
 
   getTotalPoints: (): number => {
-    const saved = localStorage.getItem(STORAGE_KEY_TOTAL_POINTS);
+    const saved = safeStorage.getItem(STORAGE_KEY_TOTAL_POINTS);
     return saved ? parseInt(saved, 10) : 0;
   },
 
   addPoints: (points: number) => {
     const current = practiceService.getTotalPoints();
-    localStorage.setItem(STORAGE_KEY_TOTAL_POINTS, (current + points).toString());
+    safeStorage.setItem(STORAGE_KEY_TOTAL_POINTS, (current + points).toString());
     socket.emit('merit:add', points);
   },
 
   // Merit Energy System
   getMeritHistory: (): Record<string, number> => {
-    const saved = localStorage.getItem(STORAGE_KEY_MERIT_HISTORY);
-    return saved ? JSON.parse(saved) : {};
+    return safeStorage.getJSON<Record<string, number>>(STORAGE_KEY_MERIT_HISTORY, {});
   },
 
   saveMeritHistory: (history: Record<string, number>) => {
-    localStorage.setItem(STORAGE_KEY_MERIT_HISTORY, JSON.stringify(history));
+    safeStorage.setJSON(STORAGE_KEY_MERIT_HISTORY, history);
   },
 
   logMerit: (type: PracticeActivityType) => {
@@ -134,12 +132,11 @@ export const practiceService = {
   },
 
   getRejoiceHistory: (): Record<string, number> => {
-    const saved = localStorage.getItem(STORAGE_KEY_REJOICE_HISTORY);
-    return saved ? JSON.parse(saved) : {};
+    return safeStorage.getJSON<Record<string, number>>(STORAGE_KEY_REJOICE_HISTORY, {});
   },
 
   saveRejoiceHistory: (history: Record<string, number>) => {
-    localStorage.setItem(STORAGE_KEY_REJOICE_HISTORY, JSON.stringify(history));
+    safeStorage.setJSON(STORAGE_KEY_REJOICE_HISTORY, history);
   },
 
   logRejoice: () => {

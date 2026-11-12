@@ -3,6 +3,8 @@ import { useFirebase } from '../contexts/FirebaseContext';
 import { doc, getDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
+import { recordVault } from '../services/recordVault';
+import { safeStorage } from '../utils/safeStorage';
 
 export function useFirebaseSync(
   userProfile: any, setUserProfile: (data: any) => void,
@@ -56,20 +58,43 @@ export function useFirebaseSync(
             if (data.customScriptures) setCustomScriptures(data.customScriptures);
           }
 
-          // Fetch History
+          // Fetch History safely with recordVault merge
           const historySnapshot = await getDocs(collection(db, `users/${user.uid}/history`));
-          const historyData = historySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-          if (historyData.length > 0) {
-            setHistory(historyData);
-            localStorage.setItem('zen_history', JSON.stringify(historyData));
-          } else if (history && history.length > 0) {
-            const batch = writeBatch(db);
-            history.forEach(item => {
-              const docRef = doc(db, `users/${user.uid}/history`, item.id.toString());
-              const cleanItem = Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
-              batch.set(docRef, cleanItem);
-            });
-            await batch.commit();
+          const remoteHistory = historySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          
+          const localRecords = await recordVault.getRecords();
+          const map = new Map<string, any>();
+          // Remote first
+          for (const item of remoteHistory) {
+            map.set(String(item.id), item);
+          }
+          // Merge local (preserves any check-ins done offline or before login)
+          for (const item of localRecords) {
+            if (!map.has(String(item.id))) {
+              map.set(String(item.id), item);
+            }
+          }
+          const merged = Array.from(map.values()).sort((a, b) => {
+            const timeA = a.endTime || a.timestamp || Number(a.id) || 0;
+            const timeB = b.endTime || b.timestamp || Number(b.id) || 0;
+            return timeB - timeA;
+          });
+          
+          if (merged.length > 0) {
+            setHistory(merged);
+            await recordVault.saveRecords(merged);
+            
+            // If local had unsynced records, push them to Firestore
+            const missingInRemote = merged.filter(m => !remoteHistory.some(r => String(r.id) === String(m.id)));
+            if (missingInRemote.length > 0) {
+              const batch = writeBatch(db);
+              missingInRemote.slice(0, 500).forEach(item => {
+                const docRef = doc(db, `users/${user.uid}/history`, String(item.id));
+                const cleanItem = Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
+                batch.set(docRef, cleanItem, { merge: true });
+              });
+              await batch.commit().catch(e => console.warn('Sync batch error:', e));
+            }
           }
 
           // Fetch Vows
