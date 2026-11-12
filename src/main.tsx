@@ -8,7 +8,10 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 // Global iOS and mobile Safari fallback protection
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
-    console.error('Window error detected:', event.error || event.message);
+    if (event.message && (event.message.includes('WebSocket') || event.message.includes('ResizeObserver') || event.message.includes('Script error'))) {
+      return;
+    }
+    console.warn('Window error detected:', event.error || event.message);
     const root = document.getElementById('root');
     if (root && (!root.innerHTML || root.innerHTML.trim() === '')) {
       root.innerHTML = `
