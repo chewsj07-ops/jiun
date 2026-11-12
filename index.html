@@ -1,6 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <script>
+      (function() {
+        var NativeWebSocket = window.WebSocket;
+        if (NativeWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            if (protocols === 'vite-hmr' || (typeof url === 'string' && (url.includes('vite-hmr') || url.includes('/@vite')))) {
+              var target = new EventTarget();
+              target.binaryType = 'blob';
+              target.readyState = 1;
+              target.send = function() {};
+              target.close = function() {};
+              target.addEventListener = target.addEventListener.bind(target);
+              target.removeEventListener = target.removeEventListener.bind(target);
+              target.dispatchEvent = target.dispatchEvent.bind(target);
+              setTimeout(function() {
+                var openEvent = new Event('open');
+                target.dispatchEvent(openEvent);
+                if (typeof target.onopen === 'function') target.onopen(openEvent);
+              }, 0);
+              return target;
+            }
+            return new NativeWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = NativeWebSocket.prototype;
+          window.WebSocket.CONNECTING = 0;
+          window.WebSocket.OPEN = 1;
+          window.WebSocket.CLOSING = 2;
+          window.WebSocket.CLOSED = 3;
+        }
+
+        window.addEventListener('error', function(e) {
+          if (e.message && (e.message.includes('WebSocket') || e.message.includes('[vite]'))) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+
+        var _origError = console.error;
+        console.error = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            if (typeof arguments[i] === 'string' && (arguments[i].includes('WebSocket') || arguments[i].includes('[vite]'))) {
+              return;
+            }
+          }
+          _origError.apply(console, arguments);
+        };
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#5A5A40" />
@@ -12,26 +61,6 @@
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Vowzen - 愿禅助手</title>
-    <script>
-      (function() {
-        window.addEventListener('error', function(e) {
-          if (e.message && e.message.includes('WebSocket')) {
-            e.stopImmediatePropagation();
-            e.preventDefault();
-            return true;
-          }
-        }, true);
-        var _origError = console.error;
-        console.error = function() {
-          for (var i = 0; i < arguments.length; i++) {
-            if (typeof arguments[i] === 'string' && arguments[i].includes('WebSocket closed without opened')) {
-              return;
-            }
-          }
-          _origError.apply(console, arguments);
-        };
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>
