@@ -51,7 +51,7 @@
     "@vitejs/plugin-legacy": "^8.2.4",
     "autoprefixer": "^10.4.27",
     "puppeteer": "^24.40.0",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.5",
     "tailwindcss": "^4.2.1",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
