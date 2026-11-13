@@ -4,7 +4,6 @@ import { Server } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import helmet from "helmet";
 import cors from "cors";
-import rateLimit from "express-rate-limit";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
 
@@ -39,13 +38,6 @@ async function startServer() {
   }));
   app.use(cors());
   app.use(express.json());
-
-  // Rate limiting for auth endpoints
-  const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
-    message: "Too many requests from this IP, please try again later."
-  });
 
   // Server-side Gemini AI endpoints
   app.post("/api/ai/chat", async (req, res) => {
@@ -227,129 +219,6 @@ async function startServer() {
         </body>
       </html>
     `);
-  });
-
-  // Email Auth (Mocked for Vercel deployment)
-  const emailCodes = new Map<string, string>();
-  const mockUsers = new Map<string, any>();
-
-  app.post('/api/auth/email/login', authLimiter, (req, res) => {
-    const { email, password } = req.body;
-    try {
-      const user = mockUsers.get(email);
-      if (user && user.password === password) {
-        res.json({ success: true, user: { id: `email_${user.email}`, email: user.email, name: user.name } });
-      } else {
-        res.status(401).json({ error: 'Invalid email or password' });
-      }
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Database error' });
-    }
-  });
-
-  app.post('/api/auth/email/code', authLimiter, (req, res) => {
-    const { email, mode } = req.body;
-    
-    try {
-      const user = mockUsers.get(email);
-      if (mode === 'signup' && user) {
-        return res.status(400).json({ error: 'Email already exists' });
-      }
-      
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      emailCodes.set(email, code);
-      console.log(`[EMAIL MOCK] Sent code ${code} to ${email}`);
-      res.json({ success: true });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Database error' });
-    }
-  });
-
-  app.post('/api/auth/email/verify', authLimiter, (req, res) => {
-    const { email, code, password, country, city, name } = req.body;
-    if (emailCodes.get(email) === code || code === '123456') { // 123456 as universal bypass for testing
-      try {
-        const userId = `email_${email}`;
-        if (mockUsers.has(email)) {
-          return res.status(400).json({ error: 'Email already exists' });
-        }
-        mockUsers.set(email, { email, password, name, location: city, country });
-        res.json({ success: true, user: { id: userId, email, name } });
-      } catch (err: any) {
-        console.error(err);
-        res.status(500).json({ error: 'Database error' });
-      }
-    } else {
-      res.status(400).json({ error: 'Invalid code' });
-    }
-  });
-
-  app.post('/api/auth/email/forgot-password', authLimiter, (req, res) => {
-    const { email } = req.body;
-    try {
-      const user = mockUsers.get(email);
-      if (!user) {
-        // Even if user not found, return success to prevent email enumeration
-        return res.json({ success: true });
-      }
-      
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      emailCodes.set(email, code);
-      console.log(`[EMAIL MOCK] Sent reset code ${code} to ${email}`);
-      res.json({ success: true });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Database error' });
-    }
-  });
-
-  app.post('/api/auth/email/reset-password', authLimiter, (req, res) => {
-    const { email, code, newPassword } = req.body;
-    
-    if (emailCodes.get(email) === code || code === '123456') {
-      try {
-        const user = mockUsers.get(email);
-        if (!user) {
-          return res.status(404).json({ error: 'User not found' });
-        }
-        
-        user.password = newPassword;
-        mockUsers.set(email, user);
-        emailCodes.delete(email); // Clear code after use
-        
-        res.json({ success: true });
-      } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Database error' });
-      }
-    } else {
-      res.status(400).json({ error: 'Invalid reset code' });
-    }
-  });
-
-  app.post('/api/auth/email/change-password', authLimiter, (req, res) => {
-    const { email, oldPassword, newPassword } = req.body;
-    
-    try {
-      const user = mockUsers.get(email);
-      
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      
-      if (user.password !== oldPassword) {
-        return res.status(401).json({ error: 'Incorrect old password' });
-      }
-      
-      user.password = newPassword;
-      mockUsers.set(email, user);
-      res.json({ success: true });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Database error' });
-    }
   });
 
   io.on("connection", (socket) => {

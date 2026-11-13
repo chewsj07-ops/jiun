@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { doc, getDocFromServer } from 'firebase/firestore';
+import { identityService } from '../services/identityService';
 
 interface FirebaseContextType {
   user: User | null;
@@ -32,6 +33,9 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     testConnection();
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser?.uid) {
+        identityService.onFirebaseLogin(currentUser.uid);
+      }
       setUser(currentUser);
       setIsAuthReady(true);
     });

@@ -2,68 +2,60 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Loader2 } from 'lucide-react';
-import { identityService } from '../services/identityService';
+import { toast } from 'sonner';
+import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
+} from 'firebase/auth';
+import { auth } from '../firebase';
+import { translateFirebaseAuthError } from '../utils/firebaseAuthErrors';
 
 export const ChangePasswordModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+
+  const handleClose = () => {
+    setOldPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setIsLoading(false);
+    onClose();
+  };
 
   const handleSubmit = async () => {
     if (!oldPassword || !newPassword || !confirmPassword) {
-      setError('Please fill in all fields');
+      toast.error('请填写完整密码信息');
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error('新密码至少需要 8 位');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match');
+      toast.error('两次输入的新密码不一致');
       return;
     }
-    if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-    if (!/(?=.*[a-zA-Z])(?=.*[0-9])/.test(newPassword)) {
-      setError('Password must contain at least one letter and one number');
+
+    const currentUser = auth.currentUser;
+    if (!currentUser || !currentUser.email) {
+      toast.error('请先使用邮箱登录账号');
       return;
     }
 
     try {
       setIsLoading(true);
-      setError('');
-      setSuccess('');
-      
-      const originalEmail = identityService.getUserId().replace('email_', '');
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      
-      const res = await fetch('/api/auth/email/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: originalEmail, oldPassword, newPassword }),
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to change password');
-      }
-      
-      setSuccess('Password changed successfully');
-      setTimeout(() => {
-        onClose();
-        setOldPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-        setSuccess('');
-      }, 2000);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      const credential = EmailAuthProvider.credential(currentUser.email, oldPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+      await updatePassword(currentUser, newPassword);
+
+      toast.success('密码已更新');
+      handleClose();
+    } catch (err: unknown) {
+      console.error('Firebase Change Password Error:', err);
+      toast.error(translateFirebaseAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -78,10 +70,10 @@ export const ChangePasswordModal = ({ isOpen, onClose }: { isOpen: boolean; onCl
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={onClose}
+          onClick={handleClose}
           className="fixed inset-0 bg-black/40 backdrop-blur-sm"
         />
-        
+
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -90,58 +82,48 @@ export const ChangePasswordModal = ({ isOpen, onClose }: { isOpen: boolean; onCl
         >
           <div className="p-6 sm:p-8 overflow-y-auto">
             <button
-              onClick={onClose}
+              type="button"
+              onClick={handleClose}
               className="absolute top-4 right-4 p-2 text-ink-3 hover:text-ink hover:bg-surface-2 rounded-full transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold font-serif text-ink mb-2">Change Password</h2>
-              <p className="text-sm text-ink-2">Enter your current and new password</p>
+              <h2 className="text-2xl font-bold font-serif text-ink mb-2">修改密码</h2>
+              <p className="text-sm text-ink-2">请输入当前密码与新密码（至少 8 位）</p>
             </div>
 
             <div className="space-y-4">
               <input
                 type="password"
-                placeholder="Current Password"
+                placeholder="当前密码"
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-surface-2 border border-line rounded-xl text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent"
               />
               <input
                 type="password"
-                placeholder="New Password"
+                placeholder="新密码（至少 8 位）"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-surface-2 border border-line rounded-xl text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent"
               />
               <input
                 type="password"
-                placeholder="Confirm New Password"
+                placeholder="确认新密码"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-surface-2 border border-line rounded-xl text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent"
               />
 
-              {error && (
-                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-red-500 text-center">
-                  {error}
-                </motion.p>
-              )}
-              
-              {success && (
-                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-accent text-center">
-                  {success}
-                </motion.p>
-              )}
-
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={isLoading || !oldPassword || !newPassword || !confirmPassword}
                 className="w-full py-3 bg-accent text-on-accent hover:bg-accent-hover rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mt-4"
               >
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Change Password'}
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : '确认修改'}
               </button>
             </div>
           </div>

@@ -1,9 +1,10 @@
 import { safeStorage } from '../utils/safeStorage';
+import { auth } from '../firebase';
 
 export const identityService = {
   getUserId(): string {
     let uid = safeStorage.getItem('zen_user_id');
-    if (!uid || (!uid.startsWith('guest_') && !uid.startsWith('email_') && !uid.startsWith('google_'))) {
+    if (!uid || !uid.trim()) {
       const randomStr = typeof window !== 'undefined' && window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
       uid = 'guest_' + randomStr;
       safeStorage.setItem('zen_user_id', uid);
@@ -13,6 +14,16 @@ export const identityService = {
   
   setUserId(id: string) {
     safeStorage.setItem('zen_user_id', id);
+  },
+
+  onFirebaseLogin(uid: string): string {
+    if (!uid) return this.getUserId();
+    const prevUid = safeStorage.getItem('zen_user_id');
+    if (prevUid !== uid) {
+      safeStorage.setItem('zen_user_id', uid);
+      window.dispatchEvent(new CustomEvent('auth_state_changed'));
+    }
+    return uid;
   },
 
   logout() {
@@ -54,10 +65,13 @@ export const identityService = {
   },
 
   isGuest(): boolean {
+    if (auth.currentUser) return false;
     return this.getUserId().startsWith('guest_');
   },
 
   isEmailUser(): boolean {
-    return this.getUserId().startsWith('email_');
-  } 
+    return Boolean(
+      auth.currentUser?.providerData?.some((p) => p.providerId === 'password')
+    );
+  }
 };

@@ -7,8 +7,10 @@ import { POST_SESSION_REFLECTION_SYSTEM_PROMPT } from './data/zenAssistantPrompt
 import { useFirebaseSync } from './hooks/useFirebaseSync';
 import { useFirebase } from './contexts/FirebaseContext';
 import { doc, setDoc, deleteDoc, writeBatch, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { sendEmailVerification } from 'firebase/auth';
 import { db, auth } from './firebase';
 import { handleFirestoreError, OperationType } from './utils/firebaseErrors';
+import { translateFirebaseAuthError } from './utils/firebaseAuthErrors';
 import { containsBadWords } from './utils/badWords';
 import { Dashboard } from './components/Dashboard';
 import {
@@ -1386,11 +1388,30 @@ export default function App() {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [isGuest, setIsGuest] = useState(!fbUser && identityService.isGuest());
   const [userId, setUserId] = useState(fbUser ? fbUser.uid : identityService.getUserId());
+  const [emailVerified, setEmailVerified] = useState<boolean>(() => Boolean(fbUser?.emailVerified));
+  const [isResendingVerification, setIsResendingVerification] = useState<boolean>(false);
 
   useEffect(() => {
     setIsGuest(!fbUser && identityService.isGuest());
     setUserId(fbUser ? fbUser.uid : identityService.getUserId());
+    setEmailVerified(Boolean(fbUser?.emailVerified));
   }, [fbUser]);
+
+  useEffect(() => {
+    if (!fbUser || emailVerified) return;
+    const refreshVerification = async () => {
+      try {
+        await auth.currentUser?.reload();
+        if (auth.currentUser?.emailVerified) {
+          setEmailVerified(true);
+        }
+      } catch {
+        // ignore offline reload failure
+      }
+    };
+    window.addEventListener('focus', refreshVerification);
+    return () => window.removeEventListener('focus', refreshVerification);
+  }, [fbUser, emailVerified]);
 
   useEffect(() => {
     const handleAuthState = () => {
@@ -3177,6 +3198,30 @@ export default function App() {
                           <div className="space-y-3 pb-4">
                             <input type="text" placeholder={t('name')} value={userProfile.name} onChange={(e) => setUserProfile({...userProfile, name: e.target.value})} className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent" />
                             <input type="email" placeholder={t('email')} value={userProfile.email} onChange={(e) => setUserProfile({...userProfile, email: e.target.value})} className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent" />
+                            {fbUser && fbUser.email && !emailVerified && (
+                              <div className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl bg-surface-2 border border-line text-xs">
+                                <span className="text-ink-2">邮箱尚未验证</span>
+                                <button
+                                  type="button"
+                                  disabled={isResendingVerification}
+                                  onClick={async () => {
+                                    if (!auth.currentUser || isResendingVerification) return;
+                                    try {
+                                      setIsResendingVerification(true);
+                                      await sendEmailVerification(auth.currentUser);
+                                      toast.success('验证邮件已发送，请到邮箱点击链接');
+                                    } catch (err: unknown) {
+                                      toast.error(translateFirebaseAuthError(err));
+                                    } finally {
+                                      setIsResendingVerification(false);
+                                    }
+                                  }}
+                                  className="text-accent font-medium hover:underline disabled:opacity-50 shrink-0"
+                                >
+                                  {isResendingVerification ? '发送中...' : '重新发送'}
+                                </button>
+                              </div>
+                            )}
                             <select
                               value={currentCountryCode}
                               onChange={(e) => {
@@ -3228,12 +3273,12 @@ export default function App() {
                               <option value="retiree">{t('role_retiree')}</option>
                               <option value="employee">{t('role_employee')}</option>
                             </select>
-                            {identityService.isEmailUser() && (
+                            {fbUser?.providerData?.some((p) => p.providerId === 'password') && (
                               <button
                                 onClick={() => setShowChangePasswordModal(true)}
                                 className="w-full py-3 bg-zen-bg/50 border border-zen-accent/20 text-zen-accent rounded-xl font-bold hover:bg-zen-bg transition-colors flex items-center justify-center gap-2"
                               >
-                                修改密码 (Change Password)
+                                修改密码
                               </button>
                             )}
                           </div>
