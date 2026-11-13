@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Howl } from 'howler';
 import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
+import { playWoodenFishHit } from '../utils/zenAudio';
 
 interface WoodenFishProps {
   onHit: () => void;
@@ -27,88 +27,13 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
 }) => {
   const { t } = useTranslation();
   const [isHitting, setIsHitting] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // Add loading state
   const [showDisabledMsg, setShowDisabledMsg] = useState(false);
   const [floatingTexts, setFloatingTexts] = useState<{ id: number; x: number; y: number; isCombo?: boolean; comboCount?: number }[]>([]);
-  const soundRef = useRef<Howl | null>(null);
   
   // Combo system state
   const lastHitTimeRef = useRef<number>(0);
   const comboCountRef = useRef<number>(0);
   const comboTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    let rate = 1.0;
-    if (soundType === 'crisp') rate = 1.3;
-    if (soundType === 'deep') rate = 0.7;
-    // Adjust rate slightly for different instruments if needed
-    if (appearance === 'bowl') rate *= 0.8; 
-
-    setIsLoading(true); // Set loading to true when sound changes
-    soundRef.current = new Howl({
-      src: [
-        appearance === 'bowl' 
-          ? 'https://actions.google.com/sounds/v1/bells/toll_bell.ogg' // Singing bowl sound
-          : 'https://actions.google.com/sounds/v1/percussion/wood_block_single_hit.ogg' // Wooden fish sound
-      ],
-      volume: volume,
-      rate: rate,
-      html5: true, // Use HTML5 Audio to avoid CORS issues
-      onload: () => setIsLoading(false), // Set loading to false when sound is loaded
-      onloaderror: (id, err) => {
-        console.error('Failed to load sound', err);
-        setIsLoading(false);
-      }
-    });
-    return () => {
-      soundRef.current?.unload();
-    };
-  }, [soundType, appearance]);
-
-  useEffect(() => {
-    if (soundRef.current) {
-      soundRef.current.volume(volume);
-    }
-  }, [volume]);
-
-  // Instant Web Audio synthesizer fallback for iOS Safari and offline mode
-  const playSynthesizedHit = (isCombo: boolean) => {
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      if (appearance === 'bowl') {
-        osc.type = 'sine';
-        const baseFreq = soundType === 'crisp' ? 680 : soundType === 'deep' ? 360 : 520;
-        osc.frequency.setValueAtTime(isCombo ? baseFreq * 1.1 : baseFreq, ctx.currentTime);
-        gain.gain.setValueAtTime(Math.min(volume * 0.45, 1.0), ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.8);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 1.9);
-      } else {
-        osc.type = 'triangle';
-        const baseFreq = soundType === 'crisp' ? 880 : soundType === 'deep' ? 440 : 660;
-        osc.frequency.setValueAtTime(isCombo ? baseFreq * 1.15 : baseFreq, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.08);
-        gain.gain.setValueAtTime(Math.min(volume * 0.6, 1.0), ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.1);
-      }
-    } catch (e) {
-      console.warn("Audio synthesis notice:", e);
-    }
-  };
 
   const handleHit = () => {
     if (disabled) {
@@ -141,30 +66,14 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
     }, 1000);
 
     const isCombo = comboCountRef.current >= 3;
-    
-    // Play sound with dynamic rate/volume based on combo
-    let played = false;
-    if (soundRef.current && !isLoading) {
-      try {
-        const baseRate = soundType === 'crisp' ? 1.3 : soundType === 'deep' ? 0.7 : 1.0;
-        let currentRate = isCombo ? baseRate * 1.1 : baseRate;
-        if (appearance === 'bowl') currentRate *= 0.8;
 
-        const currentVolume = isCombo ? Math.min(volume * 1.2, 1.0) : volume;
-        
-        soundRef.current.rate(currentRate);
-        soundRef.current.volume(currentVolume);
-        const pId = soundRef.current.play();
-        if (pId !== null && pId !== undefined) {
-          played = true;
-        }
-      } catch (e) {
-        console.warn("Howler playback notice:", e);
-      }
-    }
-    if (!played) {
-      playSynthesizedHit(isCombo);
-    }
+    // Play instant zero-latency synthesized wooden fish / singing bowl sound
+    playWoodenFishHit({
+      appearance,
+      soundType,
+      volume,
+      isCombo,
+    });
     
     // Add haptic feedback if supported
     if (window.navigator && window.navigator.vibrate) {
@@ -193,11 +102,6 @@ export const WoodenFish: React.FC<WoodenFishProps> = ({
 
   return (
     <div className={cn("relative flex flex-col items-center justify-center cursor-pointer select-none", className)} onClick={handleHit}>
-      {isLoading && (
-        <div className="absolute top-0 text-zen-accent animate-pulse">
-          {t('loading')}...
-        </div>
-      )}
       <AnimatePresence>
         {showDisabledMsg && (
           <motion.div

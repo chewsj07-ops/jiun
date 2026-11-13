@@ -36,8 +36,11 @@ const InstallAppModal = React.lazy(() => import('./components/InstallAppModal').
 const LegalModals = React.lazy(() => import('./components/LegalModals').then(m => ({ default: m.LegalModals })));
 const RejoiceModal = React.lazy(() => import('./components/RejoiceModal').then(m => ({ default: m.RejoiceModal })));
 const DeleteAccountPage = React.lazy(() => import('./components/DeleteAccountPage').then(m => ({ default: m.DeleteAccountPage })));
+const ScriptureLibrary = React.lazy(() => import('./components/ScriptureLibrary').then(m => ({ default: m.ScriptureLibrary })));
 import { safeStorage } from './utils/safeStorage';
 import { recordVault } from './services/recordVault';
+import { scriptureDatabaseService } from './services/scriptureDatabaseService';
+import { playCompletionBell } from './utils/zenAudio';
 import { OfflineIndicator } from './components/OfflineIndicator';
 
 interface CommunityPost {
@@ -168,10 +171,7 @@ export default function App() {
 
   const activeScripture = allScriptures.find(s => s.id === activeScriptureId) || allScriptures[0];
 
-  const [newScriptureTitle, setNewScriptureTitle] = useState("");
-  const [newScriptureContent, setNewScriptureContent] = useState("");
-  const [newScriptureCategory, setNewScriptureCategory] = useState<'sutra' | 'mantra' | 'name'>('name');
-  const [showAddScripture, setShowAddScripture] = useState(false);
+  const [showFishScripturePinyin, setShowFishScripturePinyin] = useState(false);
 
   const [volume, setVolume] = useState(() => {
     try {
@@ -832,8 +832,23 @@ export default function App() {
   const dailyTotal = filteredHistory.reduce((sum, item) => sum + item.count, 0);
 
   useEffect(() => {
+    let mounted = true;
+    scriptureDatabaseService.getCustomScriptures().then((idbItems) => {
+      if (mounted && idbItems.length > 0) {
+        setCustomScriptures(prev => {
+          const map = new Map<string, Scripture>();
+          prev.forEach(item => map.set(item.id, item));
+          idbItems.forEach(item => map.set(item.id, item as Scripture));
+          return Array.from(map.values());
+        });
+      }
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
     try {
-      safeStorage.setJSON('zen_custom_scriptures', customScriptures);
+      scriptureDatabaseService.saveCustomScriptures(customScriptures);
     } catch (e) {
       console.warn("Save custom scriptures notice:", e);
     }
@@ -1031,10 +1046,7 @@ export default function App() {
       
       if (goalType === 'count' && newCount === goalValue) {
         // Play a bell sound when count is reached
-        if (bellSoundRef.current) {
-          bellSoundRef.current.currentTime = 0;
-          bellSoundRef.current.play().catch(e => console.log('Audio play failed:', e));
-        }
+        playCompletionBell(0.8);
         // Show notification
         if (window.Notification && Notification.permission === "granted") {
           new Notification("修行圆满", { body: `${activeScripture.title} 次数已达标` });
@@ -1124,12 +1136,6 @@ export default function App() {
   }, [fbUser]);
 
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const bellSoundRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    bellSoundRef.current = new Audio('https://actions.google.com/sounds/v1/bells/toll_bell.ogg');
-    bellSoundRef.current.volume = 0.8;
-  }, []);
 
   // Handle timer completion
   useEffect(() => {
@@ -1139,10 +1145,7 @@ export default function App() {
         sessionTimerRef.current = null;
       }
       // Play a bell sound when time is up
-      if (bellSoundRef.current) {
-        bellSoundRef.current.currentTime = 0;
-        bellSoundRef.current.play().catch(e => console.log('Audio play failed:', e));
-      }
+      playCompletionBell(0.8);
       // Show notification
       if (window.Notification && Notification.permission === "granted") {
         new Notification("修行圆满", { body: `${activeScripture.title} 计时结束` });
@@ -1753,7 +1756,7 @@ export default function App() {
                     {[
                       { id: 'fish', icon: BookOpen, label: t('tab_chant') || '木鱼诵经' },
                       { id: 'meditation', icon: Moon, label: t('tab_meditation') || '静坐冥想' },
-                      { id: 'scripture', icon: Book, label: t('tab_scripture') || '经文' },
+                      { id: 'scripture', icon: Book, label: '经文数据库' },
                       { id: 'vow', icon: Leaf, label: t('tab_vow') || '发愿' },
                     ].map(item => (
                       <button
@@ -1913,18 +1916,28 @@ export default function App() {
               <div className="w-full max-w-md space-y-2 sm:space-y-8 flex flex-col h-full">
                 {/* Scripture Selection */}
                 <div className="bg-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-zen-accent/5 shadow-sm shrink-0">
-                  <div className="flex justify-between items-center mb-3 sm:mb-6">
+                  <div className="flex justify-between items-center mb-3 sm:mb-6 gap-2">
                     <p className="text-xs sm:text-sm uppercase tracking-widest text-zen-accent/50 font-bold">{t('select_scripture')}</p>
-                    <button 
-                      onClick={() => {
-                        setEditingGoalValue((scriptureGoals || {})[activeScriptureId] || 108);
-                        setShowGoalModal(true);
-                      }}
-                      className="text-sm sm:text-base bg-zen-accent/10 text-zen-accent px-3 py-2 rounded-xl hover:bg-zen-accent/20 font-bold flex items-center gap-1.5"
-                    >
-                      <Trophy className="w-4 h-4" />
-                      {t('set_goal') || "定课"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setActiveTab('scripture')}
+                        className="text-xs sm:text-sm bg-zen-bg text-zen-ink/80 px-3 py-2 rounded-xl hover:bg-zen-accent/10 hover:text-zen-accent font-bold flex items-center gap-1.5 border border-zen-accent/10 transition-colors"
+                        title="打开佛教经文数据库"
+                      >
+                        <Book className="w-4 h-4" />
+                        <span>经文库</span>
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setEditingGoalValue((scriptureGoals || {})[activeScriptureId] || 108);
+                          setShowGoalModal(true);
+                        }}
+                        className="text-sm sm:text-base bg-zen-accent/10 text-zen-accent px-3 py-2 rounded-xl hover:bg-zen-accent/20 font-bold flex items-center gap-1.5"
+                      >
+                        <Trophy className="w-4 h-4" />
+                        {t('set_goal') || "定课"}
+                      </button>
+                    </div>
                   </div>
                   <div className="relative">
                     <select
@@ -1981,11 +1994,50 @@ export default function App() {
 
                 {/* Scripture Content Display */}
                 {activeScripture.category !== 'name' && (
-                  <div className="bg-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-zen-accent/5 shadow-sm max-h-48 sm:max-h-80 overflow-y-auto shrink-0">
-                    <h3 className="text-center font-serif font-bold text-zen-accent mb-2 sm:mb-6 text-xl sm:text-3xl">{activeScripture.title}</h3>
+                  <div className="bg-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-zen-accent/5 shadow-sm max-h-56 sm:max-h-80 overflow-y-auto shrink-0">
+                    <div className="flex items-center justify-between gap-2 mb-2 sm:mb-4">
+                      <button
+                        onClick={() => setActiveTab('scripture')}
+                        className="text-[11px] font-bold text-zen-accent/70 hover:text-zen-accent bg-zen-bg/60 px-2.5 py-1 rounded-lg transition-colors"
+                      >
+                        经文库
+                      </button>
+                      <h3 className="text-center font-serif font-bold text-zen-accent text-xl sm:text-3xl truncate">{activeScripture.title}</h3>
+                      {activeScripture.pinyin || activeScripture.explanation ? (
+                        <button
+                          onClick={() => setShowFishScripturePinyin(v => !v)}
+                          className={cn(
+                            "text-[11px] font-bold px-2.5 py-1 rounded-lg transition-colors",
+                            showFishScripturePinyin
+                              ? "bg-amber-100 text-amber-900"
+                              : "bg-zen-bg/60 text-zen-accent/70 hover:text-zen-accent"
+                          )}
+                        >
+                          {showFishScripturePinyin ? '隐藏注音' : '拼音/释义'}
+                        </button>
+                      ) : (
+                        <span className="w-12" />
+                      )}
+                    </div>
                     <p className="text-zen-ink/90 font-serif leading-loose whitespace-pre-wrap text-center text-base sm:text-2xl">
                       {activeScripture.content}
                     </p>
+                    {showFishScripturePinyin && activeScripture.pinyin && (
+                      <div className="mt-4 pt-3 border-t border-zen-accent/10">
+                        <p className="text-[11px] font-bold text-zen-accent/60 uppercase tracking-wider mb-1 text-center">诵读拼音</p>
+                        <p className="text-xs sm:text-sm text-zen-ink/70 font-mono leading-relaxed whitespace-pre-wrap text-center">
+                          {activeScripture.pinyin}
+                        </p>
+                      </div>
+                    )}
+                    {showFishScripturePinyin && activeScripture.explanation && (
+                      <div className="mt-3 p-3 rounded-xl bg-emerald-50/50 border border-emerald-200/50">
+                        <p className="text-[11px] font-bold text-emerald-800 mb-1">简要解释</p>
+                        <p className="text-xs text-emerald-950/80 leading-relaxed">
+                          {activeScripture.explanation}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -3774,192 +3826,29 @@ export default function App() {
           )}
 
           {activeTab === 'scripture' && (
-            <motion.div
-              key="scripture"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="max-w-2xl mx-auto w-full space-y-6"
-            >
-              {/* Add New Scripture Button */}
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setShowAddScripture(!showAddScripture)}
-                  className="flex items-center gap-2 bg-zen-accent text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:opacity-90 transition-opacity"
-                >
-                  <Plus className="w-4 h-4" />
-                  {t('add_scripture_btn')}
-                </button>
-              </div>
-
-              {/* Add New Scripture Form */}
-              <AnimatePresence>
-                {showAddScripture && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="bg-white rounded-[32px] p-6 shadow-sm border border-zen-accent/5 mb-6">
-                      <h3 className="font-bold text-lg mb-4">{t('add_new_content')}</h3>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">{t('type')}</label>
-                          <div className="flex gap-2">
-                            {[
-                              { id: 'name', label: t('buddha_name') },
-                              { id: 'sutra', label: t('scripture_category_sutra') },
-                              { id: 'mantra', label: t('scripture_category_mantra') }
-                            ].map(type => (
-                              <button
-                                key={type.id}
-                                onClick={() => setNewScriptureCategory(type.id as any)}
-                                className={cn(
-                                  "flex-1 py-2 rounded-xl text-sm font-bold transition-colors border",
-                                  newScriptureCategory === type.id
-                                    ? "bg-zen-accent text-white border-zen-accent"
-                                    : "bg-zen-bg/50 text-zen-accent border-zen-accent/10 hover:border-zen-accent/30"
-                                )}
-                              >
-                                {type.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">{t('title')}</label>
-                          <input
-                            type="text"
-                            value={newScriptureTitle}
-                            onChange={(e) => setNewScriptureTitle(e.target.value)}
-                            placeholder={t('title_placeholder')}
-                            className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-zen-accent/30"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">{t('content')}</label>
-                          <textarea
-                            value={newScriptureContent}
-                            onChange={(e) => setNewScriptureContent(e.target.value)}
-                            placeholder={t('content_placeholder')}
-                            rows={4}
-                            className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-zen-accent/30 resize-none"
-                          />
-                        </div>
-                        <div className="flex gap-2 pt-2">
-                          <button
-                            onClick={() => setShowAddScripture(false)}
-                            className="flex-1 bg-zen-bg text-zen-accent py-3 rounded-xl font-bold hover:bg-zen-accent/5 transition-colors"
-                          >
-                            {t('cancel')}
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (newScriptureTitle.trim() && newScriptureContent.trim()) {
-                                const newScripture: Scripture = {
-                                  id: `custom-${Date.now()}`,
-                                  title: newScriptureTitle.trim(),
-                                  content: newScriptureContent.trim(),
-                                  category: newScriptureCategory
-                                };
-                                setCustomScriptures(prev => [...prev, newScripture]);
-                                setNewScriptureTitle("");
-                                setNewScriptureContent("");
-                                setShowAddScripture(false);
-                              }
-                            }}
-                            className="flex-1 bg-zen-accent text-white py-3 rounded-xl font-bold hover:opacity-90 transition-opacity"
-                          >
-                            {t('confirm_add')}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Scripture List */}
-              <div className="space-y-4">
-                {allScriptures.map((scripture) => (
-                  <div 
-                    key={scripture.id}
-                    className={cn(
-                      "bg-white rounded-[32px] p-6 shadow-sm border transition-all",
-                      activeScriptureId === scripture.id 
-                        ? "border-zen-accent ring-1 ring-zen-accent/20" 
-                        : "border-zen-accent/5 hover:border-zen-accent/20"
-                    )}
-                  >
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={cn(
-                            "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider",
-                            scripture.category === 'name' ? "bg-amber-100 text-amber-700" :
-                            scripture.category === 'sutra' ? "bg-blue-100 text-blue-700" :
-                            scripture.category === 'mantra' ? "bg-purple-100 text-purple-700" :
-                            "bg-gray-100 text-gray-700"
-                          )}>
-                            {scripture.category === 'name' ? t('buddha_name') : 
-                             scripture.category === 'sutra' ? t('scripture_category_sutra') : 
-                             scripture.category === 'mantra' ? t('scripture_category_mantra') : t('scripture_category_other')}
-                          </span>
-                          <h3 className="font-bold text-lg text-zen-ink">{scripture.title}</h3>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {scripture.id.startsWith('custom-') && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (confirm(t('confirm_delete_scripture'))) {
-                                setCustomScriptures(prev => prev.filter(s => s.id !== scripture.id));
-                                if (activeScriptureId === scripture.id) {
-                                  setActiveScriptureId(allScriptures[0].id);
-                                }
-                              }
-                            }}
-                            className="p-2 text-zen-accent/40 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setActiveScriptureId(scripture.id);
-                            // Sync legacy
-                            setSelectedChant(scripture.title);
-                          }}
-                          className={cn(
-                            "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1",
-                            activeScriptureId === scripture.id
-                              ? "bg-zen-accent text-white"
-                              : "bg-zen-bg text-zen-accent hover:bg-zen-accent/10"
-                          )}
-                        >
-                          {activeScriptureId === scripture.id ? (
-                            <>
-                              <Check className="w-3 h-3" />
-                              {t('chanting_status')}
-                            </>
-                          ) : (
-                            t('select_status')
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-zen-bg/30 rounded-2xl p-4">
-                      <p className="text-sm text-zen-ink/70 font-serif line-clamp-3 whitespace-pre-wrap">
-                        {scripture.content}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
+            <React.Suspense fallback={<ZenSuspenseFallback text="正在载入佛教经文数据库..." />}>
+              <ScriptureLibrary
+                allScriptures={allScriptures}
+                activeScriptureId={activeScriptureId}
+                onSelectScripture={(scripture, goToFish) => {
+                  setActiveScriptureId(scripture.id);
+                  setSelectedChant(scripture.title);
+                  if (goToFish) {
+                    setActiveTab('fish');
+                  }
+                }}
+                onAddCustomScripture={(newScripture) => {
+                  setCustomScriptures(prev => [...prev, newScripture]);
+                }}
+                onDeleteCustomScripture={(id) => {
+                  setCustomScriptures(prev => prev.filter(s => s.id !== id));
+                  if (activeScriptureId === id && allScriptures[0]) {
+                    setActiveScriptureId(allScriptures[0].id);
+                    setSelectedChant(allScriptures[0].title);
+                  }
+                }}
+              />
+            </React.Suspense>
           )}
 
 
@@ -3972,6 +3861,7 @@ export default function App() {
           {[
             { id: 'dashboard', icon: Target, label: t('tab_dashboard') },
             { id: 'fish', icon: Heart, label: t('tab_chant') },
+            { id: 'scripture', icon: Book, label: '经文库' },
             { id: 'meditation', icon: Wind, label: t('tab_meditation') },
             { id: 'history', icon: History, label: '功德簿' },
             { id: 'vow', icon: Leaf, label: t('tab_vow') },

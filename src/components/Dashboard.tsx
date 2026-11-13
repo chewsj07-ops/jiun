@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { 
-  CheckCircle, Sun, Cloud, Moon, Heart, Brain, BookOpen, Clock, 
-  ChevronDown, ShieldCheck, Download, Upload, Sparkles, Flame, 
-  History, ArrowRight, Check, AlertCircle 
+  Sun, Cloud, Moon, Heart, Brain, BookOpen, Book, Clock, 
+  ChevronDown, Flame, History, Check, CheckCircle
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import { practiceService } from '../services/practiceService';
-import { recordVault, PracticeRecord } from '../services/recordVault';
+import { recordVault } from '../services/recordVault';
 import { safeStorage } from '../utils/safeStorage';
 import { DailyZenQuote } from './DailyZenQuote';
 
@@ -163,54 +162,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     setWorkflowState(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Export records JSON backup
-  const handleExportBackup = async () => {
-    try {
-      const records = await recordVault.getRecords();
-      const json = recordVault.exportBackupJSON(records);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const dateStr = new Date().toISOString().split('T')[0];
-      a.href = url;
-      a.download = `VowZen_打卡记录备份_${dateStr}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setVaultStatusMsg('✅ 备份导出成功！打卡记录已安全保存为本地文件。');
-      setTimeout(() => setVaultStatusMsg(null), 4000);
-    } catch (e) {
-      setVaultStatusMsg('❌ 导出备份失败，请稍后再试。');
-      setTimeout(() => setVaultStatusMsg(null), 4000);
-    }
-  };
-
-  // Import records JSON backup
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      const content = evt.target?.result as string;
-      const imported = recordVault.importBackupJSON(content);
-      if (imported && imported.length > 0) {
-        await recordVault.saveRecords(imported);
-        safeStorage.setJSON('zen_history', imported);
-        window.dispatchEvent(new CustomEvent('zen_data_updated'));
-        fetchAllStats();
-        setVaultStatusMsg(`✅ 成功从备份恢复 ${imported.length} 条打卡记录！`);
-        setTimeout(() => setVaultStatusMsg(null), 4000);
-      } else {
-        setVaultStatusMsg('❌ 备份文件格式不正确，无法读取记录。');
-        setTimeout(() => setVaultStatusMsg(null), 4000);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
   // Calculate 7 days for the current week (Monday to Sunday)
   const getWeekDays = () => {
     const now = new Date();
@@ -328,8 +279,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           ))}
         </div>
 
-        {/* 3 Large Zen Action Buttons (Easy Touch Zone) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        {/* 4 Large Zen Action Buttons (Easy Touch Zone) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <button
             onClick={() => onNavigate?.('fish')}
             className="flex items-center justify-between p-3.5 bg-zen-accent text-white rounded-2xl shadow-xs hover:opacity-95 transition-all text-left"
@@ -339,6 +290,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               <div className="text-[11px] text-white/80">静心持咒 · 功德+1</div>
             </div>
             <Heart className="w-4 h-4 fill-current shrink-0" />
+          </button>
+
+          <button
+            onClick={() => onNavigate?.('scripture')}
+            className="flex items-center justify-between p-3.5 bg-amber-50 hover:bg-amber-100/80 text-amber-950 rounded-2xl border border-amber-200/70 transition-all text-left"
+          >
+            <div>
+              <div className="font-bold text-sm text-amber-900">经文数据库</div>
+              <div className="text-[11px] text-amber-800/70">原文 · 拼音 · 释义</div>
+            </div>
+            <Book className="w-4 h-4 text-amber-700 shrink-0" />
           </button>
 
           <button
@@ -365,69 +327,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* 3. Check-in Records Vault Security Card (打卡记录双重持久化永久保障) */}
-      <div className="bg-gradient-to-br from-emerald-50/50 via-white to-emerald-50/20 rounded-[32px] p-6 sm:p-7 border border-emerald-200/60 shadow-sm relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0 mt-0.5">
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-emerald-950 font-serif">
-                  打卡记录永久金库
-                </h3>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                  双重持久化
-                </span>
-              </div>
-              <p className="text-xs text-emerald-900/70 mt-1 leading-relaxed">
-                您的修持记录已由 SafeStorage 与 IndexedDB 永久金库双重保存，即便浏览器清理缓存或重启也不会丢失，随时支持导出与导入。
-              </p>
-              <div className="mt-2 text-xs font-semibold text-emerald-800">
-                当前已安全归档：<span className="font-serif text-sm font-bold text-emerald-950">{totalRecordsCount}</span> 条修持打卡记录
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('open-data-sync-modal'))}
-              title="进入数据同步与备份中心"
-              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>数据同步 (备份与恢复)</span>
-            </button>
-
-            <button
-              onClick={handleExportBackup}
-              title="一键下载本地打卡备份文件"
-              className="flex items-center gap-1.5 px-3 py-2.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-semibold transition-all"
-            >
-              <Download className="w-4 h-4" />
-              <span>快速导出</span>
-            </button>
-            <input 
-              ref={fileInputRef} 
-              type="file" 
-              accept=".json" 
-              onChange={handleImportBackup} 
-              className="hidden" 
-            />
-          </div>
-        </div>
-
-        {/* Feedback message banner */}
-        {vaultStatusMsg && (
-          <div className="mt-4 p-3 bg-white rounded-xl border border-emerald-300 text-xs text-emerald-900 font-medium animate-fade-in flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{vaultStatusMsg}</span>
-          </div>
-        )}
-      </div>
-
-      {/* 4. Daily Routine Workflow (今日修行安排) */}
+      {/* 3. Daily Routine Workflow (今日修行安排) */}
       <div className="bg-white rounded-[32px] p-6 sm:p-8 border border-zen-accent/10 shadow-sm">
         <div 
           className="flex justify-between items-center cursor-pointer select-none"

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Howl } from 'howler';
+import { playBreathChime } from '../../utils/zenAudio';
 import { db, auth } from '../../firebase';
 import { doc, setDoc, collection } from 'firebase/firestore';
 
@@ -70,16 +70,9 @@ const PracticeToolsBlock = ({ onNext }: { onNext: () => void }) => {
   const [phase, setPhase] = useState('吸气');
   const [scale, setScale] = useState(1);
 
-  React.useEffect(() => {
-    // Initialize Howl with a placeholder meditation audio
-    const sound = new Howl({
-      src: ['https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg'], // Placeholder audio
-      loop: true,
-      volume: 0.5,
-      html5: true,
-    });
-    sound.play();
+  const lastPhaseRef = useRef('吸气');
 
+  React.useEffect(() => {
     const startTime = Date.now();
     const interval = setInterval(() => {
       const t = Math.floor((Date.now() - startTime) / 1000) % 19;
@@ -88,6 +81,12 @@ const PracticeToolsBlock = ({ onNext }: { onNext: () => void }) => {
       if (t < 4) newPhase = '吸气';
       else if (t < 11) newPhase = '屏息';
       else newPhase = '呼气';
+      if (newPhase !== lastPhaseRef.current) {
+        lastPhaseRef.current = newPhase;
+        if (newPhase !== '屏息') {
+          playBreathChime(0.2);
+        }
+      }
       setPhase(newPhase);
 
       let newScale = 1;
@@ -95,12 +94,9 @@ const PracticeToolsBlock = ({ onNext }: { onNext: () => void }) => {
       else if (t < 11) newScale = 1.5;
       else newScale = 1.5 - ((t - 11) / 8) * 0.5;
       setScale(newScale);
-      
-      console.log(`Breathing Debug: t=${t}, phase=${newPhase}, scale=${newScale}`);
     }, 100);
     return () => {
       clearInterval(interval);
-      sound.stop();
     };
   }, []);
 

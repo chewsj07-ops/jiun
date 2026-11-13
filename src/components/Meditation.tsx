@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { playCompletionBell } from '../utils/zenAudio';
 import { motion, AnimatePresence } from 'motion/react';
 import { Play, Pause, Wind, Music, Volume2, Timer, Sparkles, Upload, FileAudio, Trash2, Edit2, ArrowUpDown, SortAsc, Clock, Check, X, Link as LinkIcon } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -38,47 +39,12 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Sound effect for completion
-  const completionSoundRef = useRef<HTMLAudioElement | null>(null);
   const wakeLockRef = useRef<any>(null);
   const endTimeRef = useRef<number | null>(null);
 
-  // Universal Web Audio singing bowl bell (works on iOS Safari and all browsers without network/ogg dependencies)
   const playZenBell = () => {
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(528, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(132, ctx.currentTime + 3.2);
-
-      gain.gain.setValueAtTime(0.35, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 3.2);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start();
-      osc.stop(ctx.currentTime + 3.3);
-    } catch (e) {
-      console.warn("Web Audio chime notice:", e);
-    }
+    playCompletionBell(0.5);
   };
-
-  useEffect(() => {
-    try {
-      completionSoundRef.current = new Audio('https://actions.google.com/sounds/v1/bells/toll_bell.ogg');
-      completionSoundRef.current.volume = 0.5;
-    } catch (e) {
-      console.warn("HTML Audio init notice:", e);
-    }
-  }, []);
   const DB_NAME = 'ZenMeditationDB';
   const STORE_NAME = 'tracks';
 
@@ -405,11 +371,8 @@ export const Meditation: React.FC<{ onFinish?: (session: any) => void }> = ({ on
             wakeLockRef.current = null;
           }
 
-          // Play peaceful completion bell (Web Audio + HTML Audio fallback)
+          // Play peaceful completion bell via shared Web Audio synthesizer
           playZenBell();
-          if (completionSoundRef.current) {
-            completionSoundRef.current.play().catch(() => {});
-          }
 
           // Show system notification
           try {
