@@ -1,6 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, RefreshCw, Copy, Check, Share2, Bell, X, Compass, Feather } from 'lucide-react';
+import {
+  RefreshCw,
+  Copy,
+  Check,
+  Share2,
+  Bell,
+  X,
+  Compass,
+  Feather,
+  MessageCircle,
+  Send,
+  Link2,
+  Mail,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { safeStorage } from '../utils/safeStorage';
 
 interface ZenQuote {
@@ -82,11 +96,27 @@ export const DailyZenQuote: React.FC<{ variant?: 'mist' | 'card' }> = ({ variant
   };
 
   const [currentIndex, setCurrentIndex] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const quoteParam = new URLSearchParams(window.location.search).get('quote');
+        if (quoteParam) {
+          const parsedId = parseInt(quoteParam, 10);
+          const matchedIndex = ZEN_QUOTES.findIndex((q) => q.id === parsedId);
+          if (matchedIndex !== -1) {
+            return matchedIndex;
+          }
+        }
+      } catch {
+        // Ignore malformed URL params
+      }
+    }
     const saved = safeStorage.getItem('zen_quote_idx');
-    return saved !== null ? parseInt(saved, 10) % ZEN_QUOTES.length : getDayIndex();
+    const parsedSaved = saved !== null ? parseInt(saved, 10) : NaN;
+    return !Number.isNaN(parsedSaved) ? Math.abs(parsedSaved) % ZEN_QUOTES.length : getDayIndex();
   });
 
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [showCardModal, setShowCardModal] = useState(false);
   const [notificationEnabled, setNotificationEnabled] = useState(() => {
     return safeStorage.getItem('zen_quote_notification') === 'true';
@@ -94,18 +124,92 @@ export const DailyZenQuote: React.FC<{ variant?: 'mist' | 'card' }> = ({ variant
 
   const currentQuote = ZEN_QUOTES[currentIndex];
 
+  const getShareUrl = () => {
+    if (typeof window === 'undefined') return '';
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('quote', String(currentQuote.id));
+    return url.toString();
+  };
+
+  const getShareMessage = () =>
+    `「${currentQuote.quote}」\n—— ${currentQuote.source}\n\n${currentQuote.explanation}\n（来自 愿禅助手 Vowzen）`;
+
+  const shareUrl = getShareUrl();
+  const shareMessage = getShareMessage();
+  const fullShareText = shareUrl ? `${shareMessage}\n${shareUrl}` : shareMessage;
+  const whatsappHref = `https://wa.me/?text=${encodeURIComponent(fullShareText)}`;
+  const telegramHref = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareMessage)}`;
+  const mailtoHref = `mailto:?subject=${encodeURIComponent(`每日禅语 · ${currentQuote.source}`)}&body=${encodeURIComponent(fullShareText)}`;
+  const supportsNativeShare =
+    typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Fallback below
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
   const handleNext = () => {
     const next = (currentIndex + 1) % ZEN_QUOTES.length;
     setCurrentIndex(next);
     safeStorage.setItem('zen_quote_idx', next.toString());
   };
 
-  const handleCopy = () => {
-    const text = `【每日禅语】\n"${currentQuote.quote}"\n—— ${currentQuote.source}\n\n💡 领悟：${currentQuote.explanation}\n🌱 今日践行：${currentQuote.practiceTip}\n（来自 愿禅助手 Vowzen）`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
+  const handleCopy = async () => {
+    const text = `【每日禅语】\n"${currentQuote.quote}"\n—— ${currentQuote.source}\n\n💡 领悟：${currentQuote.explanation}\n🌱 今日践行：${currentQuote.practiceTip}\n${shareUrl ? `🔗 ${shareUrl}\n` : ''}（来自 愿禅助手 Vowzen）`;
+    const ok = await copyToClipboard(text);
+    if (ok) {
       setCopied(true);
+      toast.success('禅语与链接已复制');
       setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.error('复制失败，请长按链接手动复制');
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!shareUrl) return;
+    const ok = await copyToClipboard(shareUrl);
+    if (ok) {
+      setLinkCopied(true);
+      toast.success('分享链接已复制');
+      setTimeout(() => setLinkCopied(false), 2000);
+    } else {
+      toast.error('复制失败，请手动复制上方链接');
+    }
+  };
+
+  const handleNativeShare = async () => {
+    if (!supportsNativeShare) return;
+    try {
+      await navigator.share({
+        title: `每日禅语 · ${currentQuote.source}`,
+        text: shareMessage,
+        url: shareUrl,
+      });
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        await handleCopyLink();
+      }
     }
   };
 
@@ -249,50 +353,112 @@ export const DailyZenQuote: React.FC<{ variant?: 'mist' | 'card' }> = ({ variant
       {/* Zen Card Share Modal */}
       <AnimatePresence>
         {showCardModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            onClick={() => setShowCardModal(false)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          >
             <motion.div
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.92, opacity: 0 }}
-              className="relative w-full max-w-sm rounded-3xl bg-surface p-8 shadow-float border border-line text-center"
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-3xl bg-surface p-6 sm:p-8 shadow-float border border-line text-center"
             >
               <button
+                type="button"
                 onClick={() => setShowCardModal(false)}
-                className="absolute top-4 right-4 p-2 text-ink-3 hover:text-ink rounded-full"
+                aria-label="关闭"
+                className="absolute top-4 right-4 min-h-[40px] min-w-[40px] flex items-center justify-center text-ink-3 hover:text-ink rounded-full transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="w-12 h-12 bg-accent text-on-accent rounded-full flex items-center justify-center mx-auto mb-6 font-serif text-xl font-bold">
+              <div className="w-12 h-12 bg-accent text-on-accent rounded-full flex items-center justify-center mx-auto mb-5 font-serif text-xl font-bold">
                 愿
               </div>
 
-              <div className="border-t border-b border-line py-6 my-4">
+              <div className="border-t border-b border-line py-5 my-3">
                 <p className="text-title text-ink leading-loose tracking-wider">
                   {currentQuote.quote}
                 </p>
-                <p className="mt-4 font-serif text-sm text-accent">
+                <p className="mt-3 font-serif text-sm text-accent">
                   —— {currentQuote.source}
                 </p>
               </div>
 
-              <p className="text-xs text-ink-2 leading-relaxed mb-6">
+              <p className="text-xs text-ink-2 leading-relaxed mb-5">
                 {currentQuote.explanation}
               </p>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={handleCopy}
-                  className="flex-1 bg-accent hover:bg-accent-hover text-on-accent py-3 rounded-2xl text-xs font-bold transition-colors"
-                >
-                  {copied ? '已复制到剪贴板' : '复制禅语文字'}
-                </button>
-                <button
-                  onClick={() => setShowCardModal(false)}
-                  className="px-4 py-3 bg-surface-2 border border-line text-ink rounded-2xl text-xs font-medium hover:bg-accent-mist transition-colors"
-                >
-                  关闭
-                </button>
+              {/* Share Link Preview */}
+              {shareUrl && (
+                <div className="mb-4 flex items-center gap-2 rounded-xl bg-surface-2 border border-line px-3 py-2 text-left">
+                  <Link2 className="w-3.5 h-3.5 text-ink-3 shrink-0" />
+                  <span className="text-xs text-ink-2 truncate flex-1 select-all">
+                    {shareUrl}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="text-xs font-medium text-accent hover:text-accent-hover whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    {linkCopied ? '已复制' : '复制链接'}
+                  </button>
+                </div>
+              )}
+
+              {/* Share Channels */}
+              <div className="space-y-2.5 text-left">
+                <p className="text-caption text-center">选择分享方式</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <a
+                    href={whatsappHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-h-[44px] px-3 py-2.5 rounded-2xl bg-accent text-on-accent hover:bg-accent-hover text-xs font-medium transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
+                  >
+                    <MessageCircle className="w-4 h-4 shrink-0" />
+                    <span>WhatsApp</span>
+                  </a>
+
+                  <a
+                    href={telegramHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-h-[44px] px-3 py-2.5 rounded-2xl bg-surface-2 border border-line text-ink hover:border-accent/50 hover:text-accent text-xs font-medium transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Send className="w-4 h-4 shrink-0" />
+                    <span>Telegram</span>
+                  </a>
+
+                  {supportsNativeShare ? (
+                    <button
+                      type="button"
+                      onClick={handleNativeShare}
+                      className="min-h-[44px] px-3 py-2.5 rounded-2xl bg-surface-2 border border-line text-ink hover:border-accent/50 hover:text-accent text-xs font-medium transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    >
+                      <Share2 className="w-4 h-4 shrink-0" />
+                      <span>系统分享</span>
+                    </button>
+                  ) : (
+                    <a
+                      href={mailtoHref}
+                      className="min-h-[44px] px-3 py-2.5 rounded-2xl bg-surface-2 border border-line text-ink hover:border-accent/50 hover:text-accent text-xs font-medium transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
+                    >
+                      <Mail className="w-4 h-4 shrink-0" />
+                      <span>邮件发送</span>
+                    </a>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="min-h-[44px] px-3 py-2.5 rounded-2xl bg-surface-2 border border-line text-ink hover:border-accent/50 hover:text-accent text-xs font-medium transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+                  >
+                    {copied ? <Check className="w-4 h-4 shrink-0 text-accent" /> : <Copy className="w-4 h-4 shrink-0" />}
+                    <span>{copied ? '已复制全文' : '复制全文'}</span>
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
