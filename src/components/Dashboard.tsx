@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Brain, BookOpen, Clock, Moon, Check, ChevronDown } from 'lucide-react';
+import { Heart, Brain, BookOpen, Clock, Moon, Check, ChevronDown, ChevronRight, Leaf, Feather } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
 import { practiceService } from '../services/practiceService';
@@ -10,11 +10,12 @@ import { DailyZenQuote } from './DailyZenQuote';
 
 interface DashboardProps {
   onNavigate?: (tab: string) => void;
+  personalVow?: string;
 }
 
 type TimelineSectionId = 'morning' | 'day' | 'evening';
 
-export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, personalVow: personalVowProp }) => {
   const { t } = useTranslation();
 
   // Workflow states (same storage schema as before)
@@ -26,7 +27,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     eveningClass: false,
   });
 
-  const [personalVow, setPersonalVow] = useState<string>(() => safeStorage.getItem('personal_vow') || '');
+  const [localPersonalVow, setLocalPersonalVow] = useState<string>(() => safeStorage.getItem('personal_vow') || '');
+  const effectiveVow = (personalVowProp !== undefined ? personalVowProp : localPersonalVow).trim();
+  const hasPersonalVow = effectiveVow.length > 0;
   const [todayThoughtsCount, setTodayThoughtsCount] = useState(0);
   const [todayDeedsCount, setTodayDeedsCount] = useState(0);
   const [practicedDates, setPracticedDates] = useState<Set<string>>(new Set());
@@ -94,7 +97,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       setWorkflowState((prev) => ({ ...prev, eveningClass: practice.evening_class }));
     }
 
-    const syncVow = () => setPersonalVow(safeStorage.getItem('personal_vow') || '');
+    const syncVow = () => setLocalPersonalVow(safeStorage.getItem('personal_vow') || '');
 
     fetchAllStats();
     window.addEventListener('storage', fetchAllStats);
@@ -186,8 +189,62 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       exit={{ opacity: 0 }}
       className="max-w-xl mx-auto w-full px-5 space-y-6 pb-28"
     >
-      {/* 1. 晨雾区 + 2. 我的愿 */}
-      <section className="relative min-h-[26vh] sm:min-h-[30vh] flex flex-col items-center justify-center py-4 sm:py-6 -mx-5 px-5 overflow-hidden">
+      {/* 0. 今日愿景卡片 */}
+      <section aria-label="今日愿景">
+        <button
+          type="button"
+          onClick={() => onNavigate?.(hasPersonalVow ? 'vow' : 'vow-setup')}
+          className={cn(
+            'group w-full min-h-[56px] rounded-2xl px-4 py-3.5 text-left transition-all duration-200 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 cursor-pointer flex items-center justify-between gap-4',
+            hasPersonalVow
+              ? 'bg-gradient-to-br from-accent-mist/45 via-surface to-surface border border-line-strong hover:border-accent/50'
+              : 'bg-surface-2/65 border border-dashed border-line-strong hover:border-accent/50 hover:bg-surface'
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 text-caption">
+              {hasPersonalVow ? (
+                <Leaf className="w-3.5 h-3.5 text-accent shrink-0" strokeWidth={1.75} />
+              ) : (
+                <Feather className="w-3.5 h-3.5 text-gold shrink-0" strokeWidth={1.75} />
+              )}
+              <span className={cn('font-medium', hasPersonalVow ? 'text-accent' : 'text-ink-2')}>
+                今日愿景
+              </span>
+              <span className="text-ink-3" aria-hidden="true">·</span>
+              <span className="text-ink-3">
+                {hasPersonalVow ? '已立愿' : '尚未立愿'}
+              </span>
+            </div>
+            <p
+              className={cn(
+                'mt-1 font-serif text-[15px] leading-relaxed line-clamp-2',
+                hasPersonalVow ? 'text-ink' : 'text-ink-2'
+              )}
+            >
+              {hasPersonalVow ? effectiveVow : '写下今日的一念初心，让日常修行有所归处'}
+            </p>
+          </div>
+
+          <span
+            className={cn(
+              'inline-flex items-center gap-0.5 text-xs whitespace-nowrap shrink-0 transition-colors',
+              hasPersonalVow
+                ? 'text-ink-3 group-hover:text-accent'
+                : 'font-medium text-accent'
+            )}
+          >
+            <span>{hasPersonalVow ? '愿簿' : '去立愿'}</span>
+            <ChevronRight
+              className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5"
+              strokeWidth={1.5}
+            />
+          </span>
+        </button>
+      </section>
+
+      {/* 1. 晨雾区 */}
+      <section className="relative min-h-[22vh] sm:min-h-[26vh] flex flex-col items-center justify-center py-4 sm:py-6 -mx-5 px-5 overflow-hidden">
         {/* Two subtle radial gradients (top-right accent-mist, bottom-left cloud-mist, 0.7 opacity) */}
         <div
           aria-hidden="true"
@@ -211,27 +268,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
         {/* Centered DailyZenQuote without card border */}
         <DailyZenQuote variant="mist" />
-
-        {/* 2. 我的愿 */}
-        <div className="relative z-10 mt-4 w-full flex justify-center">
-          {personalVow.trim() ? (
-            <button
-              type="button"
-              onClick={() => onNavigate?.('vow')}
-              className="text-title !text-[15px] sm:!text-[17px] text-ink-2 text-center hover:text-accent transition-colors max-w-md cursor-pointer line-clamp-2"
-            >
-              我愿：{personalVow.trim()}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onNavigate?.('vow-setup')}
-              className="text-title !text-[15px] sm:!text-[17px] text-ink-2 text-center hover:text-accent transition-colors cursor-pointer"
-            >
-              写下你的第一个愿 →
-            </button>
-          )}
-        </div>
       </section>
 
       {/* 3. 主动作 */}

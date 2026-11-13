@@ -2494,7 +2494,7 @@ export default function App() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 pb-24 pt-4 sm:pt-6 relative z-10 overflow-x-hidden">
         {/* Content Area */}
         <AnimatePresence mode="wait">
-          {activeTab === 'dashboard' && <Dashboard onNavigate={navigateTo} />}
+          {activeTab === 'dashboard' && <Dashboard onNavigate={navigateTo} personalVow={personalVow} />}
           {activeTab === 'fish' && (() => {
             const activePracticeItem = dailyPractice.find(
               (item) => item.scriptureId === activeScriptureId
