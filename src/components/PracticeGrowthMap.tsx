@@ -81,21 +81,21 @@ export const PracticeGrowthMap = () => {
   }, 0);
 
   return (
-    <div className="bg-white rounded-[32px] p-6 sm:p-8 border border-zen-accent/10 shadow-sm mt-8">
+    <div className="bg-surface rounded-2xl p-6 sm:p-8 border border-line mt-8">
       <div 
         className="flex justify-between items-center cursor-pointer select-none mb-6"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div>
-          <h2 className="text-xl font-bold font-serif text-zen-ink flex items-center gap-2">
-            <Target className="w-5 h-5 text-zen-accent" />
+          <h2 className="text-xl font-bold font-serif text-ink flex items-center gap-2">
+            <Target className="w-5 h-5 text-accent" />
             修行成长图谱
           </h2>
-          <p className="text-sm text-zen-ink/60 mt-1">
+          <p className="text-sm text-ink-2 mt-1">
             见证心境的蜕变，从觉察到利他
           </p>
         </div>
-        <button className="p-2 text-zen-ink/40 hover:text-zen-ink rounded-full hover:bg-zen-bg transition-colors">
+        <button className="p-2 text-ink-3 hover:text-ink rounded-full hover:bg-surface-2 transition-colors">
           <ChevronDown className={cn("w-5 h-5 transition-transform duration-300", isExpanded ? "rotate-180" : "")} />
         </button>
       </div>
@@ -108,7 +108,7 @@ export const PracticeGrowthMap = () => {
           className="space-y-4 relative"
         >
           {/* Connecting Line */}
-          <div className="absolute left-[23px] top-6 bottom-6 w-0.5 bg-zen-accent/10 z-0" />
+          <div className="absolute left-[23px] top-6 bottom-6 w-0.5 bg-line z-0" />
 
           {levels.map((level, index) => {
           const isUnlocked = index <= currentLevelIndex;
@@ -118,49 +118,49 @@ export const PracticeGrowthMap = () => {
             <div key={level.id} className="relative z-10 flex items-start gap-4 group">
               <div className={cn(
                 "w-12 h-12 rounded-full flex items-center justify-center shrink-0 transition-all duration-500",
-                isUnlocked ? level.bg : "bg-zen-bg border border-zen-accent/10",
-                isCurrent && "ring-4 ring-offset-2 ring-zen-accent/20"
+                isUnlocked ? level.bg : "bg-surface-2 border border-line",
+                isCurrent && "ring-4 ring-offset-2 ring-accent/20"
               )}>
                 <level.icon className={cn(
                   "w-5 h-5",
-                  isUnlocked ? level.color : "text-zen-accent/30"
+                  isUnlocked ? level.color : "text-ink-3"
                 )} />
               </div>
               
               <div className={cn(
                 "flex-1 p-4 rounded-2xl border transition-all duration-300",
-                isUnlocked ? "bg-white border-zen-accent/10 shadow-sm" : "bg-zen-bg/50 border-transparent opacity-60",
-                isCurrent && "border-zen-accent/30 shadow-md"
+                isUnlocked ? "bg-surface border-line" : "bg-surface-2/60 border-transparent opacity-60",
+                isCurrent && "border-accent"
               )}>
                 <div className="flex items-center justify-between mb-1">
                   <h3 className={cn(
                     "font-bold text-sm",
-                    isUnlocked ? "text-zen-ink" : "text-zen-ink/50"
+                    isUnlocked ? "text-ink" : "text-ink-3"
                   )}>
                     Level {level.id}: {level.title}
                   </h3>
                   {isUnlocked && (
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-zen-accent/60">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-accent">
                       {isCurrent ? '当前境界' : '已达成'}
                     </span>
                   )}
                 </div>
                 <p className={cn(
                   "text-xs",
-                  isUnlocked ? "text-zen-ink/70" : "text-zen-ink/40"
+                  isUnlocked ? "text-ink-2" : "text-ink-3"
                 )}>
                   {level.desc}
                 </p>
                 
                 {isCurrent && index < levels.length - 1 && (
-                  <div className="mt-3 pt-3 border-t border-zen-accent/10">
+                  <div className="mt-3 pt-3 border-t border-line">
                     <div className="flex items-center justify-between text-[10px] mb-1.5">
-                      <span className="text-zen-accent/60 font-bold">距离下一境界</span>
-                      <span className="font-mono text-zen-accent">{meritPoints} / {levels[index + 1].reqPoints}</span>
+                      <span className="text-ink-2 font-bold">距离下一境界</span>
+                      <span className="text-accent font-medium tabular-nums">{meritPoints} / {levels[index + 1].reqPoints}</span>
                     </div>
-                    <div className="h-1.5 bg-zen-bg rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-zen-accent rounded-full transition-all duration-1000"
+                        className="h-full bg-accent rounded-full transition-all duration-1000"
                         style={{ width: `${Math.min(100, Math.max(0, ((meritPoints - level.reqPoints) / (levels[index + 1].reqPoints - level.reqPoints)) * 100))}%` }}
                       />
                     </div>

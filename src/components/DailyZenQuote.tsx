@@ -70,7 +70,7 @@ const ZEN_QUOTES: ZenQuote[] = [
   }
 ];
 
-export const DailyZenQuote: React.FC = () => {
+export const DailyZenQuote: React.FC<{ variant?: 'mist' | 'card' }> = ({ variant = 'card' }) => {
   // Determine daily index based on calendar day
   const getDayIndex = () => {
     const now = new Date();
@@ -118,7 +118,7 @@ export const DailyZenQuote: React.FC = () => {
           safeStorage.setItem('zen_quote_notification', 'true');
           new Notification('愿禅助手 · 正念提醒已开启', {
             body: `今日禅语："${currentQuote.quote}"`,
-            icon: '/icon.svg'
+            icon: '/assets/aistudio/logo_f2d0c65b.png'
           });
         }
       }
@@ -130,79 +130,121 @@ export const DailyZenQuote: React.FC = () => {
 
   return (
     <>
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-white/90 via-zen-bg/40 to-white/95 p-6 shadow-sm border border-zen-accent/15 backdrop-blur-sm transition-all hover:shadow-md">
-        {/* Subtle decorative lotus/zen background watermark */}
-        <div className="absolute -right-8 -bottom-8 w-36 h-36 bg-zen-accent/5 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute top-4 right-4 text-zen-accent/10 pointer-events-none select-none">
-          <Feather className="w-16 h-16 opacity-30" />
-        </div>
-
-        {/* Top Header */}
-        <div className="flex items-center justify-between mb-4 relative z-10">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zen-accent/10 text-zen-accent">
-              <Compass className="w-4 h-4" />
-            </span>
-            <span className="text-xs font-semibold uppercase tracking-widest text-zen-accent/70">
-              每日禅语 · 正念微省
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
+      {variant === 'mist' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+          className="relative z-10 flex flex-col items-center text-center"
+        >
+          <p className="font-serif font-medium text-[21px] sm:text-[25px] leading-[1.55] text-ink max-w-[18em] mx-auto text-balance">
+            {currentQuote.quote}
+          </p>
+          <p className="text-caption mt-2.5">
+            —— {currentQuote.source}
+          </p>
+          <div className="mt-2 flex items-center justify-center gap-3 opacity-55 hover:opacity-100 transition-opacity">
             <button
+              type="button"
               onClick={handleNext}
-              title="换一句领悟"
-              className="p-1.5 rounded-xl text-zen-ink/50 hover:text-zen-accent hover:bg-zen-accent/10 transition-colors"
+              title="换一句"
+              className="p-1.5 rounded-full text-ink-2 hover:text-accent transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
             <button
+              type="button"
               onClick={handleCopy}
               title="复制禅语"
-              className="p-1.5 rounded-xl text-zen-ink/50 hover:text-zen-accent hover:bg-zen-accent/10 transition-colors"
+              className="p-1.5 rounded-full text-ink-2 hover:text-accent transition-colors"
             >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? <Check className="w-3.5 h-3.5 text-accent" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
             <button
+              type="button"
               onClick={() => setShowCardModal(true)}
-              title="分享禅卡"
-              className="p-1.5 rounded-xl text-zen-ink/50 hover:text-zen-accent hover:bg-zen-accent/10 transition-colors"
+              title="查看释义与分享"
+              className="p-1.5 rounded-full text-ink-2 hover:text-accent transition-colors"
             >
               <Share2 className="w-3.5 h-3.5" />
             </button>
           </div>
-        </div>
-
-        {/* Main Quote Content */}
-        <div className="relative z-10 space-y-3">
-          <p className="font-serif text-lg md:text-xl font-medium text-zen-ink leading-relaxed tracking-wide">
-            “{currentQuote.quote}”
-          </p>
-
-          <div className="flex items-center justify-between pt-1">
-            <span className="text-xs font-serif text-zen-accent/80 tracking-wider">
-              —— {currentQuote.source}
-            </span>
-            <button
-              onClick={toggleDailyNotification}
-              className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full transition-colors ${
-                notificationEnabled 
-                  ? 'bg-zen-accent text-white' 
-                  : 'bg-zen-accent/10 text-zen-accent hover:bg-zen-accent/15'
-              }`}
-            >
-              <Bell className="w-3 h-3" />
-              <span>{notificationEnabled ? '每日提醒中' : '开启晨起正念'}</span>
-            </button>
+        </motion.div>
+      ) : (
+        <div className="relative overflow-hidden rounded-2xl bg-surface p-6 border border-line transition-colors">
+          {/* Subtle decorative lotus/zen background watermark */}
+          <div className="absolute -right-8 -bottom-8 w-36 h-36 bg-accent-mist/60 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute top-4 right-4 text-accent/10 pointer-events-none select-none">
+            <Feather className="w-16 h-16 opacity-30" />
           </div>
 
-          {/* Practice Reflection Note */}
-          <div className="mt-3 pt-3 border-t border-zen-accent/10 text-xs text-zen-ink/75 leading-relaxed bg-white/60 p-3 rounded-2xl">
-            <span className="font-bold text-zen-accent">今日践行：</span>
-            <span>{currentQuote.practiceTip}</span>
+          {/* Top Header */}
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-mist text-accent">
+                <Compass className="w-4 h-4" />
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-widest text-ink-2">
+                每日禅语 · 正念微省
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleNext}
+                title="换一句领悟"
+                className="p-1.5 rounded-xl text-ink-3 hover:text-accent hover:bg-accent-mist transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleCopy}
+                title="复制禅语"
+                className="p-1.5 rounded-xl text-ink-3 hover:text-accent hover:bg-accent-mist transition-colors"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-accent" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={() => setShowCardModal(true)}
+                title="分享禅卡"
+                className="p-1.5 rounded-xl text-ink-3 hover:text-accent hover:bg-accent-mist transition-colors"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Quote Content */}
+          <div className="relative z-10 space-y-3">
+            <p className="text-title text-ink leading-relaxed tracking-wide">
+              “{currentQuote.quote}”
+            </p>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs font-serif text-accent tracking-wider">
+                —— {currentQuote.source}
+              </span>
+              <button
+                onClick={toggleDailyNotification}
+                className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full transition-colors ${
+                  notificationEnabled 
+                    ? 'bg-accent text-on-accent' 
+                    : 'bg-accent-mist text-accent hover:bg-surface-2'
+                }`}
+              >
+                <Bell className="w-3 h-3" />
+                <span>{notificationEnabled ? '每日提醒中' : '开启晨起正念'}</span>
+              </button>
+            </div>
+
+            {/* Practice Reflection Note */}
+            <div className="mt-3 pt-3 border-t border-line text-xs text-ink-2 leading-relaxed bg-surface-2 p-3 rounded-2xl">
+              <span className="font-bold text-accent">今日践行：</span>
+              <span>{currentQuote.practiceTip}</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Zen Card Share Modal */}
       <AnimatePresence>
@@ -212,42 +254,42 @@ export const DailyZenQuote: React.FC = () => {
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.92, opacity: 0 }}
-              className="relative w-full max-w-sm rounded-[32px] bg-gradient-to-b from-[#FAF9F5] to-[#EFECE4] p-8 shadow-2xl border border-zen-accent/20 text-center"
+              className="relative w-full max-w-sm rounded-3xl bg-surface p-8 shadow-float border border-line text-center"
             >
               <button
                 onClick={() => setShowCardModal(false)}
-                className="absolute top-4 right-4 p-2 text-zen-ink/40 hover:text-zen-ink rounded-full"
+                className="absolute top-4 right-4 p-2 text-ink-3 hover:text-ink rounded-full"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="w-12 h-12 bg-zen-accent text-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-md shadow-zen-accent/20 font-serif text-xl font-bold">
+              <div className="w-12 h-12 bg-accent text-on-accent rounded-full flex items-center justify-center mx-auto mb-6 font-serif text-xl font-bold">
                 愿
               </div>
 
-              <div className="border-t border-b border-zen-accent/20 py-6 my-4">
-                <p className="font-serif text-xl text-zen-ink leading-loose tracking-wider">
+              <div className="border-t border-b border-line py-6 my-4">
+                <p className="text-title text-ink leading-loose tracking-wider">
                   {currentQuote.quote}
                 </p>
-                <p className="mt-4 font-serif text-sm text-zen-accent/70">
+                <p className="mt-4 font-serif text-sm text-accent">
                   —— {currentQuote.source}
                 </p>
               </div>
 
-              <p className="text-xs text-zen-ink/60 leading-relaxed mb-6">
+              <p className="text-xs text-ink-2 leading-relaxed mb-6">
                 {currentQuote.explanation}
               </p>
 
               <div className="flex gap-2">
                 <button
                   onClick={handleCopy}
-                  className="flex-1 bg-zen-accent text-white py-3 rounded-2xl text-xs font-bold shadow-md shadow-zen-accent/15 hover:opacity-90 transition-opacity"
+                  className="flex-1 bg-accent hover:bg-accent-hover text-on-accent py-3 rounded-2xl text-xs font-bold transition-colors"
                 >
                   {copied ? '已复制到剪贴板' : '复制禅语文字'}
                 </button>
                 <button
                   onClick={() => setShowCardModal(false)}
-                  className="px-4 py-3 bg-white/80 border border-zen-accent/20 text-zen-ink rounded-2xl text-xs font-medium hover:bg-white"
+                  className="px-4 py-3 bg-surface-2 border border-line text-ink rounded-2xl text-xs font-medium hover:bg-accent-mist transition-colors"
                 >
                   关闭
                 </button>

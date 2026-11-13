@@ -1,29 +1,176 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+@theme inline {
+  --color-paper: var(--theme-bg);
+  --color-surface: var(--theme-surface);
+  --color-surface-2: var(--theme-surface-2);
+  --color-ink: var(--theme-ink);
+  --color-ink-2: var(--theme-ink-2);
+  --color-ink-3: var(--theme-ink-3);
+  --color-accent: var(--theme-accent);
+  --color-accent-hover: var(--theme-accent-hover);
+  --color-accent-soft: var(--theme-accent-soft);
+  --color-accent-mist: var(--theme-accent-mist);
+  --color-on-accent: var(--theme-on-accent);
+  --color-cloud: var(--theme-cloud);
+  --color-cloud-mist: var(--theme-cloud-mist);
+  --color-line: var(--theme-line);
+  --color-line-strong: var(--theme-line-strong);
+  --color-gold: var(--theme-gold);
+
+  /* Preserve legacy aliases so existing classes inherit new tokens seamlessly */
   --color-zen-bg: var(--theme-bg);
   --color-zen-ink: var(--theme-ink);
   --color-zen-accent: var(--theme-accent);
+  --color-zen-paper: var(--theme-surface);
+
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", serif;
+  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --shadow-float: 0 1px 2px rgb(43 47 44 / .04), 0 12px 32px -16px rgb(43 47 44 / .18);
+  --ease-zen: cubic-bezier(.22, 1, .36, 1);
 }
 
-:root {
-  --theme-bg: #f5f5f0;
-  --theme-ink: #2c2c2c;
-  --theme-accent: #5A5A40;
+:root, [data-theme="zen"] {
+  --theme-bg: #FAF9F5;
+  --theme-surface: #FFFEFB;
+  --theme-surface-2: #F3F1EA;
+  --theme-ink: #2B2F2C;
+  --theme-ink-2: #56635C;
+  --theme-ink-3: #7A817C;
+  --theme-accent: #4A755A;
+  --theme-accent-hover: #3E654C;
+  --theme-accent-soft: #8BB597;
+  --theme-accent-mist: #E8F0EA;
+  --theme-on-accent: #FFFFFF;
+  --theme-cloud: #A3AAAA;
+  --theme-cloud-mist: #EEF0EE;
+  --theme-line: #E6E2D8;
+  --theme-line-strong: #C9CBC6;
+  --theme-gold: #876A3B;
+  --theme-gradient: linear-gradient(135deg, #D3E5D7 0%, #8BB597 55%, #6F9C7C 100%);
   color-scheme: light;
 }
 
+[data-theme="lotus"] {
+  --theme-bg: #FBF5F4;
+  --theme-surface: #FFFDFC;
+  --theme-surface-2: #F5EBEA;
+  --theme-ink: #3E2E33;
+  --theme-ink-2: #6E5A60;
+  --theme-ink-3: #8E7A80;
+  --theme-accent: #9A5470;
+  --theme-accent-hover: #844660;
+  --theme-accent-soft: #D9A9BA;
+  --theme-accent-mist: #F6E8EC;
+  --theme-on-accent: #FFFFFF;
+  --theme-cloud: #B8A6AC;
+  --theme-cloud-mist: #F3ECEE;
+  --theme-line: #EDE0DE;
+  --theme-line-strong: #DDCBC8;
+  --theme-gold: #876A3B;
+  --theme-gradient: linear-gradient(135deg, #F6E1E8 0%, #D9A9BA 55%, #9A5470 100%);
+  color-scheme: light;
+}
+
+[data-theme="sky"] {
+  --theme-bg: #F4F7F8;
+  --theme-surface: #FDFEFE;
+  --theme-surface-2: #E9EFF1;
+  --theme-ink: #22313A;
+  --theme-ink-2: #4F5E67;
+  --theme-ink-3: #76848C;
+  --theme-accent: #3F6E8C;
+  --theme-accent-hover: #335C76;
+  --theme-accent-soft: #A3C0D0;
+  --theme-accent-mist: #E4EDF2;
+  --theme-on-accent: #FFFFFF;
+  --theme-cloud: #9FB0B9;
+  --theme-cloud-mist: #EBF0F2;
+  --theme-line: #DEE6E9;
+  --theme-line-strong: #C9D5DA;
+  --theme-gold: #876A3B;
+  --theme-gradient: linear-gradient(135deg, #DCEAF1 0%, #A3C0D0 55%, #3F6E8C 100%);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --theme-bg: #121614;
+  --theme-surface: #1A1F1D;
+  --theme-surface-2: #222826;
+  --theme-ink: #E7E9E4;
+  --theme-ink-2: #A9B1AB;
+  --theme-ink-3: #7D8580;
+  --theme-accent: #9CC7A8;
+  --theme-accent-hover: #B2D5BB;
+  --theme-accent-mist: #1E2B23;
+  --theme-accent-soft: #6F9C7C;
+  --theme-on-accent: #12201A;
+  --theme-cloud: #727A79;
+  --theme-cloud-mist: #1C2220;
+  --theme-line: #2A302D;
+  --theme-line-strong: #353C38;
+  --theme-gold: #CDB077;
+  --theme-gradient: linear-gradient(135deg, #2C3F33 0%, #6F9C7C 55%, #9CC7A8 100%);
+  color-scheme: dark;
+}
+
 body {
-  background-color: #f5f5f0;
-  background-image: linear-gradient(to bottom, var(--theme-bg), var(--theme-bg));
+  background-color: var(--theme-bg);
   color: var(--theme-ink);
+  font-family: var(--font-sans);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.17 0 0 0 0 0.18 0 0 0 0 0.17 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+}
+
+[data-theme="dark"] body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.92 0 0 0 0 0.9 0 0 0 0.02 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 #root {
   min-height: 100vh;
-  background-color: var(--theme-bg);
+}
+
+.text-display {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.text-title {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.text-reading {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  line-height: 2;
+}
+
+.text-caption {
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--theme-ink-2);
+}
+
+.text-counter {
+  font-family: var(--font-serif);
+  font-size: 56px;
+  line-height: 1;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

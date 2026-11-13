@@ -1,13 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Book, Search, Plus, Check, Trash2, Star, ChevronDown, ChevronUp,
-  Volume2, Sparkles, BookOpen, Download, X, Eye, EyeOff, Info
+  BookOpen,
+  ChevronLeft,
+  Download,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Star,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { Scripture } from '../constants';
 import { scriptureDatabaseService } from '../services/scriptureDatabaseService';
 import { useTranslation } from '../i18n';
 import { cn } from '../lib/utils';
+import { safeStorage } from '../utils/safeStorage';
 
 interface ScriptureLibraryProps {
   allScriptures: Scripture[];
@@ -15,6 +23,81 @@ interface ScriptureLibraryProps {
   onSelectScripture: (scripture: Scripture, goToFish?: boolean) => void;
   onAddCustomScripture: (scripture: Scripture) => void;
   onDeleteCustomScripture: (id: string) => void;
+  onImmersiveChange?: (immersive: boolean) => void;
+}
+
+const HAN_CHAR_REGEX = /\p{Script=Han}/u;
+const PINYIN_PUNCT_REGEX = /[，。、；：！？「」『』（）()【】《》“”‘’.,;:!?/·—\-~～…\n\r\t]+/g;
+
+function tokenizePinyin(text: string): string[] {
+  return text
+    .replace(PINYIN_PUNCT_REGEX, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+interface RubyRenderResult {
+  aligned: boolean;
+  nodes: React.ReactNode;
+  fallbackPinyin?: string;
+}
+
+function alignParagraphToRuby(
+  contentPara: string,
+  pinyinPara?: string
+): RubyRenderResult {
+  if (!pinyinPara || !pinyinPara.trim()) {
+    return { aligned: false, nodes: contentPara };
+  }
+
+  const chars = Array.from(contentPara);
+  const hanCount = chars.filter((ch) => HAN_CHAR_REGEX.test(ch)).length;
+  if (hanCount === 0) {
+    return { aligned: false, nodes: contentPara };
+  }
+
+  // Try direct paragraph match first; if multi-line annotation exists (e.g. "（梵音：...）"), try first line
+  const fullTokens = tokenizePinyin(pinyinPara);
+  let matchedTokens: string[] | null = null;
+
+  if (fullTokens.length === hanCount) {
+    matchedTokens = fullTokens;
+  } else {
+    const firstLine = pinyinPara.split('\n')[0]?.trim();
+    if (firstLine) {
+      const firstLineTokens = tokenizePinyin(firstLine);
+      if (firstLineTokens.length === hanCount) {
+        matchedTokens = firstLineTokens;
+      }
+    }
+  }
+
+  if (!matchedTokens) {
+    return {
+      aligned: false,
+      nodes: contentPara,
+      fallbackPinyin: pinyinPara.trim(),
+    };
+  }
+
+  let tokenIdx = 0;
+  const nodes = chars.map((ch, idx) => {
+    if (HAN_CHAR_REGEX.test(ch)) {
+      const py = matchedTokens![tokenIdx++];
+      return (
+        <ruby key={idx} className="mx-[0.03em]">
+          {ch}
+          <rt className="text-[0.5em] text-ink-3 font-sans font-normal leading-none select-none">
+            {py}
+          </rt>
+        </ruby>
+      );
+    }
+    return <React.Fragment key={idx}>{ch}</React.Fragment>;
+  });
+
+  return { aligned: true, nodes };
 }
 
 export const ScriptureLibrary: React.FC<ScriptureLibraryProps> = ({
@@ -23,6 +106,7 @@ export const ScriptureLibrary: React.FC<ScriptureLibraryProps> = ({
   onSelectScripture,
   onAddCustomScripture,
   onDeleteCustomScripture,
+  onImmersiveChange,
 }) => {
   const { t } = useTranslation();
 
@@ -30,14 +114,51 @@ export const ScriptureLibrary: React.FC<ScriptureLibraryProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<
     'all' | 'sutra' | 'mantra' | 'name' | 'favorites' | 'custom'
   >('all');
-  const [expandedId, setExpandedId] = useState<string | null>(activeScriptureId || 'heart-sutra');
-  const [showPinyin, setShowPinyin] = useState(true);
+  const [readingId, setReadingId] = useState<string | null>(null);
+
+  const [showPinyin, setShowPinyin] = useState<boolean>(() => {
+    try {
+      const saved = safeStorage.getItem('zen_scripture_show_pinyin');
+      return saved === null ? true : saved === 'true';
+    } catch {
+      return true;
+    }
+  });
+  const [showExplanation, setShowExplanation] = useState<boolean>(true);
+
+  const [readerFontSize, setReaderFontSize] = useState<number>(() => {
+    try {
+      const saved = safeStorage.getItem('zen_scripture_font_size');
+      const parsed = saved ? parseInt(saved, 10) : 19;
+      return Number.isFinite(parsed) ? Math.min(24, Math.max(17, parsed)) : 19;
+    } catch {
+      return 19;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      safeStorage.setItem('zen_scripture_font_size', String(readerFontSize));
+    } catch {
+      // ignore
+    }
+  }, [readerFontSize]);
+
+  useEffect(() => {
+    try {
+      safeStorage.setItem('zen_scripture_show_pinyin', String(showPinyin));
+    } catch {
+      // ignore
+    }
+  }, [showPinyin]);
+
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() =>
     scriptureDatabaseService.getFavorites()
   );
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  // Add custom scripture form states
+  // Add custom scripture form modal
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCategory, setNewCategory] = useState<'sutra' | 'mantra' | 'name'>('sutra');
   const [newTitle, setNewTitle] = useState('');
@@ -46,8 +167,49 @@ export const ScriptureLibrary: React.FC<ScriptureLibraryProps> = ({
   const [newPinyin, setNewPinyin] = useState('');
   const [newExplanation, setNewExplanation] = useState('');
 
+  // Reader scroll-direction immersive handling
+  const [readerChromeHidden, setReaderChromeHidden] = useState(false);
+  const readerScrollRef = useRef<HTMLDivElement>(null);
+  const lastScrollTopRef = useRef<number>(0);
+
+  const readingScripture = useMemo(
+    () => (readingId ? allScriptures.find((s) => s.id === readingId) || null : null),
+    [allScriptures, readingId]
+  );
+
+  // Restore global immersive when closing reader or unmounting
+  useEffect(() => {
+    if (!readingScripture) {
+      setReaderChromeHidden(false);
+      onImmersiveChange?.(false);
+    }
+  }, [readingScripture, onImmersiveChange]);
+
+  useEffect(() => {
+    return () => {
+      onImmersiveChange?.(false);
+    };
+  }, [onImmersiveChange]);
+
+  const handleReaderScroll = () => {
+    const el = readerScrollRef.current;
+    if (!el) return;
+    const currentTop = el.scrollTop;
+    const delta = currentTop - lastScrollTopRef.current;
+
+    if (currentTop > 36 && delta > 6) {
+      setReaderChromeHidden(true);
+      onImmersiveChange?.(true);
+    } else if (delta < -6 || currentTop <= 16) {
+      setReaderChromeHidden(false);
+      onImmersiveChange?.(false);
+    }
+
+    lastScrollTopRef.current = currentTop;
+  };
+
   const filteredScriptures = useMemo(() => {
-    const nonMeditation = allScriptures.filter(s => s.category !== 'meditation');
+    const nonMeditation = allScriptures.filter((s) => s.category !== 'meditation');
     return scriptureDatabaseService.searchScriptures(
       nonMeditation,
       searchQuery,
@@ -88,174 +250,313 @@ export const ScriptureLibrary: React.FC<ScriptureLibraryProps> = ({
       isCustom: true,
     };
     onAddCustomScripture(entry);
-    setExpandedId(entry.id);
     setNewTitle('');
     setNewSource('');
     setNewContent('');
     setNewPinyin('');
     setNewExplanation('');
     setShowAddForm(false);
+    setReadingId(entry.id);
   };
 
   const categoryLabel = (cat: Scripture['category']) => {
     if (cat === 'sutra') return t('scripture_category_sutra') || '经典';
-    if (cat === 'mantra') return t('scripture_category_mantra') || '神咒';
+    if (cat === 'mantra') return '持咒';
     if (cat === 'name') return t('buddha_name') || '圣号';
     return '禅修';
   };
 
-  const categoryStyle = (cat: Scripture['category']) => {
-    if (cat === 'sutra') return 'bg-amber-50 text-amber-800 border-amber-200/60';
-    if (cat === 'mantra') return 'bg-purple-50 text-purple-800 border-purple-200/60';
-    if (cat === 'name') return 'bg-emerald-50 text-emerald-800 border-emerald-200/60';
-    return 'bg-sky-50 text-sky-800 border-sky-200/60';
-  };
+  const readerParagraphs = useMemo(() => {
+    if (!readingScripture) return [];
+    const contentParas = readingScripture.content
+      .split(/\n\s*\n/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const pinyinParas = readingScripture.pinyin
+      ? readingScripture.pinyin
+          .split(/\n\s*\n/)
+          .map((p) => p.trim())
+          .filter(Boolean)
+      : [];
 
-  const sutraCount = allScriptures.filter(s => s.category === 'sutra').length;
-  const mantraCount = allScriptures.filter(s => s.category === 'mantra').length;
-  const nameCount = allScriptures.filter(s => s.category === 'name').length;
+    return contentParas.map((para, idx) => ({
+      id: idx,
+      content: para,
+      pinyin: pinyinParas[idx],
+    }));
+  }, [readingScripture]);
+
+  const explanationBlockRef = useRef<HTMLDivElement>(null);
 
   return (
-    <motion.div
-      key="scripture"
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -16 }}
-      className="max-w-3xl mx-auto w-full space-y-5 pb-12"
-    >
-      {/* Top Header & Database Overview */}
-      <div className="bg-white rounded-[32px] p-5 sm:p-7 shadow-sm border border-zen-accent/10">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-zen-accent/10 text-zen-accent flex items-center justify-center shrink-0">
-                <Book className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-lg sm:text-xl font-bold font-serif text-zen-ink">
-                  佛教经文数据库
-                </h2>
-                <p className="text-xs text-zen-ink/60">
-                  收录 {sutraCount} 部经典 · {mantraCount} 篇神咒 · {nameCount} 尊圣号 · 含原文、拼音与释义
-                </p>
-              </div>
-            </div>
-          </div>
+    <div className="max-w-2xl mx-auto w-full pb-12">
+      {/* Top Display Header & More Menu (⋯) */}
+      <div className="flex items-center justify-between pt-2 pb-4">
+        <h1 className="text-display text-ink">经藏</h1>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <button
-              onClick={() => setShowPinyin(!showPinyin)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all",
-                showPinyin
-                  ? "bg-amber-50 text-amber-900 border-amber-200"
-                  : "bg-zen-bg/50 text-zen-ink/70 border-zen-accent/10 hover:bg-zen-bg"
-              )}
-              title="切换拼音显示"
-            >
-              {showPinyin ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              <span>{showPinyin ? '显示拼音' : '隐藏拼音'}</span>
-            </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowMoreMenu((v) => !v)}
+            aria-label="更多操作"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-surface-2 transition-colors"
+          >
+            <MoreHorizontal size={20} strokeWidth={1.5} />
+          </button>
 
-            <button
-              onClick={handleExportDB}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-zen-bg/60 hover:bg-zen-bg text-zen-ink border border-zen-accent/10 transition-colors"
-              title="导出完整经文数据库 (JSON)"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">导出JSON</span>
-            </button>
-
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-zen-accent text-white rounded-xl text-xs font-bold shadow-xs hover:opacity-90 transition-opacity"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>收录经文</span>
-            </button>
-          </div>
+          <AnimatePresence>
+            {showMoreMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setShowMoreMenu(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                  transition={{ duration: 0.16 }}
+                  className="absolute right-0 top-11 z-40 w-44 rounded-2xl bg-surface border border-line shadow-float py-1.5 overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      setShowAddForm(true);
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
+                  >
+                    <Plus size={16} strokeWidth={1.5} className="text-accent" />
+                    <span>自定义收录</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      handleExportDB();
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
+                  >
+                    <Download size={16} strokeWidth={1.5} className="text-accent" />
+                    <span>JSON 导出</span>
+                  </button>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </div>
+      </div>
 
-        {/* Search Input */}
-        <div className="relative mb-4">
-          <Search className="w-4 h-4 text-zen-accent/50 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+      {/* Sticky Search Input */}
+      <div className="sticky top-0 z-20 bg-paper/95 backdrop-blur-sm py-2">
+        <div className="h-12 rounded-xl bg-surface-2 px-4 flex items-center gap-3 border border-line focus-within:border-accent transition-colors">
+          <Search size={18} strokeWidth={1.5} className="text-ink-3 shrink-0" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索经名、原文、拼音或释义（如：心经、金刚经、阿弥陀佛、五蕴）..."
-            className="w-full bg-zen-bg/40 border border-zen-accent/15 rounded-2xl pl-10 pr-10 py-2.5 text-sm text-zen-ink placeholder:text-zen-ink/40 focus:outline-none focus:border-zen-accent/40 focus:bg-white transition-all"
+            placeholder="搜索经名、原文、拼音或释义..."
+            className="flex-1 bg-transparent text-sm text-ink placeholder:text-ink-2 focus:outline-none min-w-0"
           />
           {searchQuery && (
             <button
+              type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-zen-ink/40 hover:text-zen-ink rounded-full"
+              aria-label="清除搜索"
+              className="w-7 h-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-surface transition-colors shrink-0"
             >
-              <X className="w-3.5 h-3.5" />
+              <X size={15} strokeWidth={1.5} />
             </button>
           )}
         </div>
+      </div>
 
-        {/* Category Filter Tabs */}
-        <div className="flex flex-wrap gap-1.5">
-          {[
-            { id: 'all', label: '全部收录' },
-            { id: 'sutra', label: '常见经典' },
-            { id: 'mantra', label: '真言神咒' },
-            { id: 'name', label: '佛菩萨圣号' },
-            { id: 'favorites', label: `我的收藏 (${favoriteIds.length})` },
-            { id: 'custom', label: '自定义' },
-          ].map(cat => (
+      {/* Category Filter Tabs (single horizontal scrolling row, hidden scrollbar) */}
+      <div className="flex items-center gap-2 overflow-x-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {[
+          { id: 'all', label: '全部' },
+          { id: 'sutra', label: '经典' },
+          { id: 'mantra', label: '持咒' },
+          { id: 'name', label: '圣号' },
+          { id: 'favorites', label: `收藏 (${favoriteIds.length})` },
+          { id: 'custom', label: '自定义' },
+        ].map((cat) => {
+          const isSelected = selectedCategory === cat.id;
+          return (
             <button
               key={cat.id}
+              type="button"
               onClick={() => setSelectedCategory(cat.id as any)}
               className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-bold transition-all border",
-                selectedCategory === cat.id
-                  ? "bg-zen-accent text-white border-zen-accent shadow-2xs"
-                  : "bg-zen-bg/40 text-zen-ink/70 border-zen-accent/10 hover:bg-zen-bg"
+                'px-4 h-9 rounded-full text-sm transition-colors whitespace-nowrap shrink-0 border flex items-center justify-center',
+                isSelected
+                  ? 'bg-accent-mist text-accent border-transparent font-medium'
+                  : 'text-ink-2 border-line hover:text-ink hover:border-line-strong'
               )}
             >
               {cat.label}
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      {/* Add New Scripture Form */}
+      {/* Book-Catalog Style List */}
+      {filteredScriptures.length === 0 ? (
+        <div className="py-16 text-center">
+          <BookOpen className="w-9 h-9 text-ink-3 mx-auto mb-3" strokeWidth={1.5} />
+          <p className="text-sm text-ink-2">未找到匹配的经文目录</p>
+          <p className="text-caption mt-1">可更改搜索词或切换上方分类</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-line border-t border-line mt-1">
+          {filteredScriptures.map((scripture) => {
+            const isFav = favoriteIds.includes(scripture.id);
+            const isActive = activeScriptureId === scripture.id;
+            const isCustom = scripture.id.startsWith('custom-') || scripture.isCustom;
+            const metaLine = [
+              scripture.source,
+              categoryLabel(scripture.category),
+              isActive ? '当前定课' : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
+
+            return (
+              <div
+                key={scripture.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  lastScrollTopRef.current = 0;
+                  setReaderChromeHidden(false);
+                  setReadingId(scripture.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    lastScrollTopRef.current = 0;
+                    setReaderChromeHidden(false);
+                    setReadingId(scripture.id);
+                  }
+                }}
+                className="py-4 flex items-center justify-between gap-4 cursor-pointer group focus:outline-none"
+              >
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-title text-ink group-hover:text-accent transition-colors truncate">
+                    {scripture.title}
+                  </h2>
+                  <p className="text-caption mt-1 truncate">{metaLine}</p>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  {isCustom &&
+                    (pendingDeleteId === scripture.id ? (
+                      <div
+                        className="flex items-center gap-1.5 mr-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onDeleteCustomScripture(scripture.id);
+                            setPendingDeleteId(null);
+                          }}
+                          className="px-2.5 h-8 rounded-full bg-accent text-on-accent text-xs font-medium"
+                        >
+                          删除
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingDeleteId(null)}
+                          className="px-2.5 h-8 rounded-full bg-surface-2 text-ink-2 text-xs"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingDeleteId(scripture.id);
+                        }}
+                        aria-label="删除自定义经文"
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 transition-colors"
+                      >
+                        <Trash2 size={17} strokeWidth={1.5} />
+                      </button>
+                    ))}
+
+                  <button
+                    type="button"
+                    onClick={(e) => handleToggleFavorite(e, scripture.id)}
+                    aria-label={isFav ? '取消收藏' : '收藏经文'}
+                    className={cn(
+                      'w-10 h-10 rounded-full flex items-center justify-center transition-colors',
+                      isFav
+                        ? 'text-accent'
+                        : 'text-ink-3 hover:text-ink-2 hover:bg-surface-2'
+                    )}
+                  >
+                    <Star
+                      size={18}
+                      strokeWidth={1.5}
+                      className={cn(isFav && 'fill-current')}
+                    />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Custom Scripture Modal / Sheet */}
       <AnimatePresence>
         {showAddForm && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="bg-white rounded-[32px] p-6 shadow-sm border border-zen-accent/15 space-y-4">
+          <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center sm:p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAddForm(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: '100%', opacity: 0.9 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0.9 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              className="relative z-10 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-surface border border-line shadow-float p-6 max-h-[88dvh] overflow-y-auto space-y-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+            >
+              <div className="w-10 h-1 rounded-full bg-line-strong mx-auto sm:hidden" />
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-base font-serif text-zen-ink">收录新经文 / 咒语</h3>
+                <h3 className="text-title text-ink">自定义收录经文</h3>
                 <button
+                  type="button"
                   onClick={() => setShowAddForm(false)}
-                  className="p-1.5 text-zen-ink/40 hover:text-zen-ink rounded-full hover:bg-zen-bg"
+                  aria-label="关闭"
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-surface-2"
                 >
-                  <X className="w-4 h-4" />
+                  <X size={18} strokeWidth={1.5} />
                 </button>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { id: 'sutra', label: '经典经文' },
-                  { id: 'mantra', label: '真言神咒' },
+                  { id: 'mantra', label: '真言持咒' },
                   { id: 'name', label: '佛菩萨圣号' },
-                ].map(type => (
+                ].map((type) => (
                   <button
                     key={type.id}
+                    type="button"
                     onClick={() => setNewCategory(type.id as any)}
                     className={cn(
-                      "py-2 rounded-xl text-xs font-bold transition-colors border",
+                      'h-9 rounded-full text-xs font-medium transition-colors border',
                       newCategory === type.id
-                        ? "bg-zen-accent text-white border-zen-accent"
-                        : "bg-zen-bg/50 text-zen-accent border-zen-accent/10 hover:border-zen-accent/30"
+                        ? 'bg-accent-mist text-accent border-transparent'
+                        : 'bg-surface-2 text-ink-2 border-line hover:text-ink'
                     )}
                   >
                     {type.label}
@@ -265,313 +566,308 @@ export const ScriptureLibrary: React.FC<ScriptureLibraryProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-zen-accent/70 mb-1">
-                    标题 <span className="text-red-500">*</span>
-                  </label>
+                  <label className="block text-caption mb-1">标题 *</label>
                   <input
                     type="text"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    placeholder="如：药师琉璃光如来本愿经（节选）"
-                    className="w-full bg-zen-bg/40 border border-zen-accent/15 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:border-zen-accent/40"
+                    placeholder="如：药师琉璃光如来本愿经"
+                    className="w-full h-11 bg-surface-2 border border-line rounded-xl px-3.5 text-sm text-ink focus:outline-none focus:border-accent"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-zen-accent/70 mb-1">
-                    出处 / 译者（选填）
-                  </label>
+                  <label className="block text-caption mb-1">出处 / 译者（选填）</label>
                   <input
                     type="text"
                     value={newSource}
                     onChange={(e) => setNewSource(e.target.value)}
                     placeholder="如：唐·玄奘法师译"
-                    className="w-full bg-zen-bg/40 border border-zen-accent/15 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:border-zen-accent/40"
+                    className="w-full h-11 bg-surface-2 border border-line rounded-xl px-3.5 text-sm text-ink focus:outline-none focus:border-accent"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-zen-accent/70 mb-1">
-                  原文 <span className="text-red-500">*</span>
-                </label>
+                <label className="block text-caption mb-1">原文 *</label>
                 <textarea
                   value={newContent}
                   onChange={(e) => setNewContent(e.target.value)}
                   placeholder="请输入经文、咒语或圣号原文..."
                   rows={4}
-                  className="w-full bg-zen-bg/40 border border-zen-accent/15 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:border-zen-accent/40 resize-y"
+                  className="w-full bg-surface-2 border border-line rounded-xl p-3.5 text-sm text-ink focus:outline-none focus:border-accent resize-y"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-zen-accent/70 mb-1">
-                  拼音标注（选填）
-                </label>
+                <label className="block text-caption mb-1">拼音标注（选填）</label>
                 <textarea
                   value={newPinyin}
                   onChange={(e) => setNewPinyin(e.target.value)}
-                  placeholder="可填写汉语拼音或梵音注音，便于诵读..."
+                  placeholder="按字以空格分隔拼音，可逐字对齐标注在上方..."
                   rows={2}
-                  className="w-full bg-zen-bg/40 border border-zen-accent/15 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:border-zen-accent/40 resize-y"
+                  className="w-full bg-surface-2 border border-line rounded-xl p-3.5 text-sm text-ink focus:outline-none focus:border-accent resize-y"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-zen-accent/70 mb-1">
-                  简要解释（选填）
-                </label>
+                <label className="block text-caption mb-1">释义与受用（选填）</label>
                 <textarea
                   value={newExplanation}
                   onChange={(e) => setNewExplanation(e.target.value)}
-                  placeholder="简要记录经文主旨、背景与修行受用..."
+                  placeholder="简要记录经文主旨与修行受用..."
                   rows={2}
-                  className="w-full bg-zen-bg/40 border border-zen-accent/15 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:border-zen-accent/40 resize-y"
+                  className="w-full bg-surface-2 border border-line rounded-xl p-3.5 text-sm text-ink focus:outline-none focus:border-accent resize-y"
                 />
               </div>
 
-              <div className="flex gap-2 pt-1">
+              <div className="flex gap-3 pt-1">
                 <button
+                  type="button"
                   onClick={() => setShowAddForm(false)}
-                  className="flex-1 bg-zen-bg text-zen-ink py-2.5 rounded-xl text-sm font-bold hover:bg-zen-accent/10 transition-colors"
+                  className="flex-1 h-11 rounded-full bg-surface-2 text-ink-2 text-sm font-medium hover:text-ink transition-colors"
                 >
                   {t('cancel') || '取消'}
                 </button>
                 <button
+                  type="button"
                   onClick={handleAddSubmit}
                   disabled={!newTitle.trim() || !newContent.trim()}
-                  className="flex-1 bg-zen-accent text-white py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
+                  className="flex-1 h-11 rounded-full bg-accent text-on-accent text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-40"
                 >
                   {t('confirm_add') || '确认收录'}
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Full-Screen Scripture Reader */}
+      <AnimatePresence>
+        {readingScripture && (
+          <motion.div
+            key={readingScripture.id}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="fixed inset-0 z-40 bg-paper"
+          >
+            <div
+              ref={readerScrollRef}
+              onScroll={handleReaderScroll}
+              onClick={() => {
+                if (readerChromeHidden) {
+                  setReaderChromeHidden(false);
+                  onImmersiveChange?.(false);
+                }
+              }}
+              className="w-full h-full overflow-y-auto"
+            >
+            {/* Reader Top Bar (scroll down hides with immersive, scroll up restores) */}
+            <header
+              className={cn(
+                'sticky top-0 z-30 h-14 px-4 flex items-center justify-between bg-paper/90 backdrop-blur-md transition-all duration-300 ease-[var(--ease-zen)]',
+                readerChromeHidden
+                  ? 'opacity-0 -translate-y-full pointer-events-none'
+                  : 'opacity-100 translate-y-0'
+              )}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  onImmersiveChange?.(false);
+                  setReadingId(null);
+                }}
+                aria-label="返回经藏"
+                className="h-10 px-2 -ml-1 rounded-full flex items-center gap-1 text-ink-2 hover:text-ink hover:bg-surface-2 transition-colors"
+              >
+                <ChevronLeft size={20} strokeWidth={1.5} />
+                <span className="text-sm">经藏</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => handleToggleFavorite(e, readingScripture.id)}
+                aria-label={
+                  favoriteIds.includes(readingScripture.id) ? '取消收藏' : '收藏经文'
+                }
+                className={cn(
+                  'w-10 h-10 rounded-full flex items-center justify-center transition-colors',
+                  favoriteIds.includes(readingScripture.id)
+                    ? 'text-accent'
+                    : 'text-ink-2 hover:text-ink hover:bg-surface-2'
+                )}
+              >
+                <Star
+                  size={19}
+                  strokeWidth={1.5}
+                  className={cn(favoriteIds.includes(readingScripture.id) && 'fill-current')}
+                />
+              </button>
+            </header>
+
+            {/* Reading Body */}
+            <article className="max-w-[34em] mx-auto px-6 pt-6 pb-36">
+              <header className="text-center">
+                <h1 className="text-display text-ink text-balance">
+                  {readingScripture.title}
+                </h1>
+                {(readingScripture.source || readingScripture.recommendedCount) && (
+                  <p className="text-caption mt-2.5">
+                    {[
+                      readingScripture.source,
+                      readingScripture.recommendedCount
+                        ? `建议日诵 ${readingScripture.recommendedCount} 遍`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                )}
+                <div className="w-12 h-px bg-accent-soft mx-auto my-8" />
+              </header>
+
+              {/* Paragraphs with optional inline <ruby> Pinyin */}
+              <div
+                className="text-reading text-ink"
+                style={{
+                  fontSize: `${readerFontSize}px`,
+                  lineHeight: showPinyin && readingScripture.pinyin ? 2.45 : 2,
+                }}
+              >
+                {readerParagraphs.map((para) => {
+                  const rubyResult = showPinyin
+                    ? alignParagraphToRuby(para.content, para.pinyin)
+                    : null;
+
+                  return (
+                    <div key={para.id} className="mb-[1.5em] indent-0">
+                      <p className="whitespace-pre-wrap indent-0">
+                        {rubyResult && rubyResult.aligned ? rubyResult.nodes : para.content}
+                      </p>
+                      {showPinyin &&
+                        rubyResult &&
+                        !rubyResult.aligned &&
+                        rubyResult.fallbackPinyin && (
+                          <p className="text-sm text-ink-2 leading-relaxed mt-2 whitespace-pre-wrap indent-0 font-sans">
+                            {rubyResult.fallbackPinyin}
+                          </p>
+                        )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Explanation & Key Takeaway Section */}
+              {showExplanation &&
+                (readingScripture.keyTakeaway || readingScripture.explanation) && (
+                  <div
+                    ref={explanationBlockRef}
+                    className="mt-10 space-y-4"
+                  >
+                    {readingScripture.keyTakeaway && (
+                      <section className="bg-surface-2 rounded-2xl p-5 border-l-2 border-accent">
+                        <h2 className="text-title text-ink mb-2">修行心要</h2>
+                        <p className="text-[16px] leading-relaxed text-ink font-serif">
+                          {readingScripture.keyTakeaway}
+                        </p>
+                      </section>
+                    )}
+
+                    {readingScripture.explanation && (
+                      <section className="bg-surface-2 rounded-2xl p-5 border-l-2 border-accent">
+                        <h2 className="text-title text-ink mb-2">释义与受用</h2>
+                        <p className="text-[15px] leading-[1.8] text-ink">
+                          {readingScripture.explanation}
+                        </p>
+                      </section>
+                    )}
+                  </div>
+                )}
+            </article>
+
+            {/* Bottom Floating Toolbar */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                'fixed bottom-5 left-1/2 -translate-x-1/2 z-50 mb-[env(safe-area-inset-bottom)] transition-all duration-300 ease-[var(--ease-zen)]',
+                readerChromeHidden
+                  ? 'opacity-0 translate-y-6 pointer-events-none'
+                  : 'opacity-100 translate-y-0'
+              )}
+            >
+              <div className="h-12 px-2 rounded-full bg-surface/90 backdrop-blur-md border border-line shadow-float flex items-center gap-1 whitespace-nowrap">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReaderFontSize((s) => Math.max(17, s - 1))
+                  }
+                  disabled={readerFontSize <= 17}
+                  aria-label="减小字号"
+                  className="h-9 px-2.5 rounded-full text-xs font-medium text-ink-2 hover:text-ink hover:bg-surface-2 disabled:opacity-35 transition-colors"
+                >
+                  A−
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReaderFontSize((s) => Math.min(24, s + 1))
+                  }
+                  disabled={readerFontSize >= 24}
+                  aria-label="增大字号"
+                  className="h-9 px-2.5 rounded-full text-xs font-medium text-ink-2 hover:text-ink hover:bg-surface-2 disabled:opacity-35 transition-colors"
+                >
+                  A+
+                </button>
+
+                <div className="w-px h-4 bg-line mx-0.5" />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPinyin((v) => !v)}
+                  className={cn(
+                    'h-9 px-3 rounded-full text-xs font-medium transition-colors',
+                    showPinyin
+                      ? 'bg-accent-mist text-accent'
+                      : 'text-ink-2 hover:text-ink hover:bg-surface-2'
+                  )}
+                >
+                  拼音
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowExplanation((v) => !v)}
+                  className={cn(
+                    'h-9 px-3 rounded-full text-xs font-medium transition-colors',
+                    showExplanation
+                      ? 'bg-accent-mist text-accent'
+                      : 'text-ink-2 hover:text-ink hover:bg-surface-2'
+                  )}
+                >
+                  释义
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onImmersiveChange?.(false);
+                    setReadingId(null);
+                    onSelectScripture(readingScripture, true);
+                  }}
+                  className="h-9 px-4 ml-1 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-xs font-medium transition-colors"
+                >
+                  开始诵读
+                </button>
+              </div>
+            </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Scripture Cards List */}
-      {filteredScriptures.length === 0 ? (
-        <div className="bg-white rounded-[32px] p-12 text-center border border-zen-accent/10 shadow-xs">
-          <BookOpen className="w-10 h-10 text-zen-accent/30 mx-auto mb-3" />
-          <p className="text-sm font-medium text-zen-ink/70">未找到匹配的经文记录</p>
-          <p className="text-xs text-zen-ink/40 mt-1">可以尝试更改搜索词或切换上方分类筛选</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredScriptures.map((scripture) => {
-            const isExpanded = expandedId === scripture.id;
-            const isActive = activeScriptureId === scripture.id;
-            const isFav = favoriteIds.includes(scripture.id);
-
-            return (
-              <div
-                key={scripture.id}
-                className={cn(
-                  "bg-white rounded-[28px] shadow-sm border transition-all overflow-hidden",
-                  isActive
-                    ? "border-zen-accent ring-1 ring-zen-accent/20"
-                    : "border-zen-accent/10 hover:border-zen-accent/25"
-                )}
-              >
-                {/* Card Header (Click to expand/collapse) */}
-                <div
-                  onClick={() => setExpandedId(isExpanded ? null : scripture.id)}
-                  className="p-5 sm:p-6 cursor-pointer select-none flex items-start justify-between gap-3"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                      <span
-                        className={cn(
-                          "text-[10px] px-2.5 py-0.5 rounded-full font-bold border",
-                          categoryStyle(scripture.category)
-                        )}
-                      >
-                        {categoryLabel(scripture.category)}
-                      </span>
-                      {scripture.source && (
-                        <span className="text-[11px] text-zen-ink/50 font-medium">
-                          {scripture.source}
-                        </span>
-                      )}
-                      {scripture.pinyin && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-zen-bg text-zen-accent/80 font-semibold">
-                          含拼音
-                        </span>
-                      )}
-                      {isActive && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-zen-accent text-white font-bold flex items-center gap-1">
-                          <Check className="w-2.5 h-2.5" />
-                          当前定课
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-baseline gap-2">
-                      <h3 className="font-serif font-bold text-base sm:text-lg text-zen-ink">
-                        {scripture.title}
-                      </h3>
-                      {scripture.subtitle && (
-                        <span className="text-xs text-zen-accent/60 font-serif">
-                          {scripture.subtitle}
-                        </span>
-                      )}
-                    </div>
-
-                    {!isExpanded && (
-                      <p className="text-xs text-zen-ink/60 mt-1.5 line-clamp-2 leading-relaxed">
-                        {scripture.explanation || scripture.content}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={(e) => handleToggleFavorite(e, scripture.id)}
-                      className={cn(
-                        "p-2 rounded-full transition-colors",
-                        isFav
-                          ? "text-amber-500 bg-amber-50"
-                          : "text-zen-ink/30 hover:text-amber-500 hover:bg-zen-bg"
-                      )}
-                      title={isFav ? '取消收藏' : '收藏经文'}
-                    >
-                      <Star className={cn("w-4 h-4", isFav && "fill-current")} />
-                    </button>
-
-                    {(scripture.id.startsWith('custom-') || scripture.isCustom) && (
-                      pendingDeleteId === scripture.id ? (
-                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => {
-                              onDeleteCustomScripture(scripture.id);
-                              setPendingDeleteId(null);
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-[11px] font-bold hover:bg-red-700 transition-colors"
-                          >
-                            确认删除
-                          </button>
-                          <button
-                            onClick={() => setPendingDeleteId(null)}
-                            className="px-2 py-1 rounded-lg bg-zen-bg text-zen-ink/70 text-[11px] font-bold hover:bg-zen-accent/10 transition-colors"
-                          >
-                            取消
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPendingDeleteId(scripture.id);
-                          }}
-                          className="p-2 text-zen-ink/30 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                          title="删除自定义经文"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )
-                    )}
-
-                    <div className="p-2 text-zen-ink/40">
-                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Expanded Scripture Detail: Original Text + Pinyin + Explanation */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="border-t border-zen-accent/10 bg-[#FAF9F5]/60"
-                    >
-                      <div className="p-5 sm:p-6 space-y-5">
-                        {/* Key Takeaway Chip */}
-                        {scripture.keyTakeaway && (
-                          <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/60">
-                            <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                            <div className="text-xs text-amber-950 leading-relaxed">
-                              <span className="font-bold">修行心要：</span>
-                              <span className="font-serif">{scripture.keyTakeaway}</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Original Text */}
-                        <div className="bg-white rounded-2xl p-4 sm:p-6 border border-zen-accent/10 shadow-2xs">
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-[11px] font-bold uppercase tracking-widest text-zen-accent/70">
-                              经文原文
-                            </span>
-                            {scripture.recommendedCount && (
-                              <span className="text-[11px] text-zen-ink/50">
-                                建议日诵：{scripture.recommendedCount} 遍
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-base sm:text-lg text-zen-ink font-serif leading-loose whitespace-pre-wrap tracking-wide">
-                            {scripture.content}
-                          </p>
-                        </div>
-
-                        {/* Pinyin Section (if applicable and toggled on) */}
-                        {showPinyin && scripture.pinyin && (
-                          <div className="bg-white/90 rounded-2xl p-4 sm:p-5 border border-zen-accent/10">
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-zen-accent/70 mb-2.5">
-                              <Volume2 className="w-3.5 h-3.5" />
-                              <span>诵读拼音 / 注音</span>
-                            </div>
-                            <p className="text-xs sm:text-sm text-zen-ink/75 font-mono leading-loose whitespace-pre-wrap">
-                              {scripture.pinyin}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Brief Explanation */}
-                        {scripture.explanation && (
-                          <div className="bg-emerald-50/40 rounded-2xl p-4 sm:p-5 border border-emerald-200/60">
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-800 mb-2">
-                              <Info className="w-3.5 h-3.5" />
-                              <span>简要解释与受用</span>
-                            </div>
-                            <p className="text-xs sm:text-sm text-emerald-950/85 leading-relaxed">
-                              {scripture.explanation}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Footer Actions */}
-                        <div className="flex flex-wrap items-center justify-end gap-2.5 pt-1">
-                          <button
-                            onClick={() => onSelectScripture(scripture, false)}
-                            className={cn(
-                              "px-4 py-2.5 rounded-xl text-xs font-bold transition-all border",
-                              isActive
-                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                : "bg-white text-zen-ink border-zen-accent/15 hover:bg-zen-bg"
-                            )}
-                          >
-                            {isActive ? '✓ 已设为当前诵持' : '设为诵持定课'}
-                          </button>
-
-                          <button
-                            onClick={() => onSelectScripture(scripture, true)}
-                            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-zen-accent text-white shadow-xs hover:opacity-90 transition-opacity flex items-center gap-1.5"
-                          >
-                            <BookOpen className="w-3.5 h-3.5" />
-                            <span>前往木鱼诵经</span>
-                          </button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </motion.div>
+    </div>
   );
 };

@@ -39,14 +39,14 @@ export const DeleteAccountPage = () => {
 
   if (status === 'success') {
     return (
-      <div className="min-h-screen bg-[#F5F2EB] flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-xl text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle className="w-8 h-8 text-green-500" />
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+        <div className="bg-surface rounded-2xl border border-line p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-accent-mist rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle className="w-8 h-8 text-accent" />
           </div>
-          <h1 className="text-2xl font-bold text-[#2C2825] mb-4">Account Deleted</h1>
-          <p className="text-[#2C2825]/70 mb-8">Your account and all associated data have been successfully deleted.</p>
-          <a href="/" className="inline-block bg-[#8C7A6B] text-white px-6 py-3 rounded-xl font-bold hover:opacity-90 transition-opacity">
+          <h1 className="text-2xl font-serif font-bold text-ink mb-4">Account Deleted</h1>
+          <p className="text-ink-2 mb-8">Your account and all associated data have been successfully deleted.</p>
+          <a href="/" className="inline-block bg-accent text-on-accent hover:bg-accent-hover px-6 py-3 rounded-xl font-bold transition-colors">
             Return to Home
           </a>
         </div>
@@ -55,30 +55,30 @@ export const DeleteAccountPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F2EB] flex items-center justify-center p-4 font-sans">
-      <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-xl">
-        <div className="flex items-center justify-center w-16 h-16 bg-red-50 rounded-full mb-6 mx-auto">
+    <div className="min-h-screen bg-paper flex items-center justify-center p-4 font-sans">
+      <div className="bg-surface rounded-2xl border border-line p-8 max-w-md w-full">
+        <div className="flex items-center justify-center w-16 h-16 bg-red-500/10 rounded-full mb-6 mx-auto">
           <Trash2 className="w-8 h-8 text-red-500" />
         </div>
         
-        <h1 className="text-2xl font-bold text-[#2C2825] mb-2 text-center">Delete Account</h1>
-        <p className="text-[#2C2825]/70 text-center mb-8 text-sm">
+        <h1 className="text-2xl font-serif font-bold text-ink mb-2 text-center">Delete Account</h1>
+        <p className="text-ink-2 text-center mb-8 text-sm">
           Request to permanently delete your Vowzen account and all associated data.
         </p>
 
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-8">
+        <div className="bg-surface-2 border border-line rounded-xl p-4 mb-8">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
-            <div className="text-sm text-orange-800">
-              <p className="font-bold mb-1">Warning (警告)</p>
+            <AlertTriangle className="w-5 h-5 text-gold shrink-0 mt-0.5" />
+            <div className="text-sm text-ink-2">
+              <p className="font-bold text-ink mb-1">Warning (警告)</p>
               <p>This action is irreversible. All your practice records, preferences, and personal data will be permanently erased.</p>
-              <p className="mt-2 text-xs opacity-80">此操作不可逆。您的所有修行记录、偏好设置和个人数据将被永久清除。</p>
+              <p className="mt-2 text-xs text-ink-3">此操作不可逆。您的所有修行记录、偏好设置和个人数据将被永久清除。</p>
             </div>
           </div>
         </div>
 
         {status === 'error' && (
-          <div className="mb-6 p-4 bg-red-50 text-red-600 text-sm rounded-xl border border-red-200">
+          <div className="mb-6 p-4 bg-red-500/10 text-red-600 text-sm rounded-xl border border-red-500/20">
             {errorMsg}
           </div>
         )}
@@ -94,7 +94,7 @@ export const DeleteAccountPage = () => {
           
           <a
             href="/"
-            className="block w-full text-center py-3.5 text-[#2C2825]/60 hover:text-[#2C2825] font-medium transition-colors"
+            className="block w-full text-center py-3.5 text-ink-2 hover:text-ink font-medium transition-colors"
           >
             Cancel and Return (取消并返回)
           </a>

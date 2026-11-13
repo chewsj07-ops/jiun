@@ -82,7 +82,7 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden relative max-h-[90vh] flex flex-col"
+          className="bg-surface rounded-3xl w-full max-w-md shadow-float border border-line overflow-hidden relative max-h-[90vh] flex flex-col"
         >
           {showSparkles && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
@@ -91,14 +91,14 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
                 animate={{ scale: 2, opacity: 0 }}
                 transition={{ duration: 1 }}
               >
-                <Sparkles className="w-32 h-32 text-yellow-400" />
+                <Sparkles className="w-32 h-32 text-gold" />
               </motion.div>
             </div>
           )}
 
           <div className="flex justify-between items-center p-6 pb-2 shrink-0">
-            <h3 className="text-xl font-bold font-serif text-zen-ink">随喜赞叹</h3>
-            <button onClick={handleClose} className="p-2 text-zen-ink/40 hover:text-zen-ink rounded-full hover:bg-zen-bg transition-colors">
+            <h3 className="text-xl font-bold font-serif text-ink">随喜赞叹</h3>
+            <button onClick={handleClose} className="p-2 text-ink-3 hover:text-ink rounded-full hover:bg-surface-2 transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -106,31 +106,31 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
           <div className="p-6 pt-4 overflow-y-auto">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 text-zen-accent animate-spin mb-4" />
-                <p className="text-sm text-zen-ink/60">正在加载功德记录...</p>
+                <Loader2 className="w-8 h-8 text-accent animate-spin mb-4" />
+                <p className="text-sm text-ink-2">正在加载功德记录...</p>
               </div>
             ) : error ? (
-              <div className="text-center py-12 text-zen-ink/60">
+              <div className="text-center py-12 text-ink-2">
                 {error}
               </div>
             ) : data ? (
               <div className="space-y-6">
-                <div className="bg-zen-bg/50 rounded-2xl p-6 text-center">
-                  <div className="w-16 h-16 bg-zen-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Heart className="w-8 h-8 text-zen-accent" />
+                <div className="bg-surface-2 rounded-2xl p-6 text-center border border-line">
+                  <div className="w-16 h-16 bg-accent-mist rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Heart className="w-8 h-8 text-accent" />
                   </div>
-                  <p className="text-sm text-zen-ink/60 mb-2">
-                    <span className="font-bold text-zen-ink">{data.userName}</span> 完成了
+                  <p className="text-sm text-ink-2 mb-2">
+                    <span className="font-bold text-ink">{data.userName}</span> 完成了
                   </p>
-                  <h4 className="text-2xl font-serif font-bold text-zen-accent mb-4">
+                  <h4 className="text-2xl font-serif font-bold text-accent mb-4">
                     {data.title || `${data.chant || data.type} ${data.count ? data.count + '次' : ''}`}
                   </h4>
                   {(data.description || data.dedication) && (
-                    <div className="bg-white/50 p-4 rounded-xl text-sm text-zen-ink/80 italic border border-zen-accent/10">
+                    <div className="bg-surface p-4 rounded-xl text-sm text-ink-2 italic border border-line">
                       "{data.description || data.dedication}"
                     </div>
                   )}
-                  <div className="mt-4 text-xs text-zen-ink/40">
+                  <div className="mt-4 text-xs text-ink-3">
                     {new Date(data.timestamp).toLocaleString()}
                   </div>
                 </div>
@@ -142,7 +142,7 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
                         handleClose();
                         if (onViewCommunity) onViewCommunity();
                       }}
-                      className="w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/30"
+                      className="w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all bg-accent text-on-accent hover:bg-accent-hover"
                     >
                       <Heart className="w-5 h-5 fill-current" />
                       已随喜，前往共修大厅
@@ -151,7 +151,7 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
                     <button
                       onClick={handleRejoice}
                       disabled={rejoicing}
-                      className="w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all bg-zen-accent text-white hover:opacity-90"
+                      className="w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all bg-accent text-on-accent hover:bg-accent-hover"
                     >
                       {rejoicing ? (
                         <Loader2 className="w-5 h-5 animate-spin" />
@@ -170,7 +170,7 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
                         handleClose();
                         if (onPractice) onPractice(data.title || data.chant || data.type);
                       }}
-                      className="w-full py-3 text-sm text-zen-ink/60 hover:text-zen-ink transition-colors"
+                      className="w-full py-3 text-sm text-ink-2 hover:text-ink transition-colors"
                     >
                       开启我的修行之旅
                     </button>
@@ -181,7 +181,7 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
                           handleClose();
                           if (onPractice) onPractice(data.title || data.chant || data.type);
                         }}
-                        className="w-full py-3 text-sm text-zen-ink/60 hover:text-zen-ink transition-colors"
+                        className="w-full py-3 text-sm text-ink-2 hover:text-ink transition-colors"
                       >
                         我也要修行
                       </button>
@@ -191,7 +191,7 @@ export const RejoiceModal: React.FC<RejoiceModalProps> = ({ shareId, onClose, on
                             handleClose();
                             onViewCommunity();
                           }}
-                          className="w-full py-3 text-sm text-zen-accent/80 hover:text-zen-accent transition-colors font-bold"
+                          className="w-full py-3 text-sm text-accent hover:text-accent-hover transition-colors font-bold"
                         >
                           在社区中查看此功德
                         </button>

@@ -1,19 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageCircle, X, Sparkles, History, Loader2, CheckCircle2, ChevronDown, Check } from 'lucide-react';
+import {
+  MessageCircle,
+  X,
+  Sparkles,
+  History,
+  Loader2,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Lock,
+} from 'lucide-react';
 import { cn } from '../lib/utils';
-import { GoogleGenAI } from "@google/genai";
 import { toast } from 'sonner';
 import { containsBadWords } from '../utils/badWords';
 import { practiceService } from '../services/practiceService';
-
+import { aiGenerate } from '../services/geminiClient';
+import { buildThoughtGuidanceSystemPrompt } from '../data/zenAssistantPrompt';
 import { cryptoService } from '../services/cryptoService';
 import { identityService } from '../services/identityService';
-import { syncService } from '../services/syncService';
 import { auth, db } from '../firebase';
 import { writeBatch, doc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
+import {
+  containsCrisisKeywords,
+  matchOfflineGuidance,
+} from '../data/offlineGuidance';
+import { SafetyNetCard } from './vow/SafetyNetCard';
+import { GuidanceCards, StructuredGuidance } from './vow/GuidanceCards';
 
 interface Thought {
   id: number;
@@ -31,65 +47,213 @@ interface Thought {
   isEncrypted?: boolean;
   content_encrypted?: string;
   iv?: string;
+  isLocalOnly?: boolean;
 }
 
-export const EMOTION_GROUPS = [
+export interface EmotionOption {
+  id: string;
+  label: string;
+}
+
+export interface EmotionGroup {
+  label: string;
+  positive?: boolean;
+  options: EmotionOption[];
+}
+
+export const EMOTION_GROUPS: EmotionGroup[] = [
   {
-    label: '正面情绪',
+    label: '不安与恐惧',
     options: [
-      { id: 'peaceful', label: '平静', color: 'text-blue-500', bg: 'bg-blue-500/10' },
-      { id: 'joy', label: '喜悦', color: 'text-pink-500', bg: 'bg-pink-500/10' },
-      { id: 'grateful', label: '感恩', color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-      { id: 'content', label: '满足', color: 'text-teal-500', bg: 'bg-teal-500/10' },
-      { id: 'hopeful', label: '充满希望', color: 'text-amber-500', bg: 'bg-amber-500/10' },
-      { id: 'confident', label: '自信', color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
-      { id: 'relaxed', label: '轻松', color: 'text-sky-500', bg: 'bg-sky-500/10' },
-      { id: 'loving', label: '充满爱', color: 'text-rose-500', bg: 'bg-rose-500/10' },
-      { id: 'forgiving', label: '宽容', color: 'text-purple-500', bg: 'bg-purple-500/10' },
-      { id: 'focused', label: '专注', color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
-    ]
+      { id: 'anxious', label: '焦虑' },
+      { id: 'restless', label: '不安' },
+      { id: 'worried', label: '担心' },
+      { id: 'fearful', label: '恐惧' },
+      { id: 'stressed', label: '压力' },
+    ],
   },
   {
-    label: '负面情绪',
+    label: '愤怒与烦躁',
     options: [
-      { id: 'angry', label: '生气', color: 'text-red-500', bg: 'bg-red-500/10' },
-      { id: 'anxious', label: '焦虑', color: 'text-amber-600', bg: 'bg-amber-600/10' },
-      { id: 'sad', label: '悲伤', color: 'text-indigo-600', bg: 'bg-indigo-600/10' },
-      { id: 'jealous', label: '嫉妒', color: 'text-emerald-600', bg: 'bg-emerald-600/10' },
-      { id: '委屈', label: '委屈', color: 'text-purple-600', bg: 'bg-purple-600/10' },
-      { id: 'stressed', label: '压力', color: 'text-orange-500', bg: 'bg-orange-500/10' },
-      { id: 'worried', label: '担心', color: 'text-yellow-600', bg: 'bg-yellow-600/10' },
-      { id: 'restless', label: '不安', color: 'text-teal-600', bg: 'bg-teal-600/10' },
-      { id: 'ashamed', label: '羞愧', color: 'text-rose-600', bg: 'bg-rose-600/10' },
-      { id: 'lonely', label: '孤独', color: 'text-slate-500', bg: 'bg-slate-500/10' },
-      { id: 'disappointed', label: '失望', color: 'text-gray-500', bg: 'bg-gray-500/10' },
-      { id: 'confused', label: '困惑', color: 'text-blue-600', bg: 'bg-blue-600/10' },
-      { id: 'fearful', label: '恐惧', color: 'text-zinc-700', bg: 'bg-zinc-700/10' },
-      { id: 'tired', label: '疲惫', color: 'text-stone-500', bg: 'bg-stone-500/10' },
-      { id: 'irritable', label: '烦躁', color: 'text-red-400', bg: 'bg-red-400/10' },
-      { id: 'helpless', label: '无助', color: 'text-sky-600', bg: 'bg-sky-600/10' },
-      { id: 'regretful', label: '懊悔', color: 'text-indigo-400', bg: 'bg-indigo-400/10' },
-    ]
-  }
+      { id: 'angry', label: '生气' },
+      { id: 'irritable', label: '烦躁' },
+    ],
+  },
+  {
+    label: '委屈与难过',
+    options: [
+      { id: '委屈', label: '委屈' },
+      { id: 'sad', label: '悲伤' },
+      { id: 'disappointed', label: '失望' },
+      { id: 'helpless', label: '无助' },
+    ],
+  },
+  {
+    label: '羞愧与自责',
+    options: [
+      { id: 'ashamed', label: '羞愧' },
+      { id: 'regretful', label: '懊悔' },
+    ],
+  },
+  {
+    label: '嫉妒与比较',
+    options: [{ id: 'jealous', label: '嫉妒' }],
+  },
+  {
+    label: '孤独与疏离',
+    options: [{ id: 'lonely', label: '孤独' }],
+  },
+  {
+    label: '疲惫与无力',
+    options: [{ id: 'tired', label: '疲惫' }],
+  },
+  {
+    label: '迷茫与困惑',
+    options: [{ id: 'confused', label: '困惑' }],
+  },
+  {
+    label: '贪求与执着',
+    options: [
+      { id: 'attached', label: '执着' },
+      { id: 'craving', label: '放不下' },
+    ],
+  },
+  {
+    label: '喜悦与感恩',
+    positive: true,
+    options: [
+      { id: 'peaceful', label: '平静' },
+      { id: 'joy', label: '喜悦' },
+      { id: 'grateful', label: '感恩' },
+      { id: 'content', label: '满足' },
+      { id: 'hopeful', label: '充满希望' },
+      { id: 'confident', label: '自信' },
+      { id: 'relaxed', label: '轻松' },
+      { id: 'loving', label: '充满爱' },
+      { id: 'forgiving', label: '宽容' },
+      { id: 'focused', label: '专注' },
+    ],
+  },
 ];
 
-export const ALL_EMOTIONS = EMOTION_GROUPS.flatMap(g => g.options);
+export const ALL_EMOTIONS = EMOTION_GROUPS.flatMap((g) => g.options);
 
-export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: string, iconOnlyOnMobile?: boolean }) => {
+const AI_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('AI_TIMEOUT')), ms);
+    promise
+      .then((val) => {
+        window.clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        window.clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+export function containsThoughtCrisis(thought: Partial<Thought>): boolean {
+  return containsCrisisKeywords(
+    thought.event,
+    thought.action,
+    thought.result,
+    thought.learning,
+    thought.vow
+  );
+}
+
+function parseStructuredGuidance(raw?: string): StructuredGuidance | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.observe === 'string' &&
+      typeof parsed.reflect === 'string' &&
+      typeof parsed.act === 'string' &&
+      typeof parsed.compassion === 'string'
+    ) {
+      return {
+        observe: parsed.observe,
+        reflect: parsed.reflect,
+        act: parsed.act,
+        compassion: parsed.compassion,
+        verse: typeof parsed.verse === 'string' ? parsed.verse : undefined,
+        isOffline: Boolean(parsed.isOffline),
+      };
+    }
+  } catch {
+    // Legacy plain-text guidance string
+  }
+  return null;
+}
+
+const QUESTION_STEPS = [
+  {
+    key: 'event',
+    question: '发生了什么事？',
+    placeholder: '写下引动此刻感受的经过、场景或一句话……',
+  },
+  {
+    key: 'action',
+    question: '当时你如何面对，或尝试怎样转念？',
+    placeholder: '例如深呼吸、先停一下、尝试理解或观察自己的念头……',
+  },
+  {
+    key: 'result',
+    question: '后来怎么样了？',
+    placeholder: '写下事情的走向，或心情细微的变化……',
+  },
+  {
+    key: 'learning',
+    question: '这件事让你看见或学会了什么？',
+    placeholder: '哪怕是一点点对自己的了解，也值得被记下……',
+  },
+  {
+    key: 'vow',
+    question: '把这次觉察，化作一句给自己的愿',
+    placeholder: '你可以直接修改下面为你拟好的愿力，或写下自己的发愿……',
+  },
+] as const;
+
+export const ThoughtCollector = ({
+  className,
+  iconOnlyOnMobile,
+  hideTrigger = false,
+  embedded = false,
+}: {
+  className?: string;
+  iconOnlyOnMobile?: boolean;
+  hideTrigger?: boolean;
+  embedded?: boolean;
+}) => {
+  const instanceIdRef = useRef(`tc_${Math.random().toString(36).slice(2, 9)}`);
+  const isExternalSyncRef = useRef(false);
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'record' | 'history'>('record');
-  
+
+  // Step 0 = 情绪觉察, Steps 1..5 = 5 question screens (top 5 progress dots)
+  const [step, setStep] = useState<number>(0);
+  const [showPositiveGroup, setShowPositiveGroup] = useState<boolean>(false);
+
   const [selectedEmotions, setSelectedEmotions] = useState<string[]>([]);
   const [eventText, setEventText] = useState('');
   const [actionText, setActionText] = useState('');
   const [resultText, setResultText] = useState('');
   const [learningText, setLearningText] = useState('');
   const [vowText, setVowText] = useState('');
-  
+  const hasEditedVowRef = useRef(false);
+
+  const [showSafetyNet, setShowSafetyNet] = useState(false);
+  const [safetyDismissedForSession, setSafetyDismissedForSession] = useState(false);
+
   const [thoughts, setThoughts] = useState<Thought[]>([]);
   const [isLoadingGuidance, setIsLoadingGuidance] = useState<number | null>(null);
   const [showToast, setShowToast] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [filterEmotion, setFilterEmotion] = useState<string | 'all'>('all');
   const [filterYear, setFilterYear] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('all');
@@ -97,22 +261,34 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
 
   const [showPlaque, setShowPlaque] = useState<Thought | null>(null);
 
-  const filteredThoughts = thoughts.filter(t => {
+  const negativeEmotionGroups = EMOTION_GROUPS.filter((g) => !g.positive);
+  const positiveEmotionGroups = EMOTION_GROUPS.filter((g) => Boolean(g.positive));
+
+  const filteredThoughts = thoughts.filter((t) => {
     const d = new Date(t.timestamp || t.id);
-    const matchEmotion = filterEmotion === 'all' || t.emotions.includes(filterEmotion);
-    const matchYear = filterYear === 'all' || d.getFullYear().toString() === filterYear;
-    const matchMonth = filterMonth === 'all' || (d.getMonth() + 1).toString() === filterMonth;
+    const matchEmotion =
+      filterEmotion === 'all' || t.emotions.includes(filterEmotion);
+    const matchYear =
+      filterYear === 'all' || d.getFullYear().toString() === filterYear;
+    const matchMonth =
+      filterMonth === 'all' || (d.getMonth() + 1).toString() === filterMonth;
     const matchDay = filterDay === 'all' || d.getDate().toString() === filterDay;
     return matchEmotion && matchYear && matchMonth && matchDay;
   });
 
-  const uniqueYears = Array.from(new Set([new Date().getFullYear().toString(), ...thoughts.map(t => new Date(t.timestamp || t.id).getFullYear().toString())])).sort((a, b) => b.localeCompare(a));
+  const uniqueYears = Array.from(
+    new Set([
+      new Date().getFullYear().toString(),
+      ...thoughts.map((t) =>
+        new Date(t.timestamp || t.id).getFullYear().toString()
+      ),
+    ])
+  ).sort((a, b) => b.localeCompare(a));
 
   const getDaysInMonth = (yearStr: string, monthStr: string) => {
     if (monthStr === 'all') return 31;
-    const month = parseInt(monthStr);
-    // If year is 'all', use a leap year (e.g., 2024) to ensure Feb has 29 days just in case.
-    const year = yearStr === 'all' ? 2024 : parseInt(yearStr);
+    const month = parseInt(monthStr, 10);
+    const year = yearStr === 'all' ? 2024 : parseInt(yearStr, 10);
     return new Date(year, month, 0).getDate();
   };
 
@@ -120,12 +296,50 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
 
   useEffect(() => {
     if (filterDay !== 'all') {
-      const day = parseInt(filterDay);
+      const day = parseInt(filterDay, 10);
       if (day > maxDays) {
         setFilterDay('all');
       }
     }
   }, [maxDays, filterDay]);
+
+  const decryptThoughtList = async (parsed: any[]): Promise<Thought[]> => {
+    return Promise.all(
+      parsed.map(async (t: any) => {
+        if (t.isEncrypted && t.iv) {
+          const decryptedContent = await cryptoService.decrypt(
+            t.content_encrypted,
+            t.iv
+          );
+          try {
+            const content = JSON.parse(decryptedContent);
+            const hydrated: Thought = {
+              ...t,
+              emotions: t.emotions || (t.emotion ? [t.emotion] : []),
+              event: content.event || '',
+              action: content.action || '',
+              result: content.result || '',
+              learning: content.learning || '',
+              vow: content.vow || '',
+            };
+            hydrated.isLocalOnly =
+              Boolean(t.isLocalOnly) || containsThoughtCrisis(hydrated);
+            return hydrated;
+          } catch {
+            return t;
+          }
+        }
+        const plain: Thought = {
+          ...t,
+          emotions: t.emotions || (t.emotion ? [t.emotion] : []),
+          vow: t.vow || '',
+        };
+        plain.isLocalOnly =
+          Boolean(t.isLocalOnly) || containsThoughtCrisis(plain);
+        return plain;
+      })
+    );
+  };
 
   useEffect(() => {
     const loadThoughts = async () => {
@@ -133,33 +347,10 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          const decryptedThoughts = await Promise.all(parsed.map(async (t: any) => {
-            if (t.isEncrypted && t.iv) {
-              const decryptedContent = await cryptoService.decrypt(t.content_encrypted, t.iv);
-              try {
-                const content = JSON.parse(decryptedContent);
-                return {
-                  ...t,
-                  emotions: t.emotions || (t.emotion ? [t.emotion] : []),
-                  event: content.event || '',
-                  action: content.action || '',
-                  result: content.result || '',
-                  learning: content.learning || '',
-                  vow: content.vow || ''
-                };
-              } catch (e) {
-                return t;
-              }
-            }
-            return {
-              ...t,
-              emotions: t.emotions || (t.emotion ? [t.emotion] : []),
-              vow: t.vow || ''
-            };
-          }));
+          const decryptedThoughts = await decryptThoughtList(parsed);
           setThoughts(decryptedThoughts);
         } catch (e) {
-          console.error("Failed to parse thoughts", e);
+          console.error('Failed to parse thoughts', e);
         }
       }
     };
@@ -167,128 +358,312 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
   }, []);
 
   useEffect(() => {
+    const loadThoughtsFromStorage = async () => {
+      const saved = localStorage.getItem('zen_thoughts');
+      if (!saved) return;
+      try {
+        const parsed = JSON.parse(saved);
+        const decryptedThoughts = await decryptThoughtList(parsed);
+        isExternalSyncRef.current = true;
+        setThoughts(decryptedThoughts);
+      } catch (e) {
+        console.error('Failed to parse thoughts', e);
+      }
+    };
+
+    const handleSyncUpdate = (e: any) => {
+      if (e?.detail?.sourceId !== instanceIdRef.current) {
+        loadThoughtsFromStorage();
+      }
+    };
+    window.addEventListener('zen_thoughts_updated', handleSyncUpdate);
+    return () =>
+      window.removeEventListener('zen_thoughts_updated', handleSyncUpdate);
+  }, []);
+
+  useEffect(() => {
     const saveThoughts = async () => {
       if (thoughts.length === 0) return;
-      
-      const encryptedThoughts = await Promise.all(thoughts.map(async (t) => {
-        if (t.isEncrypted) return t; // Already encrypted
-        
-        const contentToEncrypt = JSON.stringify({
-          event: t.event,
-          action: t.action,
-          result: t.result,
-          learning: t.learning,
-          vow: t.vow
-        });
-        
-        const { ciphertext, iv } = await cryptoService.encrypt(contentToEncrypt);
-        
-        const newThought: any = {
-          id: t.id,
-          uid: t.uid || identityService.getUserId(),
-          type: t.type || 'thought_observation',
-          record_version: t.record_version || 1,
-          emotions: t.emotions,
-          timestamp: t.timestamp || new Date(t.id).toISOString(),
-          isEncrypted: true,
-          content_encrypted: ciphertext,
-          iv: iv
-        };
-        
-        if (t.guidance !== undefined) {
-          newThought.guidance = t.guidance;
-        }
-        
-        return newThought;
-      }));
-      
+      if (isExternalSyncRef.current) {
+        isExternalSyncRef.current = false;
+        return;
+      }
+
+      const encryptedThoughts = await Promise.all(
+        thoughts.map(async (t) => {
+          const isCrisisLocal = Boolean(t.isLocalOnly) || containsThoughtCrisis(t);
+
+          if (t.isEncrypted) {
+            return isCrisisLocal ? { ...t, isLocalOnly: true } : t;
+          }
+
+          const contentToEncrypt = JSON.stringify({
+            event: t.event,
+            action: t.action,
+            result: t.result,
+            learning: t.learning,
+            vow: t.vow,
+          });
+
+          const { ciphertext, iv } = await cryptoService.encrypt(contentToEncrypt);
+
+          const newThought: any = {
+            id: t.id,
+            uid: t.uid || identityService.getUserId(),
+            type: t.type || 'thought_observation',
+            record_version: t.record_version || 1,
+            emotions: t.emotions,
+            timestamp: t.timestamp || new Date(t.id).toISOString(),
+            isEncrypted: true,
+            content_encrypted: ciphertext,
+            iv,
+          };
+
+          if (isCrisisLocal) {
+            newThought.isLocalOnly = true;
+          }
+
+          if (t.guidance !== undefined) {
+            newThought.guidance = t.guidance;
+          }
+
+          return newThought;
+        })
+      );
+
       localStorage.setItem('zen_thoughts', JSON.stringify(encryptedThoughts));
       window.dispatchEvent(new CustomEvent('zen_data_updated'));
-      
-      // Trigger sync
-      if (auth.currentUser) {
+      window.dispatchEvent(
+        new CustomEvent('zen_thoughts_updated', {
+          detail: { sourceId: instanceIdRef.current },
+        })
+      );
+
+      // Strictly exclude any crisis / local-only records from Firestore sync
+      const syncableThoughts = encryptedThoughts.filter((t: any) => !t.isLocalOnly);
+      if (auth.currentUser && syncableThoughts.length > 0) {
         try {
           const batch = writeBatch(db);
-          encryptedThoughts.forEach((t: any) => {
-            const docRef = doc(db, `users/${auth.currentUser!.uid}/thoughts`, t.id.toString());
-            const cleanT = Object.fromEntries(Object.entries(t).filter(([_, v]) => v !== undefined));
+          syncableThoughts.forEach((t: any) => {
+            const docRef = doc(
+              db,
+              `users/${auth.currentUser!.uid}/thoughts`,
+              t.id.toString()
+            );
+            const cleanT = Object.fromEntries(
+              Object.entries(t).filter(([_, v]) => v !== undefined)
+            );
             batch.set(docRef, cleanT);
           });
           await batch.commit();
         } catch (error) {
-          handleFirestoreError(error, OperationType.WRITE, `users/${auth.currentUser.uid}/thoughts`);
+          handleFirestoreError(
+            error,
+            OperationType.WRITE,
+            `users/${auth.currentUser.uid}/thoughts`
+          );
         }
       }
     };
-    
+
     saveThoughts();
   }, [thoughts]);
 
   useEffect(() => {
+    if (embedded) return;
     const handleOpen = () => setIsOpen(true);
     window.addEventListener('open-thought-collector', handleOpen);
-    return () => window.removeEventListener('open-thought-collector', handleOpen);
-  }, []);
+    return () =>
+      window.removeEventListener('open-thought-collector', handleOpen);
+  }, [embedded]);
+
+  // Monitor live text inputs for crisis keywords
+  const checkCrisisInDraft = (nextValues?: {
+    event?: string;
+    action?: string;
+    result?: string;
+    learning?: string;
+    vow?: string;
+  }) => {
+    const e = nextValues?.event ?? eventText;
+    const a = nextValues?.action ?? actionText;
+    const r = nextValues?.result ?? resultText;
+    const l = nextValues?.learning ?? learningText;
+    const v = nextValues?.vow ?? vowText;
+    const hasCrisis = containsCrisisKeywords(e, a, r, l, v);
+
+    if (hasCrisis) {
+      if (!safetyDismissedForSession) {
+        setShowSafetyNet(true);
+      }
+    } else {
+      setShowSafetyNet(false);
+      setSafetyDismissedForSession(false);
+    }
+  };
 
   const toggleEmotion = (id: string) => {
-    setSelectedEmotions(prev => 
-      prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]
+    setSelectedEmotions((prev) =>
+      prev.includes(id) ? prev.filter((e) => e !== id) : [...prev, id]
     );
   };
 
-  const handleGetGuidance = async (thought: Thought) => {
-    const settings = practiceService.getSettings();
-    if (!settings.aiEnabled || !settings.aiApiKey) {
-      toast.error("AI 禅师未开启或未配置 API Key。", {
-        description: "开启后，AI 禅师将为您提供深度修行洞察。若不开启，您仍可记录自己的修行总结。",
-        action: {
-          label: "前往设置",
-          onClick: () => window.dispatchEvent(new CustomEvent('navigate_to_settings', { detail: { section: 'ai-settings' } }))
-        }
+  const getEmotionLabels = (emotionIds: string[]) =>
+    emotionIds
+      .map((id) => ALL_EMOTIONS.find((e) => e.id === id)?.label || id)
+      .filter(Boolean);
+
+  // Pre-fill 「化为愿力」 when entering step 5 if user hasn't manually edited it
+  useEffect(() => {
+    if (step === 5 && !hasEditedVowRef.current && !vowText.trim()) {
+      const matched = matchOfflineGuidance({
+        emotionLabels: getEmotionLabels(selectedEmotions),
+        freeText: `${eventText} ${actionText} ${learningText}`,
+        eventText,
       });
+      setVowText(matched.vow);
+    }
+  }, [step]);
+
+  const buildOfflineGuidanceJson = (thought: Thought): string => {
+    const emotionLabels = getEmotionLabels(thought.emotions);
+    const matched = matchOfflineGuidance({
+      emotionLabels,
+      freeText: `${thought.event} ${thought.action} ${thought.learning}`,
+      eventText: thought.event,
+    });
+    const structured: StructuredGuidance = {
+      observe: matched.observe,
+      reflect: matched.reflect,
+      act: matched.act,
+      compassion: matched.compassion,
+      verse: matched.verse,
+      isOffline: true,
+    };
+    return JSON.stringify(structured);
+  };
+
+  const handleGetGuidance = async (thought: Thought) => {
+    // Safety Net: never call AI or display 4-step guidance if crisis keywords are present
+    if (thought.isLocalOnly || containsThoughtCrisis(thought)) {
+      return;
+    }
+
+    const saveGuidanceToThought = (guidanceStr: string) => {
+      setThoughts((prev) =>
+        prev.map((t) =>
+          t.id === thought.id ? { ...t, guidance: guidanceStr } : t
+        )
+      );
+      setShowPlaque((prev) =>
+        prev && prev.id === thought.id
+          ? { ...prev, guidance: guidanceStr }
+          : prev
+      );
+    };
+
+    const settings = practiceService.getSettings();
+    if (!settings.aiEnabled) {
+      saveGuidanceToThought(buildOfflineGuidanceJson(thought));
       return;
     }
 
     setIsLoadingGuidance(thought.id);
     try {
-      const ai = new GoogleGenAI({ apiKey: settings.aiApiKey });
-      const emoLabels = thought.emotions.map(id => ALL_EMOTIONS.find(e => e.id === id)?.label).filter(Boolean).join('、') || '未知';
-      
-      const prompt = `你是一位慈悲的导师以5戒8正道4圣谛和正道的佛法来说法。用户感受到了 ${emoLabels}，因为 ${thought.event}。他尝试用 ${thought.action} 转念。请给予一句最精简、最省字、直击心灵的睿智点评（限30字以内）。`;
-      
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: prompt,
-      });
+      const emoLabels = getEmotionLabels(thought.emotions).join('、') || '未知';
 
-      if (response.text) {
-        const text = response.text;
-        setThoughts(prev => prev.map(t => 
-          t.id === thought.id ? { ...t, guidance: text } : t
-        ));
-        setShowPlaque(prev => (prev && prev.id === thought.id) ? { ...prev, guidance: text } : prev);
+      const prompt = `用户此刻觉察到的情绪：${emoLabels}
+发生的事件：${thought.event || '未填写'}
+当下的应对与转念：${thought.action || '未填写'}
+结果：${thought.result || '未填写'}
+认知收获：${thought.learning || '未填写'}
+发愿：${thought.vow || '未填写'}`;
+
+      const text = await withTimeout(
+        aiGenerate({
+          contents: prompt,
+          systemInstruction: buildThoughtGuidanceSystemPrompt('zh-CN'),
+          responseMimeType: 'application/json',
+        }),
+        AI_TIMEOUT_MS
+      );
+
+      if (text) {
+        const parsed = JSON.parse(text);
+        if (
+          parsed &&
+          parsed.observation &&
+          parsed.reflection &&
+          parsed.practice &&
+          parsed.compassion
+        ) {
+          const structured: StructuredGuidance = {
+            observe: String(parsed.observation),
+            reflect: String(parsed.reflection),
+            act: String(parsed.practice),
+            compassion: String(parsed.compassion),
+            verse: parsed.verse ? String(parsed.verse) : undefined,
+            isOffline: false,
+          };
+          saveGuidanceToThought(JSON.stringify(structured));
+          return;
+        }
       }
-    } catch (error) {
-      console.error('Failed to get guidance:', error);
-      const fallbackText = "导师正在沉思，稍后再为您解答。";
-      setThoughts(prev => prev.map(t => 
-        t.id === thought.id ? { ...t, guidance: fallbackText } : t
-      ));
-      setShowPlaque(prev => (prev && prev.id === thought.id) ? { ...prev, guidance: fallbackText } : prev);
+
+      saveGuidanceToThought(buildOfflineGuidanceJson(thought));
+    } catch {
+      // Seamless silent fallback to offline guidance (no error popup or toast)
+      saveGuidanceToThought(buildOfflineGuidanceJson(thought));
     } finally {
       setIsLoadingGuidance(null);
     }
   };
 
+  const handleOpenThreeMinMeditation = () => {
+    setShowSafetyNet(false);
+    setShowPlaque(null);
+    setIsOpen(false);
+    window.dispatchEvent(
+      new CustomEvent('open-meditation-preset', {
+        detail: { duration: 3 },
+      })
+    );
+  };
+
+  const resetForm = () => {
+    setSelectedEmotions([]);
+    setEventText('');
+    setActionText('');
+    setResultText('');
+    setLearningText('');
+    setVowText('');
+    hasEditedVowRef.current = false;
+    setStep(0);
+    setShowPositiveGroup(false);
+    setShowSafetyNet(false);
+    setSafetyDismissedForSession(false);
+  };
+
   const handleSave = async () => {
-    if (selectedEmotions.length === 0 && !eventText && !actionText && !resultText && !learningText && !vowText) return;
-    
+    if (
+      selectedEmotions.length === 0 &&
+      !eventText.trim() &&
+      !actionText.trim() &&
+      !resultText.trim() &&
+      !learningText.trim() &&
+      !vowText.trim()
+    ) {
+      return;
+    }
+
     const contentToCheck = `${eventText} ${actionText} ${resultText} ${learningText} ${vowText} ${selectedEmotions.join(' ')}`;
-    if (containsBadWords(contentToCheck)) {
+    const hasCrisis = containsCrisisKeywords(contentToCheck);
+
+    if (!hasCrisis && containsBadWords(contentToCheck)) {
       toast.error('您的内容包含不当词汇，请修改后再保存。');
       return;
     }
-    
+
     const newThought: Thought = {
       id: Date.now(),
       uid: identityService.getUserId(),
@@ -300,92 +675,195 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
       result: resultText,
       learning: learningText,
       vow: vowText,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      ...(hasCrisis ? { isLocalOnly: true } : {}),
     };
-    
-    setThoughts(prev => [newThought, ...prev]);
-    
-    // Add EXP
+
+    setThoughts((prev) => [newThought, ...prev]);
+
     window.dispatchEvent(new CustomEvent('addExp', { detail: 5 }));
-    
-    // Show Toast
+
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
 
-    // Clear form
-    setSelectedEmotions([]);
-    setEventText('');
-    setActionText('');
-    setResultText('');
-    setLearningText('');
-    setVowText('');
-    
-    // Show plaque
+    resetForm();
     setShowPlaque(newThought);
-    
-    // Automatically get guidance for the new thought
-    await handleGetGuidance(newThought);
+
+    if (!hasCrisis) {
+      await handleGetGuidance(newThought);
+    }
   };
+
+  const getCurrentStepField = () => {
+    const stepConfig = QUESTION_STEPS[step - 1];
+    if (!stepConfig) return null;
+    switch (stepConfig.key) {
+      case 'event':
+        return {
+          ...stepConfig,
+          value: eventText,
+          onChange: (val: string) => {
+            setEventText(val);
+            checkCrisisInDraft({ event: val });
+          },
+        };
+      case 'action':
+        return {
+          ...stepConfig,
+          value: actionText,
+          onChange: (val: string) => {
+            setActionText(val);
+            checkCrisisInDraft({ action: val });
+          },
+        };
+      case 'result':
+        return {
+          ...stepConfig,
+          value: resultText,
+          onChange: (val: string) => {
+            setResultText(val);
+            checkCrisisInDraft({ result: val });
+          },
+        };
+      case 'learning':
+        return {
+          ...stepConfig,
+          value: learningText,
+          onChange: (val: string) => {
+            setLearningText(val);
+            checkCrisisInDraft({ learning: val });
+          },
+        };
+      case 'vow':
+        return {
+          ...stepConfig,
+          value: vowText,
+          onChange: (val: string) => {
+            hasEditedVowRef.current = true;
+            setVowText(val);
+            checkCrisisInDraft({ vow: val });
+          },
+        };
+    }
+  };
+
+  const canSaveThought =
+    selectedEmotions.length > 0 ||
+    Boolean(eventText.trim()) ||
+    Boolean(actionText.trim()) ||
+    Boolean(resultText.trim()) ||
+    Boolean(learningText.trim()) ||
+    Boolean(vowText.trim());
 
   const renderPlaque = () => {
     if (!showPlaque) return null;
-    const emoLabels = showPlaque.emotions.map(id => ALL_EMOTIONS.find(e => e.id === id)?.label).filter(Boolean).join('、') || '未知';
+    const emoLabels =
+      getEmotionLabels(showPlaque.emotions).join('、') || '平静';
+    const isCrisisPlaque =
+      Boolean(showPlaque.isLocalOnly) || containsThoughtCrisis(showPlaque);
+    const parsedGuidance = !isCrisisPlaque
+      ? parseStructuredGuidance(showPlaque.guidance)
+      : null;
 
     return createPortal(
-      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9, rotateX: 20 }}
-          animate={{ opacity: 1, scale: 1, rotateX: 0 }}
-          className="relative w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
-          style={{
-            backgroundColor: '#f4ecd8', // rice paper color
-            backgroundImage: 'url("https://www.transparenttextures.com/patterns/rice-paper.png")',
-            borderRadius: '8px',
-            boxShadow: '2px 4px 15px rgba(0,0,0,0.2), inset 0 0 20px rgba(139,94,60,0.1)'
-          }}
+      <div
+        className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+        onClick={() => setShowPlaque(null)}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+          onClick={(e) => e.stopPropagation()}
+          className="relative w-full max-w-md bg-surface border border-line rounded-3xl shadow-float max-h-[90vh] flex flex-col overflow-hidden"
         >
-          <div className="flex justify-between items-center p-6 pb-4 shrink-0 sticky top-0 z-10 border-b border-amber-900/10" style={{ backgroundColor: '#f4ecd8', backgroundImage: 'url("https://www.transparenttextures.com/patterns/rice-paper.png")' }}>
-            <h3 className="text-2xl font-bold font-serif text-amber-900">念头封存</h3>
-            <button onClick={() => setShowPlaque(null)} className="p-2 text-amber-900/40 hover:text-amber-900 rounded-full hover:bg-amber-900/10 transition-colors">
-              <X className="w-6 h-6" />
+          <div className="flex justify-between items-center px-6 py-4 shrink-0 border-b border-line bg-surface">
+            <h3 className="text-title text-ink">念头封存</h3>
+            <button
+              type="button"
+              onClick={() => setShowPlaque(null)}
+              aria-label="关闭"
+              className="p-2 text-ink-3 hover:text-ink rounded-full hover:bg-surface-2 transition-colors"
+            >
+              <X className="w-5 h-5" />
             </button>
           </div>
-          
-          <div className="flex-1 overflow-y-auto p-8 pt-4 font-serif text-amber-900 space-y-4">
-            <p className="leading-relaxed">我承认我现在感觉：<strong>{emoLabels}</strong></p>
-            {showPlaque.event && <p className="leading-relaxed">因为发生了：<strong>{showPlaque.event}</strong></p>}
-            {showPlaque.action && <p className="leading-relaxed">我尝试用：<strong>{showPlaque.action}</strong></p>}
-            {showPlaque.result && <p className="leading-relaxed">结果是：<strong>{showPlaque.result}</strong></p>}
-            {showPlaque.learning && <p className="leading-relaxed">感恩这件事情让我学会了：<strong>{showPlaque.learning}</strong></p>}
-            {showPlaque.vow && <p className="leading-relaxed">发愿 / 祝福：<strong>{showPlaque.vow}</strong></p>}
-            
-            {showPlaque.guidance ? (
-              <div className="mt-6 pt-6 border-t border-amber-900/20">
-                <p className="text-sm italic text-amber-900/80 flex items-center gap-1 mb-3">
-                  <Sparkles className="w-4 h-4" /> 觉察陪伴者：
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div className="bg-surface-2 rounded-2xl p-4 border border-line space-y-2 text-sm text-ink leading-relaxed">
+              <p>
+                <span className="text-ink-2">此刻感受：</span>
+                <span className="font-medium">{emoLabels}</span>
+              </p>
+              {showPlaque.event && (
+                <p>
+                  <span className="text-ink-2">缘起事件：</span>
+                  {showPlaque.event}
                 </p>
-                <div className="space-y-3 text-sm leading-relaxed whitespace-pre-wrap">
-                  {showPlaque.guidance}
+              )}
+              {showPlaque.action && (
+                <p>
+                  <span className="text-ink-2">当下转念：</span>
+                  {showPlaque.action}
+                </p>
+              )}
+              {showPlaque.result && (
+                <p>
+                  <span className="text-ink-2">后来结果：</span>
+                  {showPlaque.result}
+                </p>
+              )}
+              {showPlaque.learning && (
+                <p>
+                  <span className="text-ink-2">认知收获：</span>
+                  {showPlaque.learning}
+                </p>
+              )}
+              {showPlaque.vow && (
+                <p>
+                  <span className="text-ink-2">化为愿力：</span>
+                  <span className="font-serif text-accent">{showPlaque.vow}</span>
+                </p>
+              )}
+            </div>
+
+            {isCrisisPlaque ? (
+              <SafetyNetCard
+                onMeditate={handleOpenThreeMinMeditation}
+                onContinue={() => setShowPlaque(null)}
+                continueLabel="我知道了"
+              />
+            ) : parsedGuidance ? (
+              <GuidanceCards
+                guidance={parsedGuidance}
+                onBeforeOpenSettings={() => {
+                  setShowPlaque(null);
+                  setIsOpen(false);
+                }}
+              />
+            ) : showPlaque.guidance ? (
+              <div className="bg-surface border border-line rounded-2xl p-5 space-y-2">
+                <div className="text-caption !text-accent flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>觉察陪伴者</span>
                 </div>
+                <p className="text-reading !text-[17px] !leading-[1.85] text-ink whitespace-pre-wrap">
+                  {showPlaque.guidance}
+                </p>
               </div>
             ) : (
-              <div className="mt-6 pt-6 border-t border-amber-900/20 flex flex-col items-center justify-center py-4">
-                {practiceService.getSettings().aiEnabled && practiceService.getSettings().aiApiKey ? (
-                  <>
-                    <Loader2 className="w-6 h-6 animate-spin text-amber-900/40 mb-2" />
-                    <p className="text-xs text-amber-900/60 font-bold tracking-widest">导师正在思考...</p>
-                  </>
-                ) : (
-                  <p className="text-xs text-amber-900/60 font-bold tracking-widest">（未开启 AI 禅师，暂无导师点评）</p>
-                )}
+              <div className="py-6 flex flex-col items-center justify-center text-ink-3 gap-2">
+                <Loader2 className="w-5 h-5 animate-spin text-accent" />
+                <p className="text-caption">正在整理觉察回应……</p>
               </div>
             )}
           </div>
 
-          <div className="p-6 pt-4 border-t border-amber-900/10 shrink-0" style={{ backgroundColor: '#f4ecd8', backgroundImage: 'url("https://www.transparenttextures.com/patterns/rice-paper.png")' }}>
+          <div className="p-5 pt-4 border-t border-line shrink-0 bg-surface">
             <button
+              type="button"
               onClick={() => setShowPlaque(null)}
-              className="w-full bg-amber-900/10 text-amber-900 py-3 rounded-2xl font-bold hover:bg-amber-900/20 transition-colors"
+              className="w-full h-11 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium transition-colors"
             >
               感恩圆满
             </button>
@@ -396,22 +874,584 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
     );
   };
 
+  const currentField = step >= 1 ? getCurrentStepField() : null;
+
+  const renderStepWizard = () => {
+    if (showSafetyNet) {
+      return (
+        <div className="py-2">
+          <SafetyNetCard
+            onMeditate={handleOpenThreeMinMeditation}
+            onContinue={() => {
+              setSafetyDismissedForSession(true);
+              setShowSafetyNet(false);
+            }}
+          />
+        </div>
+      );
+    }
+
+    if (step === 0) {
+      return (
+        <motion.div
+          key="collector-step-0"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          className="space-y-6"
+        >
+          <div className="space-y-1">
+            <h4 className="text-title text-ink">此刻心里升起了什么感受？</h4>
+            <p className="text-caption">可复选，也可以直接跳过写下事情</p>
+          </div>
+
+          {/* Negative emotion groups first */}
+          <div className="space-y-4">
+            {negativeEmotionGroups.map((group) => (
+              <div key={group.label} className="space-y-2">
+                <div className="text-caption font-medium text-ink-2">
+                  {group.label}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {group.options.map((emo) => {
+                    const isSelected = selectedEmotions.includes(emo.id);
+                    return (
+                      <button
+                        key={emo.id}
+                        type="button"
+                        onClick={() => toggleEmotion(emo.id)}
+                        className={cn(
+                          'h-9 px-4 rounded-full border text-sm transition-colors',
+                          isSelected
+                            ? 'bg-accent-mist text-accent border-transparent font-medium'
+                            : 'border-line text-ink-2 hover:border-line-strong hover:text-ink'
+                        )}
+                      >
+                        {emo.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Collapsible positive emotion group */}
+          <div className="pt-2 border-t border-line">
+            <button
+              type="button"
+              onClick={() => setShowPositiveGroup((v) => !v)}
+              className="w-full flex items-center justify-between py-2 text-sm text-ink-2 hover:text-ink transition-colors"
+            >
+              <span>也记下美好的</span>
+              <ChevronDown
+                size={16}
+                strokeWidth={1.5}
+                className={cn(
+                  'transition-transform duration-200',
+                  showPositiveGroup && 'rotate-180'
+                )}
+              />
+            </button>
+
+            <AnimatePresence initial={false}>
+              {showPositiveGroup && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-3 pb-1 space-y-3">
+                    {positiveEmotionGroups.map((group) => (
+                      <div key={group.label} className="space-y-2">
+                        <div className="text-caption font-medium text-ink-2">
+                          {group.label}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {group.options.map((emo) => {
+                            const isSelected = selectedEmotions.includes(emo.id);
+                            return (
+                              <button
+                                key={emo.id}
+                                type="button"
+                                onClick={() => toggleEmotion(emo.id)}
+                                className={cn(
+                                  'h-9 px-4 rounded-full border text-sm transition-colors',
+                                  isSelected
+                                    ? 'bg-accent-mist text-accent border-transparent font-medium'
+                                    : 'border-line text-ink-2 hover:border-line-strong hover:text-ink'
+                                )}
+                              >
+                                {emo.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </motion.div>
+      );
+    }
+
+    if (!currentField) return null;
+
+    return (
+      <motion.div
+        key={`collector-step-${step}`}
+        initial={{ opacity: 0, x: 10 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -10 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className="space-y-5 py-1"
+      >
+        {/* 5 small progress dots at top */}
+        <div className="flex items-center justify-center gap-2 pt-1">
+          {[1, 2, 3, 4, 5].map((dotIdx) => {
+            const isCurrent = step === dotIdx;
+            const isDone = step > dotIdx;
+            return (
+              <button
+                key={dotIdx}
+                type="button"
+                aria-label={`第 ${dotIdx} 步`}
+                onClick={() => setStep(dotIdx)}
+                className={cn(
+                  'h-2 rounded-full transition-all duration-200',
+                  isCurrent
+                    ? 'w-5 bg-accent'
+                    : isDone
+                    ? 'w-2 bg-accent-soft'
+                    : 'w-2 bg-line-strong'
+                )}
+              />
+            );
+          })}
+        </div>
+
+        {/* Selected emotions recap pill line */}
+        {selectedEmotions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {getEmotionLabels(selectedEmotions).map((label) => (
+              <span
+                key={label}
+                className="px-2.5 py-0.5 rounded-full bg-accent-mist text-accent text-xs"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Single focused question */}
+        <div className="space-y-3">
+          <h4 className="text-title text-ink">{currentField.question}</h4>
+          <textarea
+            value={currentField.value}
+            onChange={(e) => currentField.onChange(e.target.value)}
+            placeholder={currentField.placeholder}
+            className="w-full bg-surface-2 rounded-2xl p-4 min-h-[120px] border border-line focus:outline-none focus:border-accent text-ink placeholder:text-ink-3 resize-none leading-relaxed"
+          />
+        </div>
+      </motion.div>
+    );
+  };
+
+  const renderStepFooter = () => {
+    if (activeTab !== 'record' || showSafetyNet) return null;
+
+    if (step === 0) {
+      return (
+        <div className="flex items-center gap-3">
+          {!embedded && (
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="h-11 px-5 rounded-full bg-surface-2 border border-line text-ink-2 hover:text-ink text-sm transition-colors"
+            >
+              取消
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setStep(1)}
+            className="flex-1 h-11 px-5 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium transition-colors flex items-center justify-center gap-1.5"
+          >
+            <span>继续觉察</span>
+            <ChevronRight size={16} strokeWidth={1.5} />
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setStep((s) => Math.max(0, s - 1))}
+          className="h-11 px-4 rounded-full bg-surface-2 border border-line text-ink-2 hover:text-ink text-sm transition-colors flex items-center gap-1"
+        >
+          <ChevronLeft size={16} strokeWidth={1.5} />
+          <span>上一步</span>
+        </button>
+
+        {step < 5 ? (
+          <button
+            type="button"
+            onClick={() => setStep((s) => Math.min(5, s + 1))}
+            className="flex-1 h-11 px-5 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium transition-colors flex items-center justify-center gap-1.5"
+          >
+            <span>下一步</span>
+            <ChevronRight size={16} strokeWidth={1.5} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!canSaveThought}
+            className="flex-1 h-11 px-5 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
+          >
+            封存念头
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const collectorInnerBody = (
+    <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-5">
+      {/* Privacy reassurance header */}
+      <div className="flex items-center gap-1.5 text-caption">
+        <Lock size={13} strokeWidth={1.5} className="text-ink-3 shrink-0" />
+        <span>这里写下的只存在你的设备里，不会公开。</span>
+      </div>
+
+      {/* Record / History switcher */}
+      <div className="flex gap-2 shrink-0 bg-surface-2 p-1 rounded-xl border border-line">
+        <button
+          type="button"
+          onClick={() => setActiveTab('record')}
+          className={cn(
+            'flex-1 py-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2',
+            activeTab === 'record'
+              ? 'bg-surface text-accent border border-line'
+              : 'text-ink-2 hover:text-ink'
+          )}
+        >
+          <MessageCircle className="w-4 h-4" strokeWidth={1.5} />
+          <span>记录念头</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('history')}
+          className={cn(
+            'flex-1 py-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2',
+            activeTab === 'history'
+              ? 'bg-surface text-accent border border-line'
+              : 'text-ink-2 hover:text-ink'
+          )}
+        >
+          <History className="w-4 h-4" strokeWidth={1.5} />
+          <span>成长轨迹</span>
+        </button>
+      </div>
+
+      {activeTab === 'record' ? (
+        <AnimatePresence mode="wait">{renderStepWizard()}</AnimatePresence>
+      ) : (
+        <div className="flex-1 flex flex-col min-h-0">
+          {thoughts.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-ink-3 py-12">
+              <History className="w-12 h-12 mb-4 opacity-20" strokeWidth={1.5} />
+              <p className="text-sm">暂无成长轨迹</p>
+            </div>
+          ) : (
+            <div className="flex flex-col h-full min-h-0">
+              {/* Filter Bar */}
+              <div className="flex flex-col gap-3 mb-4 shrink-0 px-1">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium text-ink-2">
+                    共 {filteredThoughts.length} 条记录
+                  </div>
+                  <div className="relative">
+                    <select
+                      value={filterEmotion}
+                      onChange={(e) => setFilterEmotion(e.target.value)}
+                      className="appearance-none bg-surface-2 border border-line rounded-lg pl-3 pr-8 py-1.5 text-xs font-medium text-ink focus:outline-none focus:border-accent cursor-pointer"
+                    >
+                      <option value="all">所有情绪</option>
+                      {EMOTION_GROUPS.map((g) => (
+                        <optgroup key={g.label} label={g.label}>
+                          {g.options.map((emo) => (
+                            <option key={emo.id} value={emo.id}>
+                              {emo.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-3 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <select
+                      value={filterYear}
+                      onChange={(e) => setFilterYear(e.target.value)}
+                      className="w-full appearance-none bg-surface-2 border border-line rounded-lg pl-3 pr-8 py-1.5 text-xs font-medium text-ink focus:outline-none focus:border-accent cursor-pointer"
+                    >
+                      <option value="all">所有年份</option>
+                      {uniqueYears.map((y) => (
+                        <option key={y} value={y}>
+                          {y}年
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-3 pointer-events-none" />
+                  </div>
+                  <div className="relative flex-1">
+                    <select
+                      value={filterMonth}
+                      onChange={(e) => setFilterMonth(e.target.value)}
+                      className="w-full appearance-none bg-surface-2 border border-line rounded-lg pl-3 pr-8 py-1.5 text-xs font-medium text-ink focus:outline-none focus:border-accent cursor-pointer"
+                    >
+                      <option value="all">所有月份</option>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                        <option key={m} value={m.toString()}>
+                          {m}月
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-3 pointer-events-none" />
+                  </div>
+                  <div className="relative flex-1">
+                    <select
+                      value={filterDay}
+                      onChange={(e) => setFilterDay(e.target.value)}
+                      className="w-full appearance-none bg-surface-2 border border-line rounded-lg pl-3 pr-8 py-1.5 text-xs font-medium text-ink focus:outline-none focus:border-accent cursor-pointer"
+                    >
+                      <option value="all">所有日期</option>
+                      {Array.from({ length: maxDays }, (_, i) => i + 1).map(
+                        (d) => (
+                          <option key={d} value={d.toString()}>
+                            {d}日
+                          </option>
+                        )
+                      )}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-3 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-6 overflow-y-auto pr-1 flex-1 pb-4">
+                {filteredThoughts.length === 0 && (
+                  <div className="text-center text-ink-3 py-8 text-sm">
+                    没有找到符合条件的记录
+                  </div>
+                )}
+                {Object.entries(
+                  filteredThoughts.reduce((acc, thought) => {
+                    const date = new Date(thought.timestamp || thought.id);
+                    const monthYear = `${date.getFullYear()}年${
+                      date.getMonth() + 1
+                    }月`;
+                    if (!acc[monthYear]) acc[monthYear] = [];
+                    acc[monthYear].push(thought);
+                    return acc;
+                  }, {} as Record<string, Thought[]>)
+                ).map(([month, monthThoughts]) => (
+                  <div key={month} className="space-y-4">
+                    <div className="sticky top-0 bg-surface/95 backdrop-blur-sm py-2 z-10 -mx-1 px-1">
+                      <h4 className="text-xs font-medium text-ink-3 flex items-center gap-2">
+                        <div className="h-px bg-line flex-1" />
+                        {month}
+                        <div className="h-px bg-line flex-1" />
+                      </h4>
+                    </div>
+
+                    {monthThoughts.map((thought) => {
+                      const isLocalCrisis =
+                        Boolean(thought.isLocalOnly) ||
+                        containsThoughtCrisis(thought);
+                      const structured = !isLocalCrisis
+                        ? parseStructuredGuidance(thought.guidance)
+                        : null;
+
+                      return (
+                        <div
+                          key={thought.id}
+                          className="p-4 bg-surface-2 rounded-2xl text-sm border border-line space-y-3"
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="flex flex-wrap gap-1.5">
+                              {thought.emotions.map((emoId) => {
+                                const emo = ALL_EMOTIONS.find(
+                                  (e) => e.id === emoId
+                                );
+                                const label = emo?.label || emoId;
+                                return (
+                                  <span
+                                    key={emoId}
+                                    className="text-xs px-2.5 py-0.5 rounded-full bg-accent-mist text-accent font-medium"
+                                  >
+                                    {label}
+                                  </span>
+                                );
+                              })}
+                              {isLocalCrisis && (
+                                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-surface border border-line text-ink-3">
+                                  <Lock size={10} />
+                                  仅存本机
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-ink-3 shrink-0">
+                              {new Date(
+                                thought.timestamp || thought.id
+                              ).toLocaleDateString()}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1.5 text-ink leading-relaxed">
+                            {thought.event && (
+                              <p>
+                                <span className="text-ink-3 mr-1">因为：</span>
+                                {thought.event}
+                              </p>
+                            )}
+                            {thought.action && (
+                              <p>
+                                <span className="text-ink-3 mr-1">转念：</span>
+                                {thought.action}
+                              </p>
+                            )}
+                            {thought.result && (
+                              <p>
+                                <span className="text-ink-3 mr-1">结果：</span>
+                                {thought.result}
+                              </p>
+                            )}
+                            {thought.learning && (
+                              <p>
+                                <span className="text-ink-3 mr-1">学会：</span>
+                                {thought.learning}
+                              </p>
+                            )}
+                            {thought.vow && (
+                              <p>
+                                <span className="text-ink-3 mr-1">发愿：</span>
+                                {thought.vow}
+                              </p>
+                            )}
+                          </div>
+
+                          {!isLocalCrisis && structured ? (
+                            <div className="p-3 bg-surface rounded-xl border border-line space-y-1">
+                              <div className="flex items-center gap-1.5 text-accent text-xs font-medium">
+                                <Sparkles className="w-3.5 h-3.5" />
+                                <span>觉察回应</span>
+                              </div>
+                              <p className="text-xs text-ink-2 leading-relaxed">
+                                {structured.observe}
+                              </p>
+                            </div>
+                          ) : !isLocalCrisis && thought.guidance ? (
+                            <div className="p-3 bg-surface rounded-xl border border-line space-y-1">
+                              <div className="flex items-center gap-1.5 text-accent text-xs font-medium">
+                                <Sparkles className="w-3.5 h-3.5" />
+                                <span>觉察陪伴者</span>
+                              </div>
+                              <p className="text-xs text-ink-2 leading-relaxed whitespace-pre-wrap">
+                                {thought.guidance}
+                              </p>
+                            </div>
+                          ) : !isLocalCrisis ? (
+                            <button
+                              type="button"
+                              onClick={() => handleGetGuidance(thought)}
+                              disabled={isLoadingGuidance === thought.id}
+                              className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
+                            >
+                              {isLoadingGuidance === thought.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3.5 h-3.5" />
+                              )}
+                              <span>生成觉察回应</span>
+                            </button>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            onClick={() => setShowPlaque(thought)}
+                            className="w-full py-2 bg-surface border border-line rounded-xl text-xs font-medium text-ink-2 hover:text-accent hover:border-accent transition-colors"
+                          >
+                            {isLocalCrisis ? '查看陪伴资源' : '查看念头木牌'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="bg-surface rounded-2xl border border-line flex flex-col overflow-hidden">
+        <div className="flex justify-between items-center p-5 pb-3 border-b border-line">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-accent" strokeWidth={1.5} />
+            <h3 className="text-title text-ink">起心动念收集器</h3>
+          </div>
+          <span className="text-caption">共 {thoughts.length} 条觉察</span>
+        </div>
+
+        {collectorInnerBody}
+
+        {activeTab === 'record' && !showSafetyNet && (
+          <div className="p-5 pt-3 border-t border-line bg-surface">
+            {renderStepFooter()}
+          </div>
+        )}
+        {renderPlaque()}
+      </div>
+    );
+  }
+
   return (
     <>
-      {/* Trigger Button */}
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={() => setIsOpen(true)}
-        title="觉察记录"
-        className={cn(
-          "px-3 py-1.5 bg-zen-accent text-white rounded-full shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 text-xs",
-          className
-        )}
-      >
-        <MessageCircle className="w-4 h-4" />
-        <span className={cn("font-bold", iconOnlyOnMobile && "hidden sm:inline")}>觉察</span>
-      </motion.button>
+      {!hideTrigger && (
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setIsOpen(true)}
+          title="觉察记录"
+          className={cn(
+            'px-3 py-1.5 bg-accent text-on-accent hover:bg-accent-hover rounded-full shadow-float transition-all flex items-center justify-center gap-1.5 text-xs',
+            className
+          )}
+        >
+          <MessageCircle className="w-4 h-4" strokeWidth={1.5} />
+          <span className={cn('font-medium', iconOnlyOnMobile && 'hidden sm:inline')}>
+            觉察
+          </span>
+        </motion.button>
+      )}
 
       {/* Toast */}
       {createPortal(
@@ -421,17 +1461,19 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 50 }}
-              className="fixed bottom-40 left-1/2 -translate-x-1/2 z-[70] bg-zen-ink text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-2"
+              className="fixed bottom-40 left-1/2 -translate-x-1/2 z-[70] bg-ink text-paper px-6 py-3 rounded-full shadow-float flex items-center gap-2"
             >
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <span className="text-sm font-medium">当念头被看见，智慧就开始出现。 (+5 功德)</span>
+              <CheckCircle2 className="w-5 h-5 text-accent-soft" />
+              <span className="text-sm font-medium">
+                当念头被看见，智慧就开始出现。
+              </span>
             </motion.div>
           )}
         </AnimatePresence>,
         document.body
       )}
 
-      {/* Modal */}
+      {/* Bottom Sheet (mobile) / Modal (desktop) */}
       {createPortal(
         <AnimatePresence>
           {isOpen && (
@@ -439,370 +1481,47 @@ export const ThoughtCollector = ({ className, iconOnlyOnMobile }: { className?: 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm"
+              onClick={() => setIsOpen(false)}
+              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-black/30 backdrop-blur-sm"
             >
               <motion.div
-                initial={{ scale: 0.9, y: 20 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.9, y: 20 }}
-                className="bg-white rounded-[32px] w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col overflow-hidden relative"
+                initial={{ y: '100%', opacity: 0.8 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: '100%', opacity: 0.8 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-surface rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md shadow-float border-t sm:border border-line max-h-[88vh] sm:max-h-[90vh] flex flex-col overflow-hidden relative"
               >
-              <div className="flex justify-between items-center p-6 pb-4 shrink-0 bg-white border-b border-zen-accent/5 sticky top-0 z-10">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-zen-accent" />
-                  <h3 className="text-xl font-bold font-serif text-zen-ink">念头觉察</h3>
+                <div className="sm:hidden w-10 h-1 rounded-full bg-line-strong mx-auto mt-3 mb-1 shrink-0" />
+                <div className="flex justify-between items-center px-6 py-4 shrink-0 bg-surface border-b border-line sticky top-0 z-10">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-accent" strokeWidth={1.5} />
+                    <h3 className="text-title text-ink">起心动念</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsOpen(false)}
+                    aria-label="关闭"
+                    className="p-2 text-ink-3 hover:text-ink rounded-full hover:bg-surface-2 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-                <button onClick={() => setIsOpen(false)} className="p-2 text-zen-ink/40 hover:text-zen-ink rounded-full hover:bg-zen-bg transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
 
-              <div className="flex-1 overflow-y-auto p-6 pt-4">
-                <div className="flex gap-2 mb-6 shrink-0 bg-zen-bg/50 p-1 rounded-xl">
-                <button
-                  onClick={() => setActiveTab('record')}
-                  className={cn(
-                    "flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2",
-                    activeTab === 'record' ? "bg-white text-zen-accent shadow-sm" : "text-zen-ink/60 hover:text-zen-ink"
-                  )}
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  记录念头
-                </button>
-                <button
-                  onClick={() => setActiveTab('history')}
-                  className={cn(
-                    "flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2",
-                    activeTab === 'history' ? "bg-white text-zen-accent shadow-sm" : "text-zen-ink/60 hover:text-zen-ink"
-                  )}
-                >
-                  <History className="w-4 h-4" />
-                  成长轨迹
-                </button>
-              </div>
+                {collectorInnerBody}
 
-              {activeTab === 'record' ? (
-                <div className="space-y-6 flex-1 flex flex-col min-h-0">
-                  <div className="shrink-0 relative">
-                    <label className="block text-sm font-bold text-zen-ink/60 mb-3">第一步：选择情绪</label>
-                    
-                    {/* Selected Tags */}
-                    {selectedEmotions.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {selectedEmotions.map(id => {
-                          const emo = ALL_EMOTIONS.find(e => e.id === id);
-                          if (!emo) return null;
-                          return (
-                            <span key={id} className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold", emo.bg, emo.color)}>
-                              {emo.label}
-                              <button onClick={() => toggleEmotion(id)} className="hover:opacity-70 ml-1 p-0.5 rounded-full hover:bg-black/5">
-                                <X className="w-3 h-3" />
-                              </button>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Dropdown Button */}
-                    <button
-                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                      className="w-full flex items-center justify-between bg-zen-bg/30 border border-zen-accent/10 rounded-xl p-3 text-sm text-zen-ink/80 hover:bg-zen-bg/50 transition-colors"
-                    >
-                      <span>{selectedEmotions.length === 0 ? '点击选择情绪...' : '继续添加情绪...'}</span>
-                      <ChevronDown className={cn("w-4 h-4 transition-transform", isDropdownOpen && "rotate-180")} />
-                    </button>
-
-                    {/* Dropdown Menu */}
-                    <AnimatePresence>
-                      {isDropdownOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          className="absolute z-10 w-full mt-2 bg-white border border-zen-accent/10 rounded-xl shadow-xl max-h-64 overflow-y-auto p-3"
-                        >
-                          {EMOTION_GROUPS.map(group => (
-                            <div key={group.label} className="mb-4 last:mb-0">
-                              <div className="px-2 py-1 text-xs font-bold text-zen-ink/40 uppercase tracking-wider mb-2">
-                                {group.label}
-                              </div>
-                              <div className="grid grid-cols-2 gap-1.5">
-                                {group.options.map(emo => {
-                                  const isSelected = selectedEmotions.includes(emo.id);
-                                  return (
-                                    <button
-                                      key={emo.id}
-                                      onClick={() => toggleEmotion(emo.id)}
-                                      className={cn(
-                                        "flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors text-left",
-                                        isSelected ? `${emo.bg} ${emo.color} font-bold` : "hover:bg-zen-bg/50 text-zen-ink/70"
-                                      )}
-                                    >
-                                      <span>{emo.label}</span>
-                                      {isSelected && <Check className="w-4 h-4" />}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                {activeTab === 'record' && !showSafetyNet && (
+                  <div className="p-5 pt-4 border-t border-line bg-surface shrink-0 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-5">
+                    {renderStepFooter()}
                   </div>
-
-                  <div className="shrink-0">
-                    <label className="block text-sm font-bold text-zen-ink/60 mb-2">第二步：觉察记录</label>
-                    <div className="space-y-3">
-                      <div className="bg-zen-bg/30 border border-zen-accent/10 rounded-xl p-3 text-sm text-zen-ink/80">
-                        <span className="text-zen-ink/50 block mb-1">我承认我现在感觉：</span>
-                        {selectedEmotions.length > 0 
-                          ? selectedEmotions.map(id => ALL_EMOTIONS.find(e => e.id === id)?.label).join('、')
-                          : '（请在上方选择情绪）'}
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <label className="block text-xs font-medium text-zen-ink/50 ml-1">因为发生了...</label>
-                        <textarea
-                          value={eventText}
-                          onChange={(e) => setEventText(e.target.value)}
-                          className="w-full h-20 bg-zen-bg/30 border border-zen-accent/10 rounded-xl p-3 text-sm focus:outline-none focus:border-zen-accent/30 resize-none"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="block text-xs font-medium text-zen-ink/50 ml-1">我尝试用（例如慈心、平等心、理解、包容、观察念头等）来转念或面对这件事...</label>
-                        <textarea
-                          value={actionText}
-                          onChange={(e) => setActionText(e.target.value)}
-                          className="w-full h-20 bg-zen-bg/30 border border-zen-accent/10 rounded-xl p-3 text-sm focus:outline-none focus:border-zen-accent/30 resize-none"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="block text-xs font-medium text-zen-ink/50 ml-1">结果是...</label>
-                        <textarea
-                          value={resultText}
-                          onChange={(e) => setResultText(e.target.value)}
-                          className="w-full h-20 bg-zen-bg/30 border border-zen-accent/10 rounded-xl p-3 text-sm focus:outline-none focus:border-zen-accent/30 resize-none"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="block text-xs font-medium text-zen-ink/50 ml-1">感恩这件事情让我学会了...</label>
-                        <textarea
-                          value={learningText}
-                          onChange={(e) => setLearningText(e.target.value)}
-                          className="w-full h-20 bg-zen-bg/30 border border-zen-accent/10 rounded-xl p-3 text-sm focus:outline-none focus:border-zen-accent/30 resize-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="shrink-0">
-                    <label className="block text-sm font-bold text-zen-ink/60 mb-2">第三步：发愿 / 祝福</label>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-zen-ink/50 ml-1">例如：愿我下次遇到类似情况能更有智慧。愿一切众生都能远离这种烦恼...</label>
-                      <textarea
-                        value={vowText}
-                        onChange={(e) => setVowText(e.target.value)}
-                        className="w-full h-20 bg-zen-bg/30 border border-zen-accent/10 rounded-xl p-3 text-sm focus:outline-none focus:border-zen-accent/30 resize-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col min-h-0">
-                  {thoughts.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-zen-ink/40 py-12">
-                      <History className="w-12 h-12 mb-4 opacity-20" />
-                      <p>暂无成长轨迹</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col h-full min-h-0">
-                      {/* Filter Bar */}
-                      <div className="flex flex-col gap-3 mb-4 shrink-0 px-1">
-                        <div className="flex items-center justify-between">
-                          <div className="text-sm font-bold text-zen-ink/60">
-                            共 {filteredThoughts.length} 条记录
-                          </div>
-                          <div className="relative">
-                            <select
-                              value={filterEmotion}
-                              onChange={(e) => setFilterEmotion(e.target.value)}
-                              className="appearance-none bg-zen-bg/50 border border-zen-accent/10 rounded-lg pl-3 pr-8 py-1.5 text-xs font-bold text-zen-ink/80 focus:outline-none focus:border-zen-accent/30 cursor-pointer"
-                            >
-                              <option value="all">所有情绪</option>
-                              {EMOTION_GROUPS.map(g => (
-                                <optgroup key={g.label} label={g.label}>
-                                  {g.options.map(emo => (
-                                    <option key={emo.id} value={emo.id}>{emo.label}</option>
-                                  ))}
-                                </optgroup>
-                              ))}
-                            </select>
-                            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zen-ink/40 pointer-events-none" />
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <div className="relative flex-1">
-                            <select
-                              value={filterYear}
-                              onChange={(e) => setFilterYear(e.target.value)}
-                              className="w-full appearance-none bg-zen-bg/50 border border-zen-accent/10 rounded-lg pl-3 pr-8 py-1.5 text-xs font-bold text-zen-ink/80 focus:outline-none focus:border-zen-accent/30 cursor-pointer"
-                            >
-                              <option value="all">所有年份</option>
-                              {uniqueYears.map(y => (
-                                <option key={y} value={y}>{y}年</option>
-                              ))}
-                            </select>
-                            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zen-ink/40 pointer-events-none" />
-                          </div>
-                          <div className="relative flex-1">
-                            <select
-                              value={filterMonth}
-                              onChange={(e) => setFilterMonth(e.target.value)}
-                              className="w-full appearance-none bg-zen-bg/50 border border-zen-accent/10 rounded-lg pl-3 pr-8 py-1.5 text-xs font-bold text-zen-ink/80 focus:outline-none focus:border-zen-accent/30 cursor-pointer"
-                            >
-                              <option value="all">所有月份</option>
-                              {Array.from({length: 12}, (_, i) => i + 1).map(m => (
-                                <option key={m} value={m.toString()}>{m}月</option>
-                              ))}
-                            </select>
-                            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zen-ink/40 pointer-events-none" />
-                          </div>
-                          <div className="relative flex-1">
-                            <select
-                              value={filterDay}
-                              onChange={(e) => setFilterDay(e.target.value)}
-                              className="w-full appearance-none bg-zen-bg/50 border border-zen-accent/10 rounded-lg pl-3 pr-8 py-1.5 text-xs font-bold text-zen-ink/80 focus:outline-none focus:border-zen-accent/30 cursor-pointer"
-                            >
-                              <option value="all">所有日期</option>
-                              {Array.from({length: maxDays}, (_, i) => i + 1).map(d => (
-                                <option key={d} value={d.toString()}>{d}日</option>
-                              ))}
-                            </select>
-                            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zen-ink/40 pointer-events-none" />
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-6 overflow-y-auto pr-2 flex-1 pb-4">
-                        {filteredThoughts.length === 0 && (
-                          <div className="text-center text-zen-ink/40 py-8 text-sm">没有找到符合条件的记录</div>
-                        )}
-                        {Object.entries(
-                          filteredThoughts
-                            .reduce((acc, thought) => {
-                              const date = new Date(thought.timestamp || thought.id);
-                              const monthYear = `${date.getFullYear()}年${date.getMonth() + 1}月`;
-                              if (!acc[monthYear]) acc[monthYear] = [];
-                              acc[monthYear].push(thought);
-                              return acc;
-                            }, {} as Record<string, Thought[]>)
-                        ).map(([month, monthThoughts]) => (
-                          <div key={month} className="space-y-4">
-                            <div className="sticky top-0 bg-white/95 backdrop-blur-sm py-2 z-10 -mx-2 px-2">
-                              <h4 className="text-xs font-bold text-zen-ink/40 flex items-center gap-2">
-                                <div className="h-px bg-zen-ink/10 flex-1"></div>
-                                {month}
-                                <div className="h-px bg-zen-ink/10 flex-1"></div>
-                              </h4>
-                            </div>
-                            {monthThoughts.map(thought => {
-                              return (
-                                <div key={thought.id} className="p-4 bg-zen-bg/50 rounded-2xl text-sm border border-zen-accent/5">
-                                  <div className="flex justify-between items-center mb-3">
-                                    <div className="flex flex-wrap gap-1">
-                                      {thought.emotions.map(emoId => {
-                                        const emo = ALL_EMOTIONS.find(e => e.id === emoId);
-                                        if (!emo) return null;
-                                        return (
-                                          <span key={emoId} className={cn("text-[10px] font-bold px-2 py-1 rounded-md", emo.bg, emo.color)}>
-                                            {emo.label}
-                                          </span>
-                                        );
-                                      })}
-                                    </div>
-                                    <span className="text-[10px] text-zen-ink/40 font-medium">
-                                      {new Date(thought.timestamp || thought.id).toLocaleString()}
-                                    </span>
-                                  </div>
-                                  
-                                  <div className="space-y-2 mb-3">
-                                    {thought.event && <p className="text-zen-ink/80"><span className="text-zen-ink/40 mr-1">因为:</span>{thought.event}</p>}
-                                    {thought.action && <p className="text-zen-ink/80"><span className="text-zen-ink/40 mr-1">转念:</span>{thought.action}</p>}
-                                    {thought.result && <p className="text-zen-ink/80"><span className="text-zen-ink/40 mr-1">结果:</span>{thought.result}</p>}
-                                    {thought.learning && <p className="text-zen-ink/80"><span className="text-zen-ink/40 mr-1">学会:</span>{thought.learning}</p>}
-                                    {thought.vow && <p className="text-zen-ink/80"><span className="text-zen-ink/40 mr-1">发愿:</span>{thought.vow}</p>}
-                                  </div>
-                                  
-                                  {thought.guidance ? (
-                                    <div className="mt-3 p-3 bg-zen-accent/5 rounded-xl border border-zen-accent/10">
-                                      <div className="flex items-center gap-1.5 mb-1.5 text-zen-accent">
-                                        <Sparkles className="w-3.5 h-3.5" />
-                                        <span className="text-xs font-bold">觉察陪伴者</span>
-                                      </div>
-                                      <p className="text-xs text-zen-ink/70 leading-relaxed whitespace-pre-wrap">{thought.guidance}</p>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => handleGetGuidance(thought)}
-                                      disabled={isLoadingGuidance === thought.id}
-                                      className="flex items-center gap-1.5 text-xs text-zen-accent hover:text-zen-accent/80 transition-colors disabled:opacity-50 mt-2"
-                                    >
-                                      {isLoadingGuidance === thought.id ? (
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                      ) : (
-                                        <Sparkles className="w-3.5 h-3.5" />
-                                      )}
-                                      请教陪伴者
-                                    </button>
-                                  )}
-                                  
-                                  <button 
-                                    onClick={() => setShowPlaque(thought)}
-                                    className="mt-3 w-full py-2 bg-white border border-zen-accent/10 rounded-lg text-xs font-medium text-zen-ink/60 hover:text-zen-accent hover:border-zen-accent/30 transition-colors"
-                                  >
-                                    查看木牌
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              </div>
-              
-              <div className="p-6 pt-4 border-t border-zen-accent/5 bg-white shrink-0">
-                {activeTab === 'record' ? (
-                  <div className="flex gap-3">
-                    <button onClick={() => setIsOpen(false)} className="flex-1 bg-zen-bg text-zen-accent py-3 rounded-2xl font-bold hover:bg-zen-accent/10 transition-colors">取消</button>
-                    <button 
-                      onClick={handleSave}
-                      disabled={selectedEmotions.length === 0 && !eventText && !actionText && !resultText && !learningText && !vowText}
-                      className="flex-1 bg-zen-accent text-white py-3 rounded-2xl font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-                    >
-                      封存念头
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={() => setIsOpen(false)} className="w-full bg-zen-bg text-zen-accent py-3 rounded-2xl font-bold hover:bg-zen-accent/10 transition-colors">关闭</button>
                 )}
-              </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>,
-      document.body
-    )}
-      
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
       {renderPlaque()}
     </>
   );

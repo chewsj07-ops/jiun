@@ -6,6 +6,20 @@ import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import path from "path";
+import { GoogleGenAI } from "@google/genai";
+
+function getGeminiClient(): GoogleGenAI | null {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
+    },
+  });
+}
 
 async function startServer() {
   const app = express();
@@ -31,6 +45,102 @@ async function startServer() {
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // Limit each IP to 100 requests per windowMs
     message: "Too many requests from this IP, please try again later."
+  });
+
+  // Server-side Gemini AI endpoints
+  app.post("/api/ai/chat", async (req, res) => {
+    const ai = getGeminiClient();
+    if (!ai) {
+      return res.status(503).json({ error: "GEMINI_API_KEY_NOT_CONFIGURED" });
+    }
+
+    const { message, history, systemInstruction } = req.body || {};
+    if (typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ error: "INVALID_MESSAGE" });
+    }
+
+    try {
+      const rawHistory = Array.isArray(history)
+        ? history
+            .slice(-12)
+            .filter(
+              (item: any) =>
+                item &&
+                (item.role === "user" || item.role === "model") &&
+                typeof item.text === "string" &&
+                item.text.trim()
+            )
+            .map((item: any) => ({
+              role: item.role as "user" | "model",
+              parts: [{ text: item.text }],
+            }))
+        : [];
+
+      const safeHistory: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
+      for (const turn of rawHistory) {
+        if (safeHistory.length === 0 && turn.role === "model") continue;
+        if (safeHistory.length > 0 && safeHistory[safeHistory.length - 1].role === turn.role) {
+          safeHistory[safeHistory.length - 1] = turn;
+        } else {
+          safeHistory.push(turn);
+        }
+      }
+      if (safeHistory.length > 0 && safeHistory[safeHistory.length - 1].role === "user") {
+        safeHistory.pop();
+      }
+
+      const chat = ai.chats.create({
+        model: "gemini-4-hydrogen",
+        config: {
+          ...(typeof systemInstruction === "string" && systemInstruction.trim()
+            ? { systemInstruction }
+            : {}),
+        },
+        history: safeHistory,
+      });
+
+      const response = await chat.sendMessage({ message: message.trim() });
+      res.json({ text: response.text ?? "" });
+    } catch (error: any) {
+      console.error("Gemini /api/ai/chat error:", error);
+      res.status(502).json({
+        error: error?.message || "GEMINI_CHAT_ERROR",
+      });
+    }
+  });
+
+  app.post("/api/ai/generate", async (req, res) => {
+    const ai = getGeminiClient();
+    if (!ai) {
+      return res.status(503).json({ error: "GEMINI_API_KEY_NOT_CONFIGURED" });
+    }
+
+    const { contents, systemInstruction, responseMimeType } = req.body || {};
+    if (typeof contents !== "string" || !contents.trim()) {
+      return res.status(400).json({ error: "INVALID_CONTENTS" });
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-4-hydrogen",
+        contents: contents.trim(),
+        config: {
+          ...(typeof systemInstruction === "string" && systemInstruction.trim()
+            ? { systemInstruction }
+            : {}),
+          ...(typeof responseMimeType === "string" && responseMimeType.trim()
+            ? { responseMimeType }
+            : {}),
+        },
+      });
+
+      res.json({ text: response.text ?? "" });
+    } catch (error: any) {
+      console.error("Gemini /api/ai/generate error:", error);
+      res.status(502).json({
+        error: error?.message || "GEMINI_GENERATE_ERROR",
+      });
+    }
   });
 
   // In-memory state for demonstration

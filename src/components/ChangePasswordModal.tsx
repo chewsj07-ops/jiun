@@ -86,19 +86,19 @@ export const ChangePasswordModal = ({ isOpen, onClose }: { isOpen: boolean; onCl
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-md bg-zen-paper rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto"
+          className="relative w-full max-w-md bg-surface rounded-3xl shadow-float border border-line overflow-hidden max-h-[90vh] flex flex-col my-auto"
         >
           <div className="p-6 sm:p-8 overflow-y-auto">
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 p-2 text-zen-ink/40 hover:text-zen-ink hover:bg-zen-bg rounded-full transition-colors"
+              className="absolute top-4 right-4 p-2 text-ink-3 hover:text-ink hover:bg-surface-2 rounded-full transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-zen-ink mb-2">Change Password</h2>
-              <p className="text-sm text-zen-ink/60">Enter your current and new password</p>
+              <h2 className="text-2xl font-bold font-serif text-ink mb-2">Change Password</h2>
+              <p className="text-sm text-ink-2">Enter your current and new password</p>
             </div>
 
             <div className="space-y-4">
@@ -107,21 +107,21 @@ export const ChangePasswordModal = ({ isOpen, onClose }: { isOpen: boolean; onCl
                 placeholder="Current Password"
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-zen-bg/50 border border-zen-accent/20 rounded-xl text-sm focus:outline-none focus:border-zen-accent/50"
+                className="w-full px-4 py-3 bg-surface-2 border border-line rounded-xl text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent"
               />
               <input
                 type="password"
                 placeholder="New Password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-zen-bg/50 border border-zen-accent/20 rounded-xl text-sm focus:outline-none focus:border-zen-accent/50"
+                className="w-full px-4 py-3 bg-surface-2 border border-line rounded-xl text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent"
               />
               <input
                 type="password"
                 placeholder="Confirm New Password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-zen-bg/50 border border-zen-accent/20 rounded-xl text-sm focus:outline-none focus:border-zen-accent/50"
+                className="w-full px-4 py-3 bg-surface-2 border border-line rounded-xl text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent"
               />
 
               {error && (
@@ -131,7 +131,7 @@ export const ChangePasswordModal = ({ isOpen, onClose }: { isOpen: boolean; onCl
               )}
               
               {success && (
-                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-green-600 text-center">
+                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-accent text-center">
                   {success}
                 </motion.p>
               )}
@@ -139,7 +139,7 @@ export const ChangePasswordModal = ({ isOpen, onClose }: { isOpen: boolean; onCl
               <button
                 onClick={handleSubmit}
                 disabled={isLoading || !oldPassword || !newPassword || !confirmPassword}
-                className="w-full py-3 bg-zen-accent text-white rounded-xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 mt-4"
+                className="w-full py-3 bg-accent text-on-accent hover:bg-accent-hover rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mt-4"
               >
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Change Password'}
               </button>

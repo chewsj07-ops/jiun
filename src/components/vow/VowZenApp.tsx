@@ -5,20 +5,20 @@ import { db, auth } from '../../firebase';
 import { doc, setDoc, collection } from 'firebase/firestore';
 
 // Unified Style Constants
-const containerClass = "h-screen flex flex-col items-center justify-center p-8 bg-[#fdfcf8] text-[#3d3d3d]";
-const intenseContainerClass = "h-screen flex flex-col items-center justify-center p-8 bg-[#1a1a1a] text-[#e0e0e0]";
+const containerClass = "h-screen flex flex-col items-center justify-center p-8 bg-paper text-ink";
+const intenseContainerClass = "h-screen flex flex-col items-center justify-center p-8 bg-[#121614] text-[#E7E9E4]";
 const headingClass = "text-3xl font-serif font-medium mb-10";
-const buttonClass = "w-full max-w-sm py-5 bg-[#5A5A40] text-white rounded-3xl font-medium hover:bg-[#4a4a35] transition-all shadow-lg";
-const secondaryButtonClass = "w-full max-w-sm py-5 border border-[#5A5A40] text-[#5A5A40] rounded-3xl font-medium hover:bg-[#5A5A40]/5 transition-all";
+const buttonClass = "w-full max-w-sm py-5 bg-accent text-on-accent rounded-2xl font-medium hover:bg-accent-hover transition-all";
+const secondaryButtonClass = "w-full max-w-sm py-5 border border-accent text-accent rounded-2xl font-medium hover:bg-accent-mist transition-all";
 
 // 1. 【明镜台】 (The Mirror)
 const HomeBlock = ({ onNext }: { onNext: () => void }) => (
   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={containerClass}>
     <h1 className="text-4xl font-serif font-light mb-3">VowZen</h1>
-    <p className="text-sm text-[#8a8a7a] mb-20 tracking-[0.2em] uppercase">先安住，再前行</p>
+    <p className="text-sm text-ink-2 mb-20 tracking-[0.2em] uppercase">先安住，再前行</p>
     <div className="grid grid-cols-2 gap-5 w-full max-w-sm mb-16">
       {['平静一下', '有点压力', '很混乱', '很累'].map(s => (
-        <button key={s} className="p-7 bg-white rounded-[2rem] shadow-sm border border-[#5A5A40]/5 hover:border-[#5A5A40]/20 transition-all">{s}</button>
+        <button key={s} className="p-7 bg-surface rounded-2xl border border-line hover:border-line-strong transition-all">{s}</button>
       ))}
     </div>
     <button onClick={onNext} className={buttonClass}>开始 3 分钟安住</button>
@@ -29,7 +29,7 @@ const HomeBlock = ({ onNext }: { onNext: () => void }) => (
 const LightExperienceBlock = ({ onNext }: { onNext: () => void }) => (
   <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className={containerClass}>
     <p className="text-2xl font-serif italic mb-16 px-6 leading-relaxed">「不用改变什么，先陪自己一口气。」</p>
-    <textarea className="w-full max-w-sm h-40 p-8 rounded-[2rem] border border-[#5A5A40]/10 bg-white mb-16 focus:ring-2 focus:ring-[#5A5A40]/10 outline-none shadow-inner" placeholder="此刻，你心里最真实的一句话是？" />
+    <textarea className="w-full max-w-sm h-40 p-8 rounded-2xl border border-line bg-surface mb-16 focus:ring-2 focus:ring-accent/20 focus:border-accent outline-none text-ink placeholder:text-ink-3" placeholder="此刻，你心里最真实的一句话是？" />
     <button onClick={onNext} className={buttonClass}>继续</button>
   </motion.div>
 );
@@ -48,7 +48,7 @@ const AwakeningFunnelBlock = ({ onNext }: { onNext: () => void }) => (
   <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className={intenseContainerClass + " text-center"}>
     <p className="text-xl mb-10 font-serif opacity-90">「你现在的状态，不是偶然，是你过去的因。」</p>
     <p className="text-xl mb-20 font-serif opacity-90">「如果不改变因，人生只会重复。」</p>
-    <button onClick={onNext} className="w-full max-w-sm py-5 bg-[#8b3a3a] text-white rounded-3xl font-medium hover:bg-[#7a3232] transition-all shadow-lg">🔥 面对</button>
+    <button onClick={onNext} className="w-full max-w-sm py-5 bg-[#8b3a3a] text-white rounded-2xl font-medium hover:bg-[#7a3232] transition-all">🔥 面对</button>
   </motion.div>
 );
 
@@ -57,7 +57,7 @@ const VowSystemBlock = ({ onNext, setVowText }: { onNext: () => void, setVowText
   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={containerClass}>
     <h2 className={headingClass}>写下你的愿</h2>
     <textarea 
-      className="w-full max-w-sm h-48 p-8 rounded-[2rem] border border-[#5A5A40]/10 bg-white mb-16 focus:ring-2 focus:ring-[#5A5A40]/10 outline-none shadow-inner" 
+      className="w-full max-w-sm h-48 p-8 rounded-2xl border border-line bg-surface mb-16 focus:ring-2 focus:ring-accent/20 focus:border-accent outline-none text-ink placeholder:text-ink-3" 
       placeholder="不求好命，只修好因。" 
       onChange={(e) => setVowText(e.target.value)}
     />
@@ -108,7 +108,7 @@ const PracticeToolsBlock = ({ onNext }: { onNext: () => void }) => {
       <motion.div 
         animate={{ scale: scale }}
         transition={{ duration: 0.1, ease: "linear" }}
-        className="w-32 h-32 bg-[#5A5A40]/10 rounded-full mb-20"
+        className="w-32 h-32 bg-accent-mist rounded-full mb-20"
       />
       <button onClick={onNext} className={buttonClass}>完成修行</button>
     </motion.div>
@@ -137,9 +137,9 @@ const ReflectionBlock = ({ onFinish, vowId }: { onFinish: () => void, vowId: str
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={containerClass}>
       <h2 className={headingClass}>今日复盘</h2>
-      <p className="mb-12 text-[#5A5A40] font-serif">「今天，你有没有更接近你的愿？」</p>
+      <p className="mb-12 text-accent font-serif">「今天，你有没有更接近你的愿？」</p>
       <textarea 
-        className="w-full max-w-sm h-48 p-8 rounded-[2rem] border border-[#5A5A40]/10 bg-white mb-16 focus:ring-2 focus:ring-[#5A5A40]/10 outline-none shadow-inner" 
+        className="w-full max-w-sm h-48 p-8 rounded-2xl border border-line bg-surface mb-16 focus:ring-2 focus:ring-accent/20 focus:border-accent outline-none text-ink placeholder:text-ink-3" 
         placeholder="做到了什么，没做到什么，一句觉察..." 
         onChange={(e) => setReflection(e.target.value)}
       />

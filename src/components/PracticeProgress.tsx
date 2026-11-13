@@ -56,21 +56,21 @@ export const PracticeProgress = () => {
       : `${current} / ${target}`;
 
     return (
-      <div className="flex items-center justify-between py-3 border-b border-zen-accent/5 last:border-0 group">
+      <div className="flex items-center justify-between py-3 border-b border-line last:border-0 group">
         <div className="flex items-center gap-3">
           <div className={cn(
             "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300",
-            isCompleted ? "bg-zen-accent text-white shadow-md scale-105" : "bg-zen-accent/5 text-zen-accent/40"
+            isCompleted ? "bg-accent text-on-accent scale-105" : "bg-surface-2 text-ink-3"
           )}>
             {isCompleted ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
           </div>
           <div>
-            <p className="text-sm font-medium text-zen-ink/80 group-hover:text-zen-accent transition-colors">{label}</p>
+            <p className="text-sm font-medium text-ink group-hover:text-accent transition-colors">{label}</p>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-zen-accent/50 uppercase tracking-wider font-bold bg-zen-accent/5 px-1.5 py-0.5 rounded-md">
+              <span className="text-[10px] text-ink-2 uppercase tracking-wider font-bold bg-surface-2 px-1.5 py-0.5 rounded-md">
                 {weight}%
               </span>
-              <span className="text-[10px] text-zen-ink/40">
+              <span className="text-[10px] text-ink-3">
                 {typeof target === 'number' && !isCompleted ? `${Math.min(current as number, target)}/${target}` : ''}
               </span>
             </div>
@@ -83,8 +83,8 @@ export const PracticeProgress = () => {
             className={cn(
               "w-8 h-8 rounded-full transition-all flex items-center justify-center",
               typeof target === 'boolean' && isCompleted 
-                ? "bg-zen-accent text-white hover:bg-zen-accent/80" 
-                : "bg-zen-accent/5 hover:bg-zen-accent text-zen-accent hover:text-white"
+                ? "bg-accent text-on-accent hover:bg-accent-hover" 
+                : "bg-accent-mist hover:bg-accent text-accent hover:text-on-accent"
             )}
           >
             {typeof target === 'boolean' && isCompleted ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
@@ -98,17 +98,17 @@ export const PracticeProgress = () => {
   const circumference = 2 * Math.PI * radius;
   
   return (
-    <div className="bg-white p-6 rounded-[32px] border border-zen-accent/5 shadow-sm space-y-6 relative overflow-hidden">
+    <div className="bg-surface p-6 rounded-2xl border border-line space-y-6 relative overflow-hidden">
       {/* Background decoration */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-zen-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+      <div className="absolute top-0 right-0 w-32 h-32 bg-accent-mist rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
 
       <div className="flex items-center justify-between relative z-10">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Trophy className="w-4 h-4 text-zen-accent" />
-            <h3 className="text-lg font-bold font-serif text-zen-ink">{t('practice_progress_title')}</h3>
+            <Trophy className="w-4 h-4 text-accent" />
+            <h3 className="text-lg font-bold font-serif text-ink">{t('practice_progress_title')}</h3>
           </div>
-          <p className="text-xs text-zen-accent/60 uppercase tracking-widest font-bold pl-6">
+          <p className="text-xs text-ink-2 uppercase tracking-widest font-bold pl-6">
             {t('practice_level')} {level.level} • {t(level.nameKey as any)}
           </p>
         </div>
@@ -124,7 +124,7 @@ export const PracticeProgress = () => {
               stroke="currentColor"
               strokeWidth="4"
               fill="transparent"
-              className="text-zen-accent/10"
+              className="text-line"
             />
             {/* Indicator */}
             <motion.circle
@@ -139,15 +139,15 @@ export const PracticeProgress = () => {
               animate={{ strokeDashoffset: (2 * Math.PI * 28) - (progress / 100) * (2 * Math.PI * 28) }}
               transition={{ duration: 1.5, ease: "easeOut" }}
               strokeLinecap="round"
-              className="text-zen-accent"
+              className="text-accent"
             />
           </svg>
-          <span className="absolute text-xs font-bold text-zen-accent">{progress}%</span>
+          <span className="absolute text-xs font-bold text-accent">{progress}%</span>
         </div>
       </div>
 
-      <div className="bg-zen-bg/50 p-4 rounded-2xl">
-        <p className="text-xs text-zen-ink/60 italic text-center leading-relaxed">
+      <div className="bg-surface-2 p-4 rounded-2xl">
+        <p className="text-xs text-ink-2 italic text-center leading-relaxed">
           "{t('practice_reminder')}"
         </p>
       </div>

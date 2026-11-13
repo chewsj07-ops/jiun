@@ -50,11 +50,11 @@ export const LegalModals = () => {
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 20 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-[32px] p-6 sm:p-8 shadow-xl max-w-2xl w-full border border-zen-accent/10 max-h-[90vh] overflow-y-auto"
+          className="bg-surface rounded-3xl p-6 sm:p-8 shadow-float max-w-2xl w-full border border-line max-h-[90vh] overflow-y-auto"
         >
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-zen-ink flex items-center gap-2">
-              <Book className="w-5 h-5 text-zen-accent" />
+            <h2 className="text-xl font-bold text-ink flex items-center gap-2 font-serif">
+              <Book className="w-5 h-5 text-accent" />
               {activeModal === 'privacy' && 'Privacy Policy (隐私政策)'}
               {activeModal === 'terms' && 'Terms of Service (使用条款)'}
               {activeModal === 'ai' && 'AI Usage Policy (AI使用说明)'}
@@ -62,13 +62,13 @@ export const LegalModals = () => {
             </h2>
             <button
               onClick={closeModal}
-              className="p-2 hover:bg-zen-bg rounded-full transition-colors"
+              className="p-2 hover:bg-surface-2 rounded-full transition-colors"
             >
-              <X className="w-5 h-5 text-zen-accent/50" />
+              <X className="w-5 h-5 text-ink-3" />
             </button>
           </div>
 
-          <div className="prose prose-sm prose-stone max-w-none text-zen-ink/80 space-y-4">
+          <div className="prose prose-sm max-w-none text-ink-2 space-y-4">
             {activeModal === 'privacy' && (
               <>
                 <p className="text-xs text-zen-accent/60">Last Updated (最后更新): 2026-03-11</p>
@@ -193,8 +193,8 @@ export const LegalModals = () => {
                 </p>
                 <p className="mt-2">Email: <a href="mailto:vowzen91@gmail.com" className="text-zen-accent hover:underline">vowzen91@gmail.com</a></p>
 
-                <div className="mt-8 p-4 bg-zen-bg/50 rounded-xl border border-zen-accent/10">
-                  <h4 className="font-bold text-zen-ink mb-2">App Store / Google Play Compliance (应用商店合规)</h4>
+                <div className="mt-8 p-4 bg-surface-2 rounded-xl border border-line">
+                  <h4 className="font-bold text-ink mb-2">App Store / Google Play Compliance (应用商店合规)</h4>
                   <p className="text-sm mb-2">Vowzen complies with common app store privacy requirements (Vowzen 符合应用商店常见隐私要求):</p>
                   <ul className="list-disc pl-5 space-y-1 text-sm">
                     <li>User data is accessible (用户数据可访问)</li>
@@ -205,8 +205,8 @@ export const LegalModals = () => {
                   </ul>
                 </div>
 
-                <div className="mt-4 p-4 bg-zen-bg/50 rounded-xl border border-zen-accent/10">
-                  <h4 className="font-bold text-zen-ink mb-2">Spiritual Privacy Principle (核心隐私原则)</h4>
+                <div className="mt-4 p-4 bg-surface-2 rounded-xl border border-line">
+                  <h4 className="font-bold text-ink mb-2">Spiritual Privacy Principle (核心隐私原则)</h4>
                   <p className="text-sm mb-2">Vowzen insists on the following (Vowzen 坚持):</p>
                   <ul className="list-disc pl-5 space-y-1 text-sm">
                     <li>No selling of data (不出售)</li>
@@ -318,10 +318,10 @@ export const LegalModals = () => {
             )}
           </div>
 
-          <div className="mt-8 pt-6 border-t border-zen-accent/10 flex justify-end">
+          <div className="mt-8 pt-6 border-t border-line flex justify-end">
             <button
               onClick={closeModal}
-              className="px-6 py-2.5 bg-zen-accent text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+              className="px-6 py-2.5 bg-accent text-on-accent hover:bg-accent-hover rounded-xl text-sm font-bold transition-colors"
             >
               I Agree (我同意)
             </button>

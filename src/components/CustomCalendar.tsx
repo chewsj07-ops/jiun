@@ -66,16 +66,16 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({ selectedDate, on
   const months = Array.from({ length: 12 }, (_, i) => i);
 
   return (
-    <div className="bg-white rounded-2xl p-4 border border-zen-accent/10 shadow-sm w-[300px] sm:w-[340px] mx-auto">
+    <div className="bg-surface rounded-2xl p-4 border border-line shadow-float w-[300px] sm:w-[340px] mx-auto">
       <div className="flex justify-between items-center mb-4">
-        <button onClick={prevMonth} className="p-1 hover:bg-zen-bg rounded-lg text-zen-accent transition-colors">
+        <button onClick={prevMonth} className="p-1 hover:bg-surface-2 rounded-lg text-accent transition-colors">
           <ChevronLeft className="w-5 h-5" />
         </button>
-        <div className="flex gap-2 font-serif font-bold text-zen-ink">
+        <div className="flex gap-2 font-serif font-bold text-ink">
           <select 
             value={currentMonth.getMonth()} 
             onChange={handleMonthChange}
-            className="bg-transparent outline-none cursor-pointer hover:text-zen-accent transition-colors"
+            className="bg-transparent outline-none cursor-pointer hover:text-accent transition-colors"
           >
             {months.map(m => (
               <option key={m} value={m}>{format(setMonth(new Date(), m), 'MMM')}</option>
@@ -84,21 +84,21 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({ selectedDate, on
           <select 
             value={currentYear} 
             onChange={handleYearChange}
-            className="bg-transparent outline-none cursor-pointer hover:text-zen-accent transition-colors"
+            className="bg-transparent outline-none cursor-pointer hover:text-accent transition-colors"
           >
             {years.map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
         </div>
-        <button onClick={nextMonth} className="p-1 hover:bg-zen-bg rounded-lg text-zen-accent transition-colors">
+        <button onClick={nextMonth} className="p-1 hover:bg-surface-2 rounded-lg text-accent transition-colors">
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>
 
       <div className="grid grid-cols-7 gap-1 mb-2">
         {weekDays.map(day => (
-          <div key={day} className="text-center text-xs font-bold text-zen-accent/50 uppercase tracking-wider py-1">
+          <div key={day} className="text-center text-xs font-bold text-ink-3 uppercase tracking-wider py-1">
             {day}
           </div>
         ))}
@@ -118,14 +118,14 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({ selectedDate, on
               className={cn(
                 "relative h-12 w-full flex flex-col items-center justify-center rounded-xl transition-all",
                 !isCurrentMonth && "opacity-30",
-                isSelected ? "bg-zen-accent text-white shadow-md" : "hover:bg-zen-bg text-zen-ink",
-                hasRecord && !isSelected && "text-pink-500 font-bold"
+                isSelected ? "bg-accent text-on-accent" : "hover:bg-surface-2 text-ink",
+                hasRecord && !isSelected && "text-accent font-bold"
               )}
             >
               <span className="text-sm z-10 leading-none mt-1">{format(day, 'd')}</span>
               <div className="h-4 mt-1 flex items-center justify-center pointer-events-none">
                 {hasRecord && (
-                  <LotusIcon className={cn("w-3.5 h-3.5", isSelected ? "text-white" : "text-pink-400")} />
+                  <LotusIcon className={cn("w-3.5 h-3.5", isSelected ? "text-on-accent" : "text-accent")} />
                 )}
               </div>
             </button>

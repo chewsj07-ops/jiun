@@ -1,4 +1,4 @@
-import { DailyPractice, PRACTICE_LEVELS, PRACTICE_WEIGHTS, PracticeActivityType, MERIT_ENERGY_POINTS, PracticeSettings } from '../types/practice';
+import { DailyPractice, DailyPracticeItem, PRACTICE_LEVELS, PRACTICE_WEIGHTS, PracticeActivityType, MERIT_ENERGY_POINTS, PracticeSettings } from '../types/practice';
 import { io, Socket } from 'socket.io-client';
 import { safeStorage } from '../utils/safeStorage';
 
@@ -7,14 +7,135 @@ const STORAGE_KEY_TOTAL_POINTS = 'zen_total_practice_points';
 const STORAGE_KEY_MERIT_HISTORY = 'zen_merit_history';
 const STORAGE_KEY_REJOICE_HISTORY = 'zen_rejoice_history';
 const STORAGE_KEY_SETTINGS = 'zen_practice_settings';
+const STORAGE_KEY_RECENT_SCRIPTURES = 'zen_recent_scriptures';
 
-const socket: Socket = io(window.location.origin);
+let socket: Socket | null = null;
+let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let shouldStayConnected = false;
+let realtimeOffline = typeof navigator !== 'undefined' ? !navigator.onLine : false;
+const realtimeListeners = new Set<(offline: boolean) => void>();
 let globalMeritStats = { today: 0, week: 0, total: 0 };
 
-socket.on('merit:update', (data) => {
-  console.log('Received merit:update:', data);
-  globalMeritStats = data;
-});
+function setRealtimeOffline(offline: boolean) {
+  if (realtimeOffline !== offline) {
+    realtimeOffline = offline;
+    realtimeListeners.forEach((listener) => {
+      try {
+        listener(offline);
+      } catch {
+        // ignore listener error
+      }
+    });
+  }
+}
+
+function clearDisconnectTimer() {
+  if (disconnectTimer !== null) {
+    clearTimeout(disconnectTimer);
+    disconnectTimer = null;
+  }
+}
+
+function scheduleIdleDisconnect(delayMs = 30000) {
+  clearDisconnectTimer();
+  disconnectTimer = setTimeout(() => {
+    disconnectTimer = null;
+    if (!shouldStayConnected && socket) {
+      socket.disconnect();
+    }
+  }, delayMs);
+}
+
+function attachSocketListeners(s: Socket) {
+  s.on('connect', () => {
+    setRealtimeOffline(false);
+  });
+  s.on('merit:update', (data) => {
+    globalMeritStats = data;
+  });
+  s.on('connect_error', () => {
+    setRealtimeOffline(true);
+  });
+  s.io.on('reconnect_failed', () => {
+    setRealtimeOffline(true);
+  });
+  s.on('disconnect', () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setRealtimeOffline(true);
+    }
+  });
+}
+
+export function getSocket(): Socket | null {
+  if (typeof window === 'undefined') return null;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    setRealtimeOffline(true);
+    return null;
+  }
+
+  if (!socket) {
+    socket = io(window.location.origin, {
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 16000,
+      timeout: 8000,
+      autoConnect: true,
+    });
+    attachSocketListeners(socket);
+  } else if (!socket.connected) {
+    socket.connect();
+  }
+
+  if (!shouldStayConnected) {
+    scheduleIdleDisconnect(30000);
+  }
+
+  return socket;
+}
+
+export function connectRealtime(): Socket | null {
+  shouldStayConnected = true;
+  clearDisconnectTimer();
+  return getSocket();
+}
+
+export function disconnectRealtime(delayMs = 30000): void {
+  shouldStayConnected = false;
+  if (!socket) {
+    clearDisconnectTimer();
+    return;
+  }
+  if (delayMs <= 0) {
+    clearDisconnectTimer();
+    socket.disconnect();
+    return;
+  }
+  scheduleIdleDisconnect(delayMs);
+}
+
+export function isRealtimeOffline(): boolean {
+  return realtimeOffline;
+}
+
+export function subscribeRealtimeStatus(listener: (offline: boolean) => void): () => void {
+  realtimeListeners.add(listener);
+  listener(realtimeOffline);
+  return () => {
+    realtimeListeners.delete(listener);
+  };
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    setRealtimeOffline(false);
+    if (shouldStayConnected) {
+      connectRealtime();
+    }
+  });
+  window.addEventListener('offline', () => {
+    setRealtimeOffline(true);
+  });
+}
 
 const getTodayDate = () => {
   const now = new Date();
@@ -24,10 +145,19 @@ const getTodayDate = () => {
   return `${year}-${month}-${day}`;
 };
 
+export const getDefaultUnitForCategory = (category?: string): '遍' | '声' => {
+  return category === 'sutra' ? '遍' : '声';
+};
+
+export const getDefaultTargetForCategory = (category?: string): number => {
+  return category === 'sutra' ? 3 : 108;
+};
+
 const defaultDailyPractice: DailyPractice = {
   date: getTodayDate(),
   chanting: 0,
   scriptureCounts: {},
+  celebratedScriptures: [],
   meditation: 0,
   observing_thoughts: 0,
   rejoicing: 0,
@@ -40,8 +170,7 @@ const defaultDailyPractice: DailyPractice = {
 const defaultSettings: PracticeSettings = {
   scriptureGoals: {},
   scriptureGoalTypes: {},
-  aiEnabled: false,
-  aiApiKey: ''
+  aiEnabled: true,
 };
 
 export const practiceService = {
@@ -49,8 +178,78 @@ export const practiceService = {
     return safeStorage.getJSON<PracticeSettings>(STORAGE_KEY_SETTINGS, defaultSettings);
   },
 
-  saveSettings: (settings: PracticeSettings) => {
-    safeStorage.setJSON(STORAGE_KEY_SETTINGS, settings);
+  saveSettings: (settings: Partial<PracticeSettings>) => {
+    const current = practiceService.getSettings();
+    const merged: PracticeSettings = {
+      ...current,
+      ...settings,
+    };
+    safeStorage.setJSON(STORAGE_KEY_SETTINGS, merged);
+    window.dispatchEvent(new CustomEvent('zen_practice_settings_updated'));
+  },
+
+  getDailyPracticeList: (
+    scriptures: Array<{ id: string; category?: string }> = []
+  ): DailyPracticeItem[] => {
+    const settings = practiceService.getSettings();
+    if (Array.isArray(settings.dailyPractice)) {
+      return [...settings.dailyPractice].sort((a, b) => a.order - b.order);
+    }
+
+    // Migrate existing legacy scriptureGoals into ordered dailyPractice entries without losing old values
+    const legacyGoals = settings.scriptureGoals || {};
+    const migrated: DailyPracticeItem[] = Object.entries(legacyGoals)
+      .filter(([, val]) => typeof val === 'number' && val > 0)
+      .map(([scriptureId, target], idx) => {
+        const matched = scriptures.find((s) => s.id === scriptureId);
+        return {
+          scriptureId,
+          target,
+          unit: getDefaultUnitForCategory(matched?.category),
+          order: idx,
+          enabled: true,
+        };
+      });
+
+    if (migrated.length > 0) {
+      practiceService.saveSettings({ dailyPractice: migrated });
+    }
+    return migrated;
+  },
+
+  saveDailyPracticeList: (items: DailyPracticeItem[], updatedAtOverride?: number) => {
+    const normalized = items.map((item, idx) => ({
+      ...item,
+      target: Math.min(100000, Math.max(1, Math.round(item.target || 1))),
+      unit: item.unit === '遍' ? ('遍' as const) : ('声' as const),
+      order: idx,
+    }));
+    const current = practiceService.getSettings();
+    const nextGoals = { ...(current.scriptureGoals || {}) };
+    normalized.forEach((item) => {
+      nextGoals[item.scriptureId] = item.target;
+    });
+    const nextUpdatedAt =
+      typeof updatedAtOverride === 'number' ? updatedAtOverride : Date.now();
+    practiceService.saveSettings({
+      dailyPractice: normalized,
+      dailyPracticeUpdatedAt: nextUpdatedAt,
+      scriptureGoals: nextGoals,
+    });
+    return normalized;
+  },
+
+  getRecentScriptureIds: (): string[] => {
+    const saved = safeStorage.getJSON<string[]>(STORAGE_KEY_RECENT_SCRIPTURES, []);
+    return Array.isArray(saved) ? saved.slice(0, 5) : [];
+  },
+
+  recordRecentScriptureId: (scriptureId: string): string[] => {
+    if (!scriptureId) return practiceService.getRecentScriptureIds();
+    const current = practiceService.getRecentScriptureIds();
+    const next = [scriptureId, ...current.filter((id) => id !== scriptureId)].slice(0, 5);
+    safeStorage.setJSON(STORAGE_KEY_RECENT_SCRIPTURES, next);
+    return next;
   },
 
   getDailyPractice: (): DailyPractice => {
@@ -59,10 +258,21 @@ export const practiceService = {
     if (parsed) {
       if (parsed.date === today) {
         if (!parsed.scriptureCounts) parsed.scriptureCounts = {};
+        if (!Array.isArray(parsed.celebratedScriptures)) parsed.celebratedScriptures = [];
         return parsed;
       }
     }
-    return { ...defaultDailyPractice, date: today };
+    return { ...defaultDailyPractice, date: today, celebratedScriptures: [] };
+  },
+
+  markScriptureCelebrated: (scriptureId: string): DailyPractice => {
+    const practice = practiceService.getDailyPractice();
+    const list = practice.celebratedScriptures || [];
+    if (!list.includes(scriptureId)) {
+      practice.celebratedScriptures = [...list, scriptureId];
+      practiceService.saveDailyPractice(practice);
+    }
+    return practice;
   },
 
   saveDailyPractice: (practice: DailyPractice) => {
@@ -77,7 +287,7 @@ export const practiceService = {
   addPoints: (points: number) => {
     const current = practiceService.getTotalPoints();
     safeStorage.setItem(STORAGE_KEY_TOTAL_POINTS, (current + points).toString());
-    socket.emit('merit:add', points);
+    getSocket()?.emit('merit:add', points);
   },
 
   // Merit Energy System
@@ -100,8 +310,7 @@ export const practiceService = {
     
     history[today] += points;
     practiceService.saveMeritHistory(history);
-    console.log('Emitting merit:add:', points);
-    socket.emit('merit:add', points);
+    getSocket()?.emit('merit:add', points);
     return points;
   },
 
@@ -149,7 +358,7 @@ export const practiceService = {
     
     history[today] += 1;
     practiceService.saveRejoiceHistory(history);
-    socket.emit('merit:add', 1);
+    getSocket()?.emit('merit:add', 1);
   },
 
   getRejoiceStats: () => {
@@ -257,5 +466,11 @@ export const practiceService = {
     }
     
     return practice;
-  }
-}; 
+  },
+
+  getSocket,
+  connectRealtime,
+  disconnectRealtime,
+  isRealtimeOffline,
+  subscribeRealtimeStatus,
+};

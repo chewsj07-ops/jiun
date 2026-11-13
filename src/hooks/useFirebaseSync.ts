@@ -4,7 +4,8 @@ import { doc, getDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/f
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
 import { recordVault } from '../services/recordVault';
-import { safeStorage } from '../utils/safeStorage';
+import { practiceService } from '../services/practiceService';
+import { DailyPracticeItem } from '../types/practice';
 
 export function useFirebaseSync(
   userProfile: any, setUserProfile: (data: any) => void,
@@ -18,7 +19,9 @@ export function useFirebaseSync(
   volume: number, setVolume: (data: number) => void,
   soundType: string, setSoundType: (data: any) => void,
   woodenFishAppearance: string, setWoodenFishAppearance: (data: any) => void,
-  customScriptures: any[], setCustomScriptures: (data: any[]) => void
+  customScriptures: any[], setCustomScriptures: (data: any[]) => void,
+  dailyPractice: DailyPracticeItem[], setDailyPractice: (data: DailyPracticeItem[]) => void,
+  dailyPracticeUpdatedAt: number, setDailyPracticeUpdatedAt: (ts: number) => void
 ) {
   const { user, isAuthReady } = useFirebase();
   const isInitialSyncDone = useRef(false);
@@ -56,9 +59,40 @@ export function useFirebaseSync(
             if (data.woodenFishAppearance !== undefined) setWoodenFishAppearance(data.woodenFishAppearance);
             if (data.scriptureGoals) setScriptureGoals(data.scriptureGoals);
             if (data.customScriptures) setCustomScriptures(data.customScriptures);
+
+            // Merge dailyPractice by dailyPracticeUpdatedAt (whole-list replacement, preserve local if cloud lacks it)
+            const localSettings = practiceService.getSettings();
+            const localUpdatedAt =
+              typeof localSettings.dailyPracticeUpdatedAt === 'number'
+                ? localSettings.dailyPracticeUpdatedAt
+                : 0;
+            const hasRemoteDailyPractice =
+              Array.isArray(data.dailyPractice) &&
+              typeof data.dailyPracticeUpdatedAt === 'number';
+
+            if (hasRemoteDailyPractice && data.dailyPracticeUpdatedAt > localUpdatedAt) {
+              const remoteList: DailyPracticeItem[] = [...data.dailyPractice]
+                .filter((item: any) => item && typeof item.scriptureId === 'string')
+                .sort((a: any, b: any) => Number(a.order ?? 0) - Number(b.order ?? 0))
+                .map((item: any, idx: number) => ({
+                  scriptureId: String(item.scriptureId),
+                  target: Math.min(100000, Math.max(1, Math.round(Number(item.target) || 1))),
+                  unit: item.unit === '遍' ? ('遍' as const) : ('声' as const),
+                  order: Number.isInteger(item.order) ? item.order : idx,
+                  enabled: Boolean(item.enabled),
+                }));
+
+              const savedList = practiceService.saveDailyPracticeList(
+                remoteList,
+                data.dailyPracticeUpdatedAt
+              );
+              setDailyPractice(savedList);
+              setDailyPracticeUpdatedAt(data.dailyPracticeUpdatedAt);
+              setScriptureGoals(practiceService.getSettings().scriptureGoals || {});
+            }
           }
 
-          // Fetch History safely with recordVault merge
+          // Fetch History safely with recordVault merge (preserving unit as-is; never mutating legacy records)
           const historySnapshot = await getDocs(collection(db, `users/${user.uid}/history`));
           const remoteHistory = historySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           
@@ -120,11 +154,33 @@ export function useFirebaseSync(
             localStorage.setItem('good_deed_history', JSON.stringify(deedsData));
           }
 
-          // Fetch Thoughts
+          // Fetch Thoughts (preserve any isLocalOnly local records)
           const thoughtsSnapshot = await getDocs(collection(db, `users/${user.uid}/thoughts`));
           const thoughtsData = thoughtsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           if (thoughtsData.length > 0) {
-            localStorage.setItem('zen_thoughts', JSON.stringify(thoughtsData));
+            let localOnlyThoughts: any[] = [];
+            try {
+              const existingLocal = JSON.parse(localStorage.getItem('zen_thoughts') || '[]');
+              if (Array.isArray(existingLocal)) {
+                localOnlyThoughts = existingLocal.filter((t: any) => Boolean(t?.isLocalOnly));
+              }
+            } catch {
+              // ignore invalid local json
+            }
+            const mergedThoughtsMap = new Map<string, any>();
+            for (const item of localOnlyThoughts) {
+              mergedThoughtsMap.set(String(item.id), item);
+            }
+            for (const item of thoughtsData) {
+              const key = String(item.id);
+              if (!mergedThoughtsMap.has(key)) {
+                mergedThoughtsMap.set(key, item);
+              }
+            }
+            const mergedThoughts = Array.from(mergedThoughtsMap.values()).sort(
+              (a: any, b: any) => Number(b.id || 0) - Number(a.id || 0)
+            );
+            localStorage.setItem('zen_thoughts', JSON.stringify(mergedThoughts));
           }
 
           isInitialSyncDone.current = true;
@@ -146,6 +202,22 @@ export function useFirebaseSync(
     
     const syncProfile = async () => {
       try {
+        const latestSettings = practiceService.getSettings();
+        const effectiveUpdatedAt =
+          typeof dailyPracticeUpdatedAt === 'number' && dailyPracticeUpdatedAt > 0
+            ? dailyPracticeUpdatedAt
+            : latestSettings.dailyPracticeUpdatedAt;
+
+        const sanitizedDailyPractice = Array.isArray(dailyPractice)
+          ? dailyPractice.slice(0, 50).map((item, idx) => ({
+              scriptureId: String(item.scriptureId),
+              target: Math.min(100000, Math.max(1, Math.round(Number(item.target) || 1))),
+              unit: item.unit === '遍' ? ('遍' as const) : ('声' as const),
+              order: Number.isInteger(item.order) ? item.order : idx,
+              enabled: Boolean(item.enabled),
+            }))
+          : undefined;
+
         await setDoc(doc(db, 'users', user.uid), {
           name: userProfile.name || '',
           avatar: userProfile.avatar || '',
@@ -159,11 +231,15 @@ export function useFirebaseSync(
           totalMerit: count || 0,
           userExp: userExp || 0,
           selectedChant: selectedChant || '',
-          volume: volume || 0.8,
+          volume: volume ?? 0.8,
           soundType: soundType || 'standard',
           woodenFishAppearance: woodenFishAppearance || 'standard',
           scriptureGoals: scriptureGoals || {},
           customScriptures: customScriptures || [],
+          ...(sanitizedDailyPractice !== undefined ? { dailyPractice: sanitizedDailyPractice } : {}),
+          ...(typeof effectiveUpdatedAt === 'number'
+            ? { dailyPracticeUpdatedAt: effectiveUpdatedAt }
+            : {}),
           updatedAt: new Date().toISOString()
         }, { merge: true });
       } catch (error) {
@@ -175,6 +251,7 @@ export function useFirebaseSync(
     return () => clearTimeout(timeoutId);
   }, [
     user, isInitialSyncDone, userProfile, personalVow, count, userExp, selectedChant, 
-    volume, soundType, woodenFishAppearance, scriptureGoals, customScriptures
+    volume, soundType, woodenFishAppearance, scriptureGoals, customScriptures,
+    dailyPractice, dailyPracticeUpdatedAt
   ]);
-} 
+}

@@ -31,11 +31,12 @@ export function playWoodenFishHit({
   isCombo = false,
 }: WoodenFishSoundOptions = {}): void {
   try {
+    if (!Number.isFinite(volume) || volume <= 0) return;
     const ctx = getAudioContext();
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    const clampedVol = Math.max(0.02, Math.min(isCombo ? volume * 1.15 : volume, 1.0));
+    const clampedVol = Math.max(0.01, Math.min(isCombo ? volume * 1.15 : volume, 1.0));
 
     if (appearance === 'bowl') {
       // Tibetan singing bowl: warm fundamental + metallic inharmonic partials + long decay
@@ -117,11 +118,12 @@ export function playWoodenFishHit({
 
 export function playCompletionBell(volume = 0.7): void {
   try {
+    if (!Number.isFinite(volume) || volume <= 0) return;
     const ctx = getAudioContext();
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    const clampedVol = Math.max(0.02, Math.min(volume, 1.0));
+    const clampedVol = Math.max(0.01, Math.min(volume, 1.0));
     const partials = [
       { freq: 528, gain: 0.38, decay: 3.0 },
       { freq: 1056, gain: 0.16, decay: 2.0 },
@@ -148,6 +150,7 @@ export function playCompletionBell(volume = 0.7): void {
 
 export function playBreathChime(volume = 0.25): void {
   try {
+    if (!Number.isFinite(volume) || volume <= 0) return;
     const ctx = getAudioContext();
     if (!ctx) return;
 

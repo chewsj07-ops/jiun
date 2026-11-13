@@ -10,7 +10,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg', 'icon.jpg', 'manifest.json'],
+      includeAssets: ['assets/aistudio/logo_f2d0c65b.png', 'manifest.json'],
       manifest: {
         id: '/',
         name: '愿禅助手 (Vowzen)',
@@ -23,22 +23,10 @@ export default defineConfig({
         scope: '/',
         icons: [
           {
-            src: '/icon.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
-            purpose: 'any'
-          },
-          {
-            src: '/icon.jpg',
-            sizes: '512x512',
-            type: 'image/jpeg',
-            purpose: 'any'
-          },
-          {
-            src: '/apple-touch-icon.png',
-            sizes: '180x180',
+            src: '/assets/aistudio/logo_f2d0c65b.png',
+            sizes: '1630x1683',
             type: 'image/png',
-            purpose: 'any'
+            purpose: 'any maskable'
           }
         ]
       },

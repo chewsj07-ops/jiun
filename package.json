@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.46.0",
+    "@google/genai": "^3.3.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/prop-types": "^15.7.15",
     "@vitejs/plugin-react": "^4.3.4",

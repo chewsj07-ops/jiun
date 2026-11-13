@@ -244,37 +244,37 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           className={cn(
-            "bg-white rounded-[32px] w-full shadow-2xl overflow-hidden relative flex flex-col max-h-[92vh] border border-zen-accent/15 transition-all duration-300",
+            "bg-surface rounded-3xl w-full shadow-float overflow-hidden relative flex flex-col max-h-[92vh] border border-line transition-all duration-300",
             activeTab === 'report' && reportStep === 'preview' ? "max-w-3xl" : "max-w-lg"
           )}
         >
           {/* Top Modal Header */}
-          <div className="flex justify-between items-center px-6 py-4 border-b border-zen-accent/10 bg-zen-bg/30">
+          <div className="flex justify-between items-center px-6 py-4 border-b border-line bg-surface-2/60">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-zen-accent/10 flex items-center justify-center text-zen-accent">
+              <div className="w-8 h-8 rounded-full bg-accent-mist flex items-center justify-center text-accent">
                 {activeTab === 'vault' ? <ShieldCheck className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
               </div>
-              <h3 className="text-base sm:text-lg font-bold font-serif text-zen-ink">
+              <h3 className="text-base sm:text-lg font-bold font-serif text-ink">
                 数据同步与备份中心
               </h3>
             </div>
             <button 
               onClick={resetAndClose} 
-              className="p-1.5 text-zen-ink/40 hover:text-zen-ink rounded-full hover:bg-zen-bg transition-colors"
+              className="p-1.5 text-ink-3 hover:text-ink rounded-full hover:bg-surface-2 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Top Segmented Navigation Tabs */}
-          <div className="flex border-b border-zen-accent/10 bg-white px-6 pt-3 shrink-0">
+          <div className="flex border-b border-line bg-surface px-6 pt-3 shrink-0">
             <button
               onClick={() => setActiveTab('vault')}
               className={cn(
                 "pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5",
                 activeTab === 'vault'
-                  ? "border-zen-accent text-zen-accent"
-                  : "border-transparent text-zen-ink/50 hover:text-zen-ink"
+                  ? "border-accent text-accent"
+                  : "border-transparent text-ink-3 hover:text-ink"
               )}
             >
               <ShieldCheck className="w-4 h-4" />
@@ -285,8 +285,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               className={cn(
                 "pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5",
                 activeTab === 'report'
-                  ? "border-zen-accent text-zen-accent"
-                  : "border-transparent text-zen-ink/50 hover:text-zen-ink"
+                  ? "border-accent text-accent"
+                  : "border-transparent text-ink-3 hover:text-ink"
               )}
             >
               <FileText className="w-4 h-4" />
@@ -300,23 +300,23 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             {activeTab === 'vault' && (
               <div className="space-y-5">
                 {/* 1. Permanent Vault Status Card */}
-                <div className="bg-gradient-to-br from-emerald-50 via-teal-50/30 to-white rounded-2xl p-5 border border-emerald-200/80 shadow-xs relative overflow-hidden">
+                <div className="bg-accent-mist/60 rounded-2xl p-5 border border-line relative overflow-hidden">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                      <div className="w-10 h-10 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0 mt-0.5">
                         <Database className="w-5 h-5" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-emerald-950 font-serif">
+                          <h4 className="text-sm font-bold text-ink font-serif">
                             双重底层持久化保障
                           </h4>
-                          <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface text-accent border border-line">
+                            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
                             双重保存中
                           </span>
                         </div>
-                        <p className="text-xs text-emerald-900/70 mt-1 leading-relaxed">
+                        <p className="text-xs text-ink-2 mt-1 leading-relaxed">
                           打卡数据已由 <strong>SafeStorage (LocalStorage)</strong> 与 <strong>IndexedDB 独立数据库</strong> 双重存储。彻底免疫 Safari 移动端 7 天缓存清除策略。
                         </p>
                       </div>
@@ -324,20 +324,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   </div>
 
                   {/* Vault Stats Bar */}
-                  <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-emerald-200/50">
-                    <div className="bg-white/80 p-2.5 rounded-xl border border-emerald-100 text-center">
-                      <div className="text-[10px] text-emerald-800/70 font-semibold">永久归档打卡记录</div>
-                      <div className="text-xl font-serif font-bold text-emerald-950 mt-0.5">
-                        {totalRecords} <span className="text-xs font-normal text-emerald-800/60">条</span>
+                  <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-line">
+                    <div className="bg-surface p-2.5 rounded-xl border border-line text-center">
+                      <div className="text-[10px] text-ink-2 font-semibold">永久归档打卡记录</div>
+                      <div className="text-xl font-serif font-bold text-ink mt-0.5 tabular-nums">
+                        {totalRecords} <span className="text-xs font-normal text-ink-3">条</span>
                       </div>
                     </div>
-                    <div className="bg-white/80 p-2.5 rounded-xl border border-emerald-100 text-center">
-                      <div className="text-[10px] text-emerald-800/70 font-semibold">云端安全同步</div>
-                      <div className="text-xs font-bold text-emerald-950 mt-1.5 flex items-center justify-center gap-1">
+                    <div className="bg-surface p-2.5 rounded-xl border border-line text-center">
+                      <div className="text-[10px] text-ink-2 font-semibold">云端安全同步</div>
+                      <div className="text-xs font-bold text-ink mt-1.5 flex items-center justify-center gap-1">
                         {fbUser ? (
-                          <span className="text-emerald-700">🟢 账号已同步</span>
+                          <span className="text-accent">🟢 账号已同步</span>
                         ) : (
-                          <span className="text-zen-ink/60">⚪ 本地双重金库</span>
+                          <span className="text-ink-2">⚪ 本地双重金库</span>
                         )}
                       </div>
                     </div>
@@ -367,42 +367,42 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
                 {/* 2. Core Vault Actions (Export / Restore / Self-Heal) */}
                 <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-zen-accent/70 px-1">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-accent px-1">
                     备份与恢复操作
                   </h4>
 
                   {/* Action 1: Export */}
                   <button
                     onClick={handleExportFullBackup}
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-white hover:bg-zen-bg/40 border border-zen-accent/15 transition-all group text-left shadow-2xs"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-surface hover:bg-surface-2 border border-line transition-all group text-left"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <div className="w-9 h-9 rounded-xl bg-accent-mist text-gold flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                         <Download className="w-4 h-4" />
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-zen-ink">导出完整备份 (.json)</div>
-                        <div className="text-xs text-zen-ink/60">下载包含所有打卡记录、念诵与善行的离线备份文件</div>
+                        <div className="text-sm font-bold text-ink">导出完整备份 (.json)</div>
+                        <div className="text-xs text-ink-2">下载包含所有打卡记录、念诵与善行的离线备份文件</div>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-zen-ink/30 group-hover:text-zen-accent transition-colors shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-ink-3 group-hover:text-accent transition-colors shrink-0" />
                   </button>
 
                   {/* Action 2: Restore */}
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-white hover:bg-zen-bg/40 border border-zen-accent/15 transition-all group text-left shadow-2xs"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-surface hover:bg-surface-2 border border-line transition-all group text-left"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <div className="w-9 h-9 rounded-xl bg-cloud-mist text-accent flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                         <Upload className="w-4 h-4" />
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-zen-ink">从备份文件恢复 (.json)</div>
-                        <div className="text-xs text-zen-ink/60">从已导出的备份文件一键还原打卡数据，支持多设备迁移</div>
+                        <div className="text-sm font-bold text-ink">从备份文件恢复 (.json)</div>
+                        <div className="text-xs text-ink-2">从已导出的备份文件一键还原打卡数据，支持多设备迁移</div>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-zen-ink/30 group-hover:text-zen-accent transition-colors shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-ink-3 group-hover:text-accent transition-colors shrink-0" />
                   </button>
                   <input
                     ref={fileInputRef}
@@ -416,18 +416,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <button
                     onClick={handleDeepHealingScan}
                     disabled={isHealing}
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-white hover:bg-zen-bg/40 border border-zen-accent/15 transition-all group text-left shadow-2xs disabled:opacity-60"
+                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-surface hover:bg-surface-2 border border-line transition-all group text-left disabled:opacity-60"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <div className="w-9 h-9 rounded-xl bg-accent-mist text-accent flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                         <RefreshCw className={cn("w-4 h-4", isHealing && "animate-spin")} />
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-zen-ink">金库自愈与跨存储同步</div>
-                        <div className="text-xs text-zen-ink/60">立即扫描 IndexedDB 金库，修复 LocalStorage 中可能被意外清除的数据</div>
+                        <div className="text-sm font-bold text-ink">金库自愈与跨存储同步</div>
+                        <div className="text-xs text-ink-2">立即扫描 IndexedDB 金库，修复 LocalStorage 中可能被意外清除的数据</div>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-zen-ink/30 group-hover:text-zen-accent transition-colors shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-ink-3 group-hover:text-accent transition-colors shrink-0" />
                   </button>
                 </div>
 
@@ -435,7 +435,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <div className="pt-2">
                   <button
                     onClick={() => setShowFaq(!showFaq)}
-                    className="w-full flex items-center justify-between text-xs text-zen-accent/80 hover:text-zen-accent py-2 px-1 font-semibold"
+                    className="w-full flex items-center justify-between text-xs text-accent hover:text-accent-hover py-2 px-1 font-semibold"
                   >
                     <span className="flex items-center gap-1.5">
                       <HelpCircle className="w-3.5 h-3.5" />
@@ -448,7 +448,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
-                      className="mt-2 p-3.5 bg-zen-bg/40 rounded-xl text-xs text-zen-ink/75 leading-relaxed space-y-2 border border-zen-accent/10"
+                      className="mt-2 p-3.5 bg-surface-2 rounded-xl text-xs text-ink-2 leading-relaxed space-y-2 border border-line"
                     >
                       <p>
                         <strong>1. 为什么打卡不会丢失？</strong><br />
@@ -474,24 +474,24 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 {reportStep === 'select' ? (
                   <>
                     <div>
-                      <label className="block text-sm font-bold text-zen-ink mb-3">选择报告时间范围</label>
-                      <div className="flex items-center gap-2 mb-4 bg-zen-bg/50 p-1 rounded-xl">
+                      <label className="block text-sm font-bold text-ink mb-3">选择报告时间范围</label>
+                      <div className="flex items-center gap-2 mb-4 bg-surface-2 p-1 rounded-xl border border-line">
                         <button
                           onClick={() => setSelecting('start')}
                           className={cn(
                             "flex-1 py-2 px-3 text-sm rounded-lg transition-colors text-center",
-                            selecting === 'start' ? "bg-white text-zen-accent shadow-sm font-bold" : "text-zen-ink/60 hover:text-zen-ink"
+                            selecting === 'start' ? "bg-surface text-accent border border-line font-bold" : "text-ink-2 hover:text-ink"
                           )}
                         >
                           <div className="text-[10px] uppercase tracking-wider opacity-60 mb-0.5">开始日期</div>
                           {startDate.toLocaleDateString()}
                         </button>
-                        <div className="text-zen-accent/30">-</div>
+                        <div className="text-ink-3">-</div>
                         <button
                           onClick={() => setSelecting('end')}
                           className={cn(
                             "flex-1 py-2 px-3 text-sm rounded-lg transition-colors text-center",
-                            selecting === 'end' ? "bg-white text-zen-accent shadow-sm font-bold" : "text-zen-ink/60 hover:text-zen-ink"
+                            selecting === 'end' ? "bg-surface text-accent border border-line font-bold" : "text-ink-2 hover:text-ink"
                           )}
                         >
                           <div className="text-[10px] uppercase tracking-wider opacity-60 mb-0.5">结束日期</div>
@@ -499,7 +499,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         </button>
                       </div>
 
-                      <div className="border border-zen-accent/10 rounded-2xl overflow-hidden bg-white">
+                      <div className="border border-line rounded-2xl overflow-hidden bg-surface">
                         <CustomCalendar
                           selectedDate={selecting === 'start' ? startDate : endDate}
                           onSelectDate={(date) => {
@@ -519,7 +519,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   </>
                 ) : (
                   <div className="flex flex-col h-full">
-                    <div className="flex-1 bg-zen-bg/30 relative min-h-[360px] rounded-2xl overflow-hidden border border-zen-accent/10">
+                    <div className="flex-1 bg-surface-2 relative min-h-[360px] rounded-2xl overflow-hidden border border-line">
                       {selectedFormat === 'pdf' ? (
                         <iframe 
                           srcDoc={previewHtml} 
@@ -528,32 +528,32 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         />
                       ) : (
                         <div className="p-6 h-full overflow-y-auto">
-                          <div className="bg-white rounded-2xl p-5 border border-zen-accent/10 shadow-sm">
+                          <div className="bg-surface rounded-2xl p-5 border border-line">
                             <div className="text-center mb-6">
-                              <p className="text-xs font-bold text-zen-accent/60 uppercase tracking-wider mb-1">CSV 数据概览</p>
-                              <p className="text-sm font-medium text-zen-ink">
+                              <p className="text-xs font-bold text-accent uppercase tracking-wider mb-1">CSV 数据概览</p>
+                              <p className="text-sm font-medium text-ink">
                                 {startDate.toLocaleDateString()} - {endDate.toLocaleDateString()}
                               </p>
                             </div>
                             
                             <div className="grid grid-cols-3 gap-3">
-                              <div className="bg-zen-bg/50 p-3 rounded-xl text-center">
-                                <p className="text-2xl font-serif font-bold text-zen-accent mb-1">
+                              <div className="bg-surface-2 p-3 rounded-xl text-center border border-line">
+                                <p className="text-2xl font-serif font-bold text-accent mb-1 tabular-nums">
                                   {reportData?.thoughts.length || 0}
                                 </p>
-                                <p className="text-[10px] font-bold text-zen-ink/60">念头觉察</p>
+                                <p className="text-[10px] font-bold text-ink-2">念头觉察</p>
                               </div>
-                              <div className="bg-zen-bg/50 p-3 rounded-xl text-center">
-                                <p className="text-2xl font-serif font-bold text-[#556B2F] mb-1">
+                              <div className="bg-surface-2 p-3 rounded-xl text-center border border-line">
+                                <p className="text-2xl font-serif font-bold text-gold mb-1 tabular-nums">
                                   {reportData?.deeds.length || 0}
                                 </p>
-                                <p className="text-[10px] font-bold text-zen-ink/60">善行/忏悔</p>
+                                <p className="text-[10px] font-bold text-ink-2">善行/忏悔</p>
                               </div>
-                              <div className="bg-zen-bg/50 p-3 rounded-xl text-center">
-                                <p className="text-2xl font-serif font-bold text-[#4682B4] mb-1">
+                              <div className="bg-surface-2 p-3 rounded-xl text-center border border-line">
+                                <p className="text-2xl font-serif font-bold text-accent mb-1 tabular-nums">
                                   {reportData?.zenHistory?.length || 0}
                                 </p>
-                                <p className="text-[10px] font-bold text-zen-ink/60">禅修/诵经</p>
+                                <p className="text-[10px] font-bold text-ink-2">禅修/诵经</p>
                               </div>
                             </div>
                           </div>
@@ -561,15 +561,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       )}
                     </div>
                     
-                    <div className="p-3 bg-white border-t border-zen-accent/10 shrink-0 mt-3">
+                    <div className="p-3 bg-surface border-t border-line shrink-0 mt-3">
                       <div className="flex gap-2">
                         <button
                           onClick={() => setSelectedFormat('pdf')}
                           className={cn(
                             "flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5",
                             selectedFormat === 'pdf' 
-                              ? "bg-zen-accent/10 text-zen-accent" 
-                              : "text-zen-ink/60 hover:bg-zen-bg"
+                              ? "bg-accent-mist text-accent" 
+                              : "text-ink-2 hover:bg-surface-2"
                           )}
                         >
                           <FileText className="w-3.5 h-3.5" />
@@ -580,8 +580,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           className={cn(
                             "flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5",
                             selectedFormat === 'csv' 
-                              ? "bg-zen-accent/10 text-zen-accent" 
-                              : "text-zen-ink/60 hover:bg-zen-bg"
+                              ? "bg-accent-mist text-accent" 
+                              : "text-ink-2 hover:bg-surface-2"
                           )}
                         >
                           <Table className="w-3.5 h-3.5" />
@@ -597,12 +597,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
           {/* Modal Footer (for Report view) */}
           {activeTab === 'report' && (
-            <div className="p-4 sm:p-5 border-t border-zen-accent/10 bg-white shrink-0">
+            <div className="p-4 sm:p-5 border-t border-line bg-surface shrink-0">
               {reportStep === 'select' ? (
                 <button
                   onClick={handleGeneratePreview}
                   disabled={isLoadingReport}
-                  className="w-full py-3 bg-zen-accent text-white rounded-xl font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-70 text-sm"
+                  className="w-full py-3 bg-accent text-on-accent hover:bg-accent-hover rounded-xl font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-70 text-sm"
                 >
                   {isLoadingReport ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -615,14 +615,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <div className="flex gap-2">
                   <button
                     onClick={() => setReportStep('select')}
-                    className="flex-1 py-3 bg-zen-bg text-zen-ink rounded-xl font-bold hover:bg-zen-accent/10 transition-colors flex items-center justify-center gap-1.5 text-xs"
+                    className="flex-1 py-3 bg-surface-2 text-ink rounded-xl font-bold hover:bg-accent-mist transition-colors flex items-center justify-center gap-1.5 text-xs"
                   >
                     <ArrowLeft className="w-4 h-4" />
                     返回修改
                   </button>
                   <button
                     onClick={() => handleDownloadReport(selectedFormat)}
-                    className="flex-[2] py-3 bg-zen-accent text-white rounded-xl font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 text-xs"
+                    className="flex-[2] py-3 bg-accent text-on-accent hover:bg-accent-hover rounded-xl font-bold transition-colors flex items-center justify-center gap-1.5 text-xs"
                   >
                     <Download className="w-4 h-4" />
                     下载 {selectedFormat.toUpperCase()} 报告

@@ -66,6 +66,40 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
+    function isValidDailyPracticeItem(item) {
+      return item is map &&
+             item.keys().hasAll(['scriptureId', 'target', 'unit', 'order', 'enabled']) &&
+             item.keys().hasOnly(['scriptureId', 'target', 'unit', 'order', 'enabled']) &&
+             item.scriptureId is string && item.scriptureId.size() <= 128 &&
+             item.target is int && item.target >= 1 && item.target <= 100000 &&
+             item.unit in ['遍', '声'] &&
+             item.order is int &&
+             item.enabled is bool;
+    }
+
+    function isValidDailyPracticeSlice(items, start) {
+      return (items.size() <= start + 0 || isValidDailyPracticeItem(items[start + 0])) &&
+             (items.size() <= start + 1 || isValidDailyPracticeItem(items[start + 1])) &&
+             (items.size() <= start + 2 || isValidDailyPracticeItem(items[start + 2])) &&
+             (items.size() <= start + 3 || isValidDailyPracticeItem(items[start + 3])) &&
+             (items.size() <= start + 4 || isValidDailyPracticeItem(items[start + 4])) &&
+             (items.size() <= start + 5 || isValidDailyPracticeItem(items[start + 5])) &&
+             (items.size() <= start + 6 || isValidDailyPracticeItem(items[start + 6])) &&
+             (items.size() <= start + 7 || isValidDailyPracticeItem(items[start + 7])) &&
+             (items.size() <= start + 8 || isValidDailyPracticeItem(items[start + 8])) &&
+             (items.size() <= start + 9 || isValidDailyPracticeItem(items[start + 9]));
+    }
+
+    function isValidDailyPracticeList(items) {
+      return items is list &&
+             items.size() <= 50 &&
+             isValidDailyPracticeSlice(items, 0) &&
+             isValidDailyPracticeSlice(items, 10) &&
+             isValidDailyPracticeSlice(items, 20) &&
+             isValidDailyPracticeSlice(items, 30) &&
+             isValidDailyPracticeSlice(items, 40);
+    }
+
     function isValidUserProfile() {
       let data = request.resource.data;
       return (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
@@ -76,7 +110,9 @@ service cloud.firestore {
              (!('soundType' in data) || (data.soundType is string && data.soundType.size() <= 50)) &&
              (!('language' in data) || (data.language is string && data.language.size() <= 50)) &&
              (!('createdAt' in data) || data.createdAt is string) &&
-             (!('updatedAt' in data) || data.updatedAt is string);
+             (!('updatedAt' in data) || data.updatedAt is string) &&
+             (!('dailyPracticeUpdatedAt' in data) || data.dailyPracticeUpdatedAt is number) &&
+             (!('dailyPractice' in data) || isValidDailyPracticeList(data.dailyPractice));
     }
     
     function isValidThought() {
@@ -115,6 +151,7 @@ service cloud.firestore {
              (!('vow' in data) || (data.vow is string && data.vow.size() <= 1000)) &&
              (!('startTime' in data) || data.startTime is number || data.startTime == null) &&
              (!('duration' in data) || data.duration is number) &&
+             (!('unit' in data) || (data.unit in ['遍', '声'])) &&
              (!('source' in data) || (data.source is string && data.source.size() <= 50));
     }
 

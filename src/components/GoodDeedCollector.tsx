@@ -18,7 +18,7 @@ export const GoodDeedCollector = () => {
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center pointer-events-none">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -27,12 +27,14 @@ export const GoodDeedCollector = () => {
             className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-[600px] max-h-[90vh] mx-4 z-[110] flex flex-col pointer-events-auto shadow-2xl rounded-3xl sm:rounded-[40px]"
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="relative w-full sm:max-w-[600px] max-h-[88vh] sm:mx-4 z-[110] flex flex-col pointer-events-auto shadow-float bg-surface border-t sm:border border-line rounded-t-3xl sm:rounded-3xl overflow-hidden"
           >
-            <div className="flex-1 overflow-y-auto rounded-3xl sm:rounded-[40px]">
+            <div className="sm:hidden w-10 h-1 rounded-full bg-line-strong mx-auto mt-3 mb-1 shrink-0" />
+            <div className="flex-1 overflow-y-auto">
               <DailyGoodDeed user={user} onLevelUp={() => {}} onClose={() => setIsOpen(false)} />
             </div>
           </motion.div>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Toaster } from 'sonner';
-import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Music, Wind, Plus, Trash2, Check, ChevronDown, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Download, ShieldCheck, Upload } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
+import { Toaster, toast } from 'sonner';
+import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Music, Wind, Plus, Trash2, Check, ChevronDown, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Download, ShieldCheck, Upload, UserRound, Minimize2 } from 'lucide-react';
+import { aiGenerate } from './services/geminiClient';
+import { POST_SESSION_REFLECTION_SYSTEM_PROMPT } from './data/zenAssistantPrompt';
 import { useFirebaseSync } from './hooks/useFirebaseSync';
 import { useFirebase } from './contexts/FirebaseContext';
 import { doc, setDoc, deleteDoc, writeBatch, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
@@ -10,8 +11,25 @@ import { db, auth } from './firebase';
 import { handleFirestoreError, OperationType } from './utils/firebaseErrors';
 import { containsBadWords } from './utils/badWords';
 import { Dashboard } from './components/Dashboard';
-import { WoodenFish } from './components/WoodenFish';
-import { practiceService } from './services/practiceService';
+import {
+  WoodenFishPracticeView,
+  FISH_DEDICATION_PRESETS,
+  FishDedicationChoice,
+  resolveFishDedicationText,
+} from './components/WoodenFishPracticeView';
+import { ObserveThoughtFab } from './components/ObserveThoughtFab';
+import {
+  practiceService,
+  getDefaultTargetForCategory,
+  getDefaultUnitForCategory,
+  connectRealtime,
+  disconnectRealtime,
+  subscribeRealtimeStatus,
+  isRealtimeOffline,
+} from './services/practiceService';
+import { DailyPracticeItem } from './types/practice';
+import { RitualRunMode } from './data/ritual';
+import { RitualSettings, ritualService } from './services/ritualService';
 import { getScriptures, Scripture } from './constants';
 import { useTranslation, LANGUAGES } from './i18n';
 import { parseISO, format } from 'date-fns';
@@ -20,10 +38,11 @@ import { ChantingProvider } from './features/chanting/ChantingContext';
 import { ZenOnboarding } from './components/ZenOnboarding';
 import { identityService } from './services/identityService';
 import { Country, City } from './utils/locationData';
+import type { VowBookSegment, VowFeatureSection } from './components/VowBookView';
 
 // Lazy-loaded components for optimal mobile Safari startup performance
 const Meditation = React.lazy(() => import('./components/Meditation').then(m => ({ default: m.Meditation })));
-const VowPractice = React.lazy(() => import('./components/vow/VowPractice').then(m => ({ default: m.VowPractice })));
+const VowBookView = React.lazy(() => import('./components/VowBookView').then(m => ({ default: m.VowBookView })));
 const MeritMap = React.lazy(() => import('./components/MeritMap').then(m => ({ default: m.MeritMap })));
 const ExportModal = React.lazy(() => import('./components/ExportModal').then(m => ({ default: m.ExportModal })));
 const CustomCalendar = React.lazy(() => import('./components/CustomCalendar').then(m => ({ default: m.CustomCalendar })));
@@ -93,7 +112,6 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  const woodenFishRef = useRef<HTMLDivElement>(null);
   const { t, language, setLanguage } = useTranslation();
 
   const [personalVow, setPersonalVow] = useState(() => safeStorage.getItem('personal_vow') || "");
@@ -112,7 +130,13 @@ export default function App() {
     return saved ? parseInt(saved, 10) : 0;
   });
   
-  const [vowInitialSection, setVowInitialSection] = useState<'menu' | 'coach' | 'wisdom' | 'setup_vow'>('menu');
+  const [vowBookSegment, setVowBookSegment] = useState<VowBookSegment>('vow');
+  const [vowFeatureSection, setVowFeatureSection] = useState<VowFeatureSection>('overview');
+  const [immersive, setImmersive] = useState<boolean>(false);
+  const [isMeSheetOpen, setIsMeSheetOpen] = useState<boolean>(false);
+  const [meditationPresetDuration, setMeditationPresetDuration] = useState<number | null>(null);
+  const [openRitualOnFishEnter, setOpenRitualOnFishEnter] = useState<boolean>(false);
+  const [ritualSettings, setRitualSettings] = useState<RitualSettings>(() => ritualService.getSettings());
 
   const [rejoiceId, setRejoiceId] = useState<string | null>(null);
 
@@ -130,6 +154,101 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<'fish' | 'scripture' | 'assistant' | 'history' | 'meditation' | 'settings' | 'community' | 'vow' | 'merit' | 'dashboard'>('dashboard');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
+
+  // Automatically enter immersive mode when entering 木鱼 page, and restore when leaving
+  const prevTabRef = useRef(activeTab);
+  useEffect(() => {
+    const prevTab = prevTabRef.current;
+    if (activeTab === 'fish' && prevTab !== 'fish') {
+      setImmersive(true);
+    } else if (prevTab === 'fish' && activeTab !== 'fish') {
+      setImmersive(false);
+    }
+    prevTabRef.current = activeTab;
+  }, [activeTab]);
+
+  const navigateTo = (target: string) => {
+    if (target === 'daily-practice') {
+      const enabledPractice = dailyPractice
+        .filter((item) => item.enabled)
+        .sort((a, b) => a.order - b.order);
+
+      if (enabledPractice.length > 0) {
+        const latestCounts = practiceService.getDailyPractice().scriptureCounts || {};
+        const firstUnfinished = enabledPractice.find(
+          (item) => (latestCounts[item.scriptureId] || 0) < item.target
+        );
+        if (!firstUnfinished) {
+          setActiveTab('meditation');
+          setImmersive(false);
+          return;
+        }
+        const matched = allScriptures.find((s) => s.id === firstUnfinished.scriptureId);
+        if (matched) {
+          setActiveScriptureId(matched.id);
+          setSelectedChant(matched.title);
+          setRecentScriptureIds(practiceService.recordRecentScriptureId(matched.id));
+          setActiveTab(matched.category === 'meditation' ? 'meditation' : 'fish');
+          if (matched.category !== 'meditation') {
+            setOpenRitualOnFishEnter(true);
+          }
+          setImmersive(false);
+          return;
+        }
+      }
+
+      const configuredGoals = practiceService.getSettings().scriptureGoals || {};
+      const hasCurrentGoal = Boolean(configuredGoals[activeScriptureId]);
+      const targetScriptureId = hasCurrentGoal
+        ? activeScriptureId
+        : Object.keys(configuredGoals).find((id) => configuredGoals[id] > 0);
+
+      if (targetScriptureId) {
+        const matched = allScriptures.find((s) => s.id === targetScriptureId);
+        if (matched) {
+          setActiveScriptureId(matched.id);
+          setSelectedChant(matched.title);
+          setActiveTab(matched.category === 'meditation' ? 'meditation' : 'fish');
+          if (matched.category !== 'meditation') {
+            setOpenRitualOnFishEnter(true);
+          }
+        } else {
+          setOpenRitualOnFishEnter(true);
+          setActiveTab('fish');
+        }
+      } else {
+        setOpenRitualOnFishEnter(true);
+        setActiveTab('fish');
+      }
+      setImmersive(false);
+      return;
+    }
+
+    if (target === 'history') {
+      setVowBookSegment('merit');
+      setActiveTab('vow');
+    } else if (target === 'assistant' || target === 'vow-coach') {
+      setVowBookSegment('mind');
+      setActiveTab('vow');
+    } else if (target === 'vow-wisdom') {
+      setVowBookSegment('vow');
+      setVowFeatureSection('wisdom');
+      setActiveTab('vow');
+    } else if (target === 'vow-setup') {
+      setVowBookSegment('vow');
+      setVowFeatureSection('setup_vow');
+      setActiveTab('vow');
+    } else if (target === 'vow') {
+      setVowBookSegment('vow');
+      setVowFeatureSection('overview');
+      setActiveTab('vow');
+    } else {
+      setActiveTab(target as any);
+    }
+    if (target !== 'fish' && target !== 'meditation' && target !== 'scripture') {
+      setImmersive(false);
+    }
+  };
   const [selectedScripture, setSelectedScripture] = useState<Scripture>(getScriptures('zh-CN')[0]);
   const [selectedChant, setSelectedChant] = useState<string>(() => {
     return safeStorage.getItem('zen_selected_chant') || "功德 +1";
@@ -154,16 +273,42 @@ export default function App() {
   });
 
   const [aiEnabled, setAiEnabled] = useState<boolean>(() => {
-    return practiceService.getSettings().aiEnabled || false;
-  });
-
-  const [aiApiKey, setAiApiKey] = useState<string>(() => {
-    return practiceService.getSettings().aiApiKey || '';
+    const saved = practiceService.getSettings().aiEnabled;
+    return saved === undefined ? true : saved;
   });
 
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>(() => {
     return practiceService.getDailyPractice().scriptureCounts || {};
   });
+
+  const [dailyPractice, setDailyPractice] = useState<DailyPracticeItem[]>(() => {
+    return practiceService.getDailyPracticeList(allScriptures);
+  });
+
+  const [dailyPracticeUpdatedAt, setDailyPracticeUpdatedAt] = useState<number>(() => {
+    return practiceService.getSettings().dailyPracticeUpdatedAt || 0;
+  });
+
+  const [recentScriptureIds, setRecentScriptureIds] = useState<string[]>(() => {
+    return practiceService.getRecentScriptureIds();
+  });
+
+  const handleUpdateDailyPractice = (items: DailyPracticeItem[]) => {
+    const saved = practiceService.saveDailyPracticeList(items);
+    setDailyPractice(saved);
+    setDailyPracticeUpdatedAt(practiceService.getSettings().dailyPracticeUpdatedAt || Date.now());
+    setScriptureGoals(practiceService.getSettings().scriptureGoals || {});
+  };
+
+  const getHistoryDisplayUnit = (item: { unit?: string; type?: string; source?: string; chant?: string }): '遍' | '声' | null => {
+    if (item.unit === '遍' || item.unit === '声') return item.unit;
+    if (item.type === '禅修' || item.source === '禅修') return null;
+    const matched = allScriptures.find((s) => s.title === item.chant);
+    if (matched) return getDefaultUnitForCategory(matched.category);
+    if (item.type === '诵经') return '遍';
+    if (item.type === '持咒') return '声';
+    return null;
+  };
 
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [editingGoalValue, setEditingGoalValue] = useState(108);
@@ -171,12 +316,59 @@ export default function App() {
 
   const activeScripture = allScriptures.find(s => s.id === activeScriptureId) || allScriptures[0];
 
-  const [showFishScripturePinyin, setShowFishScripturePinyin] = useState(false);
+  const [showMeritFloat, setShowMeritFloat] = useState<boolean>(() => {
+    try {
+      return safeStorage.getItem('zen_show_merit_float') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      safeStorage.setItem('zen_show_merit_float', String(showMeritFloat));
+    } catch {
+      // ignore
+    }
+  }, [showMeritFloat]);
+
+  const [fishDedicationChoice, setFishDedicationChoice] = useState<FishDedicationChoice>(() => {
+    try {
+      const saved = safeStorage.getItem('zen_fish_dedication_choice') as FishDedicationChoice | null;
+      return saved || '1';
+    } catch {
+      return '1';
+    }
+  });
+  useEffect(() => {
+    try {
+      safeStorage.setItem('zen_fish_dedication_choice', fishDedicationChoice);
+    } catch {
+      // ignore
+    }
+  }, [fishDedicationChoice]);
+
+  const [fishCustomDedication, setFishCustomDedication] = useState<string>(() => {
+    try {
+      return safeStorage.getItem('zen_fish_custom_dedication') || '';
+    } catch {
+      return '';
+    }
+  });
+  useEffect(() => {
+    try {
+      safeStorage.setItem('zen_fish_custom_dedication', fishCustomDedication);
+    } catch {
+      // ignore
+    }
+  }, [fishCustomDedication]);
+
+  const [fishCompletionSignal, setFishCompletionSignal] = useState<number>(0);
 
   const [volume, setVolume] = useState(() => {
     try {
       const saved = safeStorage.getItem('zen_volume');
-      return saved ? parseFloat(saved) : 0.8;
+      const parsed = saved !== null ? parseFloat(saved) : 0.8;
+      return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 0.8;
     } catch {
       return 0.8;
     }
@@ -669,8 +861,32 @@ export default function App() {
     volume, setVolume,
     soundType, setSoundType,
     woodenFishAppearance, setWoodenFishAppearance,
-    customScriptures, setCustomScriptures
+    customScriptures, setCustomScriptures,
+    dailyPractice, setDailyPractice,
+    dailyPracticeUpdatedAt, setDailyPracticeUpdatedAt
   );
+
+  const [realtimeOffline, setRealtimeOffline] = useState<boolean>(() => isRealtimeOffline());
+  const [sharedMeritsOffline, setSharedMeritsOffline] = useState<boolean>(
+    () => typeof navigator !== 'undefined' && !navigator.onLine
+  );
+
+  useEffect(() => {
+    return subscribeRealtimeStatus(setRealtimeOffline);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'community' || activeTab === 'merit') {
+      connectRealtime();
+    } else {
+      disconnectRealtime(30000);
+    }
+  }, [activeTab]);
+
+  const isCommunityOffline =
+    realtimeOffline ||
+    sharedMeritsOffline ||
+    (typeof navigator !== 'undefined' && !navigator.onLine);
 
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(() => {
     try {
@@ -709,6 +925,7 @@ export default function App() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      setSharedMeritsOffline(false);
       const posts: CommunityPost[] = [];
       const currentUserId = fbUser ? fbUser.uid : identityService.getUserId();
       
@@ -743,6 +960,7 @@ export default function App() {
       }
     }, (error) => {
       console.error('Error fetching community posts:', error);
+      setSharedMeritsOffline(true);
       // Fallback to local storage if query fails
     });
 
@@ -892,24 +1110,22 @@ export default function App() {
     } catch (e) {
       console.warn("Save theme notice:", e);
     }
-    // Apply theme colors
+    // Apply theme via data-theme attribute so index.css [data-theme="..."] variables govern all 4 themes
     const root = document.documentElement;
-    if (theme === 'zen') {
-      root.style.setProperty('--theme-bg', '#f5f5f0');
-      root.style.setProperty('--theme-ink', '#2c2c2c');
-      root.style.setProperty('--theme-accent', '#5A5A40');
-    } else if (theme === 'lotus') {
-      root.style.setProperty('--theme-bg', '#fff0f5');
-      root.style.setProperty('--theme-ink', '#4a2c36');
-      root.style.setProperty('--theme-accent', '#d65db1');
-    } else if (theme === 'sky') {
-      root.style.setProperty('--theme-bg', '#f0f8ff');
-      root.style.setProperty('--theme-ink', '#1e3a5f');
-      root.style.setProperty('--theme-accent', '#4682b4');
-    } else if (theme === 'dark') {
-      root.style.setProperty('--theme-bg', '#1a1a1a');
-      root.style.setProperty('--theme-ink', '#e0e0e0');
-      root.style.setProperty('--theme-accent', '#d4af37');
+    root.setAttribute('data-theme', theme);
+    root.style.removeProperty('--theme-bg');
+    root.style.removeProperty('--theme-ink');
+    root.style.removeProperty('--theme-accent');
+
+    const themeColors: Record<string, string> = {
+      zen: '#4A755A',
+      lotus: '#9A5470',
+      sky: '#3F6E8C',
+      dark: '#121614',
+    };
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', themeColors[theme] || '#4A755A');
     }
   }, [theme]);
 
@@ -1006,7 +1222,7 @@ export default function App() {
 
   useEffect(() => {
     const handleSwitchTab = (e: any) => {
-      setActiveTab(e.detail);
+      navigateTo(e.detail);
     };
     const handleAddExp = (e: any) => {
       setUserExp(prev => prev + e.detail);
@@ -1033,39 +1249,81 @@ export default function App() {
     setShowGoalModal(false);
   };
 
+  const sessionCountRef = useRef(sessionCount);
+  useEffect(() => {
+    sessionCountRef.current = sessionCount;
+  }, [sessionCount]);
+
   const handleHit = () => {
     const increment = 1;
 
     setCount(prev => prev + increment);
-    if (isSessionActive) {
-      setSessionCount(prev => prev + increment);
-      
-      const newCount = sessionCount + increment;
-      const goalType = (scriptureGoalTypes || {})[activeScriptureId] || 'count';
-      const goalValue = (scriptureGoals || {})[activeScriptureId] || 108;
-      
-      if (goalType === 'count' && newCount === goalValue) {
-        // Play a bell sound when count is reached
-        playCompletionBell(0.8);
-        // Show notification
-        if (window.Notification && Notification.permission === "granted") {
-          new Notification("修行圆满", { body: `${activeScripture.title} 次数已达标` });
+
+    const activePracticeItem = dailyPractice.find(
+      (item) => item.scriptureId === activeScriptureId
+    );
+    const goalType = activePracticeItem
+      ? 'count'
+      : ((scriptureGoalTypes || {})[activeScriptureId] || 'count');
+    const goalValue =
+      activePracticeItem?.target ||
+      (scriptureGoals || {})[activeScriptureId] ||
+      getDefaultTargetForCategory(activeScripture.category);
+
+    let nextSessionCount = sessionCountRef.current + increment;
+    if (!isSessionActive) {
+      nextSessionCount = increment;
+      setIsSessionActive(true);
+      setSessionStartTime(Date.now());
+      setSessionCount(increment);
+      sessionCountRef.current = increment;
+
+      if (goalType === 'time') {
+        if (sessionTimerRef.current) {
+          clearInterval(sessionTimerRef.current);
+          sessionTimerRef.current = null;
         }
-        setShowGoalAchievedModal(true);
+        setSessionTimeLeft(goalValue * 60);
+        sessionTimerRef.current = setInterval(() => {
+          setSessionTimeLeft(prev => {
+            if (prev === null || prev <= 1) {
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        setSessionTimeLeft(null);
       }
+    } else {
+      setSessionCount(nextSessionCount);
+      sessionCountRef.current = nextSessionCount;
     }
+
     const practice = practiceService.updateActivity('chanting', increment, activeScriptureId);
     practiceService.logMerit('chanting');
     if (practice.scriptureCounts) {
       setDailyCounts(practice.scriptureCounts);
     }
+
+    const updatedTodayCount = practice.scriptureCounts?.[activeScriptureId] || 0;
+    const alreadyCelebrated = (practice.celebratedScriptures || []).includes(activeScriptureId);
+
+    if (goalType === 'count' && updatedTodayCount >= goalValue && !alreadyCelebrated) {
+      practiceService.markScriptureCelebrated(activeScriptureId);
+      if (window.Notification && Notification.permission === "granted") {
+        new Notification("修行圆满", { body: `${activeScripture.title} 次数已达标` });
+      }
+      setFishCompletionSignal(c => c + 1);
+    }
+
+    setRecentScriptureIds(practiceService.recordRecentScriptureId(activeScriptureId));
   };
 
   const [isGeneratingReflection, setIsGeneratingReflection] = useState(false);
   const [currentReflection, setCurrentReflection] = useState("");
   const [isProfileExpanded, setIsProfileExpanded] = useState(true);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [showGoalAchievedModal, setShowGoalAchievedModal] = useState(false);
 
   const resetAccount = async () => {
     try {
@@ -1078,6 +1336,7 @@ export default function App() {
   };
   const [isPersonalSettingsExpanded, setIsPersonalSettingsExpanded] = useState(true);
   const [isChantingSettingsExpanded, setIsChantingSettingsExpanded] = useState(true);
+  const [isRitualSettingsExpanded, setIsRitualSettingsExpanded] = useState(true);
   const [isMeditationSettingsExpanded, setIsMeditationSettingsExpanded] = useState(true);
   const [isVowSettingsExpanded, setIsVowSettingsExpanded] = useState(true);
   const [isFeedbackExpanded, setIsFeedbackExpanded] = useState(true);
@@ -1097,13 +1356,26 @@ export default function App() {
       }
     };
     const handleOpenInstallModal = () => setShowInstallModal(true);
+    const handleOpenMeditationPreset = (event: any) => {
+      const duration = Number(event?.detail?.duration) || 3;
+      setMeditationPresetDuration(duration);
+      setImmersive(false);
+      setActiveTab('meditation');
+    };
+    const handleRitualSettingsUpdated = () => {
+      setRitualSettings(ritualService.getSettings());
+    };
     
     window.addEventListener('navigate_to_settings', handleNavigateToSettings);
     window.addEventListener('open-install-modal', handleOpenInstallModal);
+    window.addEventListener('open-meditation-preset', handleOpenMeditationPreset);
+    window.addEventListener('zen_ritual_settings_updated', handleRitualSettingsUpdated);
     
     return () => {
       window.removeEventListener('navigate_to_settings', handleNavigateToSettings);
       window.removeEventListener('open-install-modal', handleOpenInstallModal);
+      window.removeEventListener('open-meditation-preset', handleOpenMeditationPreset);
+      window.removeEventListener('zen_ritual_settings_updated', handleRitualSettingsUpdated);
     };
   }, []);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
@@ -1144,45 +1416,74 @@ export default function App() {
         clearInterval(sessionTimerRef.current);
         sessionTimerRef.current = null;
       }
-      // Play a bell sound when time is up
-      playCompletionBell(0.8);
-      // Show notification
       if (window.Notification && Notification.permission === "granted") {
         new Notification("修行圆满", { body: `${activeScripture.title} 计时结束` });
       }
-      setShowGoalAchievedModal(true);
+      setFishCompletionSignal(c => c + 1);
     }
   }, [sessionTimeLeft, isSessionActive, activeScripture.title]);
 
-  const startSession = () => {
-    if (window.Notification && Notification.permission !== "granted" && Notification.permission !== "denied") {
-      Notification.requestPermission();
+  const resetFishSession = () => {
+    if (sessionTimerRef.current) {
+      clearInterval(sessionTimerRef.current);
+      sessionTimerRef.current = null;
     }
-    setIsSessionActive(true);
-    setSessionStartTime(Date.now());
+    setIsSessionActive(false);
+    setSessionStartTime(null);
     setSessionCount(0);
-    setCurrentReflection("");
-    
-    const goalType = (scriptureGoalTypes || {})[activeScriptureId] || 'count';
-    const goalValue = (scriptureGoals || {})[activeScriptureId] || 108;
-    
-    if (goalType === 'time') {
-      setSessionTimeLeft(goalValue * 60);
-      sessionTimerRef.current = setInterval(() => {
-        setSessionTimeLeft(prev => {
-          if (prev === null || prev <= 1) {
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      setSessionTimeLeft(null);
-    }
+    sessionCountRef.current = 0;
+    setSessionTimeLeft(null);
+  };
 
-    setTimeout(() => {
-      woodenFishRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+  const recordFishSession = (
+    resolvedDedication: string,
+    unit: '遍' | '声' = getDefaultUnitForCategory(activeScripture.category),
+    silent = false,
+    ritualMeta?: {
+      ritualMode?: RitualRunMode;
+      dedicationTarget?: string;
+    }
+  ) => {
+    if (sessionTimerRef.current) {
+      clearInterval(sessionTimerRef.current);
+      sessionTimerRef.current = null;
+    }
+    const endTime = Date.now();
+    const duration = Math.max(1, Math.floor((endTime - (sessionStartTime || endTime)) / 1000));
+    const defaultVow = vows.find(v => v.isDefault)?.content || vows[0]?.content || "";
+    const recordedCount = sessionCountRef.current > 0
+      ? sessionCountRef.current
+      : (dailyCounts[activeScriptureId] || 1);
+
+    const newSession = {
+      id: Date.now(),
+      chant: activeScripture.title,
+      count: recordedCount,
+      unit,
+      startTime: sessionStartTime || endTime,
+      endTime,
+      duration,
+      dedication: resolvedDedication,
+      vow: defaultVow,
+      type: activeScripture.category === 'sutra' ? '诵经' : activeScripture.category === 'meditation' ? '禅修' : '持咒',
+      source: '诵经',
+      ...(ritualMeta?.ritualMode ? { ritualMode: ritualMeta.ritualMode } : {}),
+      ...(ritualMeta?.dedicationTarget ? { dedicationTarget: ritualMeta.dedicationTarget } : {}),
+    };
+
+    const expGained = recordedCount + Math.floor(duration / 60) * 10;
+    setUserExp(prev => prev + expGained);
+    practiceService.logMerit('chanting');
+    addHistoryItem(newSession);
+
+    setIsSessionActive(false);
+    setSessionStartTime(null);
+    setSessionCount(0);
+    sessionCountRef.current = 0;
+    setSessionTimeLeft(null);
+    if (!silent) {
+      toast.success('已记入愿簿');
+    }
   };
 
   const finishSession = async () => {
@@ -1226,18 +1527,17 @@ export default function App() {
     setShowSummary(true);
 
     // Generate AI Reflection if enabled
-    if (aiEnabled && aiApiKey) {
+    if (aiEnabled) {
       setIsGeneratingReflection(true);
       try {
-        const ai = new GoogleGenAI({ apiKey: aiApiKey });
-        const response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-lite-preview",
-          contents: `我刚刚完成了一次修行。念诵内容是：${activeScripture.title}，念诵次数：${sessionCount}次，时长：${Math.floor(duration / 60)}分${duration % 60}秒。请作为禅师给我一句最精简、最省字、直击心灵的感悟（限30字以内）。`,
+        const text = await aiGenerate({
+          systemInstruction: POST_SESSION_REFLECTION_SYSTEM_PROMPT,
+          contents: `我刚刚完成了一次修行。念诵内容是：${activeScripture.title}，念诵次数：${sessionCount}次，时长：${Math.floor(duration / 60)}分${duration % 60}秒。`,
         });
-        setCurrentReflection(response.text || "心如止水，功德圆满。");
+        setCurrentReflection(text.trim() || "心如止水，功德圆满。");
       } catch (error) {
         console.error("AI Reflection Error:", error);
-        setCurrentReflection("AI 禅师正在闭关，请检查您的 API Key 是否正确。");
+        setCurrentReflection("安住当下，细水长流。");
       } finally {
         setIsGeneratingReflection(false);
       }
@@ -1303,7 +1603,7 @@ export default function App() {
 
   if (isDeleteAccountRoute) {
     return (
-      <React.Suspense fallback={<div className="min-h-screen bg-[#f5f5f0] flex items-center justify-center p-6 text-sm text-[#5A5A40]">载入中...</div>}>
+      <React.Suspense fallback={<div className="min-h-screen bg-paper flex items-center justify-center p-6 text-sm text-accent">载入中...</div>}>
         <DeleteAccountPage />
       </React.Suspense>
     );
@@ -1311,21 +1611,22 @@ export default function App() {
 
   if (!isAppReady) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#f5f5f0] text-[#2c2c2c] p-6 selection:bg-[#5A5A40]/20 font-serif">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-paper text-ink p-6 selection:bg-accent/20 font-serif">
         <div className="relative flex items-center justify-center mb-6">
-          <div className="w-16 h-16 rounded-full bg-[#5A5A40]/10 border border-[#5A5A40]/20 flex items-center justify-center text-[#5A5A40] animate-pulse">
+          <div className="w-16 h-16 rounded-full bg-accent-mist border border-accent/20 flex items-center justify-center text-accent animate-pulse">
             <Sparkles className="w-8 h-8" />
           </div>
         </div>
-        <h1 className="text-xl tracking-widest font-serif text-[#2c2c2c] mb-2 font-medium">愿禅助手</h1>
-        <p className="text-xs tracking-widest text-[#5A5A40]/70 font-light">一念清净 · 福慧双修</p>
+        <h1 className="text-xl tracking-widest font-serif text-ink mb-2 font-medium">愿禅助手</h1>
+        <p className="text-xs tracking-widest text-accent/80 font-light">一念清净 · 福慧双修</p>
       </div>
     );
   }
 
   return (
+    <MotionConfig reducedMotion="user">
     <ChantingProvider>
-      <div className="min-h-screen bg-zen-bg text-zen-ink selection:bg-zen-accent/20">
+      <div className="min-h-screen bg-paper text-ink selection:bg-accent/20">
         <ZenOnboarding 
           showOnboarding={showOnboarding}
           onboardingStep={onboardingStep}
@@ -1344,7 +1645,7 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="bg-white w-full max-w-md rounded-[32px] sm:rounded-[40px] p-6 sm:p-8 shadow-2xl border border-zen-accent/10 relative"
+                className="bg-surface w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-float border border-line relative"
               >
                 {(sessionFlowStep === 'dedication' || sessionFlowStep === 'vow') && (
                   <button 
@@ -1352,7 +1653,7 @@ export default function App() {
                       setShowSummary(false);
                       setSessionFlowStep('none');
                     }}
-                    className="absolute top-6 right-6 p-2 bg-zen-bg rounded-full text-zen-accent/60 hover:text-zen-accent hover:bg-zen-accent/10 transition-colors"
+                    className="absolute top-6 right-6 p-2 bg-surface-2 rounded-full text-ink-2 hover:text-accent hover:bg-accent-mist transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1360,15 +1661,15 @@ export default function App() {
               {sessionFlowStep === 'dedication' && (
                 <motion.div key="dedication" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-zen-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Heart className="w-8 h-8 text-zen-accent" />
+                    <div className="w-16 h-16 bg-accent-mist rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Heart className="w-8 h-8 text-accent" />
                     </div>
                     <h2 className="text-2xl font-serif font-bold">至诚回向</h2>
-                    <p className="text-xs text-zen-accent/40 uppercase tracking-widest font-bold mt-2">Dedication of Merit</p>
+                    <p className="text-xs text-ink-3 uppercase tracking-widest font-bold mt-2">Dedication of Merit</p>
                   </div>
                   
-                  <div className="bg-zen-bg/50 p-8 rounded-[32px] mb-8">
-                    <p className="text-lg font-serif leading-relaxed text-center text-zen-ink/80 whitespace-pre-wrap">
+                  <div className="bg-surface-2 p-8 rounded-2xl mb-8 border border-line">
+                    <p className="text-lg font-serif leading-relaxed text-center text-ink whitespace-pre-wrap">
                       {lastSession?.dedication}
                     </p>
                   </div>
@@ -1379,7 +1680,7 @@ export default function App() {
                       practiceService.logMerit('dedication');
                       setSessionFlowStep('vow');
                     }}
-                    className="w-full bg-zen-accent text-white py-4 rounded-2xl font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                    className="w-full bg-accent text-on-accent py-4 rounded-2xl font-bold hover:bg-accent-hover transition-colors flex items-center justify-center gap-2"
                   >
                     至诚回向
                   </button>
@@ -1390,22 +1691,22 @@ export default function App() {
               {sessionFlowStep === 'vow' && (
                 <motion.div key="vow" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-zen-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Sparkles className="w-8 h-8 text-zen-accent" />
+                    <div className="w-16 h-16 bg-accent-mist rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Sparkles className="w-8 h-8 text-accent" />
                     </div>
                     <h2 className="text-2xl font-serif font-bold">至诚发愿</h2>
-                    <p className="text-xs text-zen-accent/40 uppercase tracking-widest font-bold mt-2">The Four Great Vows</p>
+                    <p className="text-xs text-ink-3 uppercase tracking-widest font-bold mt-2">The Four Great Vows</p>
                   </div>
                   
-                  <div className="bg-zen-bg/50 p-8 rounded-[32px] mb-8">
-                    <p className="text-lg font-serif leading-relaxed text-center text-zen-ink/80 whitespace-pre-wrap">
+                  <div className="bg-surface-2 p-8 rounded-2xl mb-8 border border-line">
+                    <p className="text-lg font-serif leading-relaxed text-center text-ink whitespace-pre-wrap">
                       {lastSession?.vow}
                     </p>
                   </div>
 
                   <button 
                     onClick={() => setSessionFlowStep('summary')}
-                    className="w-full bg-zen-accent text-white py-4 rounded-2xl font-bold hover:opacity-90 transition-opacity"
+                    className="w-full bg-accent text-on-accent py-4 rounded-2xl font-bold hover:bg-accent-hover transition-colors"
                   >
                     至诚发愿
                   </button>
@@ -1456,17 +1757,17 @@ export default function App() {
                   </div>
                   */}
 
-                  <div className="mb-6 bg-white rounded-2xl border border-zen-accent/10 divide-y divide-zen-accent/5">
-                    <label className="flex items-center justify-between p-4 cursor-pointer hover:bg-zen-bg/50 transition-colors rounded-t-2xl">
+                  <div className="mb-6 bg-surface-2 rounded-2xl border border-line divide-y divide-line">
+                    <label className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface transition-colors rounded-2xl">
                       <div className="flex-1 pr-4">
-                        <p className="font-bold text-sm text-zen-ink">分享至共修大厅</p>
-                        <p className="text-xs text-zen-ink/60 mt-1">与同修分享功德，随喜赞叹</p>
+                        <p className="font-bold text-sm text-ink">分享至共修大厅</p>
+                        <p className="text-xs text-ink-2 mt-1">与同修分享功德，随喜赞叹</p>
                       </div>
                       <input 
                         type="checkbox" 
                         checked={shareToCommunity}
                         onChange={(e) => setShareToCommunity(e.target.checked)}
-                        className="w-5 h-5 rounded border-zen-accent/30 text-zen-accent focus:ring-zen-accent"
+                        className="w-5 h-5 rounded border-line-strong text-accent focus:ring-accent"
                       />
                     </label>
                   </div>
@@ -1524,7 +1825,7 @@ export default function App() {
                         setShowSummary(false);
                         setSessionFlowStep('none');
                       }}
-                      className="flex-1 bg-zen-accent text-white py-4 rounded-2xl font-bold hover:opacity-90 transition-opacity"
+                      className="flex-1 bg-accent text-on-accent py-4 rounded-2xl font-bold hover:bg-accent-hover transition-colors"
                     >
                       诵经圆满
                     </button>
@@ -1557,10 +1858,10 @@ export default function App() {
                         setSessionFlowStep('none');
                       }}
                       disabled={isSharing}
-                      className="w-14 flex relative items-center justify-center bg-zen-bg text-zen-accent rounded-2xl font-bold hover:bg-zen-accent/10 transition-colors border border-zen-accent/20 disabled:opacity-50"
+                      className="w-14 flex relative items-center justify-center bg-surface-2 text-accent rounded-2xl font-bold hover:bg-accent-mist transition-colors border border-line-strong disabled:opacity-50"
                     >
                       {isSharing && (
-                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-black/80 text-white px-3 py-1.5 rounded-lg text-xs whitespace-nowrap animate-fade-in">
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-ink text-paper px-3 py-1.5 rounded-lg text-xs whitespace-nowrap animate-fade-in">
                           诵经圆满，准备分享...
                         </div>
                       )}
@@ -1575,128 +1876,322 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Floating Exit Immersive Button (hidden on views with native immersive controls) */}
+      <AnimatePresence>
+        {immersive && activeTab !== 'fish' && activeTab !== 'meditation' && activeTab !== 'scripture' && (
+          <motion.button
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setImmersive(false)}
+            className="fixed top-4 right-4 z-[65] flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface/85 backdrop-blur-md border border-line shadow-float text-xs font-medium text-ink-2 hover:text-accent transition-colors"
+            title="退出沉浸"
+          >
+            <Minimize2 size={14} strokeWidth={1.5} />
+            <span>退出沉浸</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
-      <header className="sticky top-0 z-[60] bg-zen-bg/90 backdrop-blur-md border-b border-zen-accent/10">
-        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 sm:gap-3 flex-1 min-w-0">
-              <button 
-                onClick={() => setIsSideMenuOpen(true)}
-                className="p-1.5 sm:p-2 -ml-1 sm:-ml-2 text-zen-accent hover:bg-zen-accent/10 rounded-full transition-colors shrink-0"
-                title="菜单"
-              >
-                <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
-              <div 
-                className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-zen-accent flex items-center justify-center text-white shrink-0 cursor-pointer"
-                onClick={() => setActiveTab('dashboard')}
-                title="主页"
-              >
-                <Heart className="w-3 h-3 sm:w-4 sm:h-4 fill-current" />
-              </div>
-              <div className="text-left flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm sm:text-base font-serif font-bold text-zen-ink truncate">愿禅助手</p>
-                  <p className="text-xs text-zen-ink/70 font-medium hidden sm:block truncate">
-                    {(() => {
-                      const hour = new Date().getHours();
-                      let greeting = "欢迎回来";
-                      if (hour < 12) greeting = "早上好";
-                      else if (hour < 18) greeting = "下午好";
-                      else greeting = "晚上好";
-                      
-                      const userName = userProfile.name || '修行者';
-                      return `${userName}，${greeting}`;
-                    })()}
-                  </p>
-                </div>
-                <p 
-                  className={cn(
-                    "text-[10px] sm:text-xs text-purple-600/80 w-full cursor-pointer transition-all",
-                    isVowExpanded ? "whitespace-normal break-words" : "truncate"
-                  )} 
-                  title={isVowExpanded ? "点击收起" : "点击展开愿力"}
-                  onClick={() => setIsVowExpanded(!isVowExpanded)}
-                >
-                  {personalVow || t('default_vow_text')}
+      <header
+        className={cn(
+          "sticky top-0 z-[60] bg-paper/90 backdrop-blur-md border-b border-line transition-all duration-300 ease-[var(--ease-zen)]",
+          immersive ? "opacity-0 -translate-y-full pointer-events-none" : "opacity-100 translate-y-0"
+        )}
+      >
+        {/* Mobile Header (< md): Lotus logo (28px) + time greeting on left, "我" button on right */}
+        <div className="flex md:hidden items-center justify-between px-4 py-2.5 gap-3">
+          <div
+            className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
+            onClick={() => navigateTo('dashboard')}
+          >
+            <img
+              src="/assets/aistudio/logo_f2d0c65b.png"
+              alt="愿禅助手莲花"
+              className="w-7 h-7 rounded-full object-cover shrink-0 bg-surface"
+            />
+            <span className="text-caption truncate">
+              {(() => {
+                const hour = new Date().getHours();
+                const greeting = hour < 12 ? "早安" : hour < 18 ? "午安" : "晚安";
+                return `${greeting} · 愿你今日安住`;
+              })()}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsMeSheetOpen(true)}
+            aria-label="我"
+            title="个人与设置"
+            className="w-10 h-10 rounded-full bg-surface-2 border border-line flex items-center justify-center text-ink hover:text-accent transition-colors shrink-0"
+          >
+            <UserRound size={20} strokeWidth={1.5} />
+          </button>
+        </div>
+
+        {/* Desktop Header (≥ md): Full bar with side menu trigger, title, vow, streak, ThoughtCollector & auth */}
+        <div className="hidden md:flex max-w-4xl mx-auto px-4 py-2 items-center justify-between gap-2">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <button
+              onClick={() => setIsSideMenuOpen(true)}
+              className="p-2 -ml-2 text-accent hover:bg-accent-mist rounded-full transition-colors shrink-0"
+              title="菜单"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <img
+              src="/assets/aistudio/logo_f2d0c65b.png"
+              alt="愿禅助手 Logo"
+              className="w-9 h-9 rounded-xl object-cover border border-line shrink-0 cursor-pointer bg-surface"
+              onClick={() => navigateTo('dashboard')}
+              title="主页"
+            />
+            <div className="text-left flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-base font-serif font-bold text-ink truncate">愿禅助手</p>
+                <p className="text-xs text-ink-2 font-medium truncate">
+                  {(() => {
+                    const hour = new Date().getHours();
+                    let greeting = "欢迎回来";
+                    if (hour < 12) greeting = "早上好";
+                    else if (hour < 18) greeting = "下午好";
+                    else greeting = "晚上好";
+
+                    const userName = userProfile.name || '修行者';
+                    return `${userName}，${greeting}`;
+                  })()}
                 </p>
               </div>
+              <p
+                className={cn(
+                  "text-xs text-accent w-full cursor-pointer transition-all",
+                  isVowExpanded ? "whitespace-normal break-words" : "truncate"
+                )}
+                title={isVowExpanded ? "点击收起" : "点击展开愿力"}
+                onClick={() => setIsVowExpanded(!isVowExpanded)}
+              >
+                {personalVow || t('default_vow_text')}
+              </p>
             </div>
-            
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-amber-50/80 rounded-full border border-amber-200/60 text-amber-900" title="连续修持天数">
-                <span className="text-xs">🔥</span>
-                <span className="text-xs sm:text-sm font-serif font-bold leading-none">
-                  {(() => {
-                    if (history.length === 0) return "0 天";
-                    const dates = history.map(h => {
-                      const ts = h.startTime || h.endTime || h.timestamp || h.id;
-                      return ts ? new Date(ts).toDateString() : null;
-                    }).filter(Boolean) as string[];
-                    const uniqueDates = [...new Set(dates)].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-                    
-                    let streak = 0;
-                    let lastDate = new Date();
-                    
-                    // Check if practiced today
-                    if (uniqueDates[0] === lastDate.toDateString()) {
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 rounded-full border border-line-strong text-gold" title="连续修持天数">
+              <span className="text-xs">🔥</span>
+              <span className="text-sm font-serif font-bold leading-none">
+                {(() => {
+                  if (history.length === 0) return "0 天";
+                  const dates = history.map(h => {
+                    const ts = h.startTime || h.endTime || h.timestamp || h.id;
+                    return ts ? new Date(ts).toDateString() : null;
+                  }).filter(Boolean) as string[];
+                  const uniqueDates = [...new Set(dates)].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+                  let streak = 0;
+                  let lastDate = new Date();
+
+                  if (uniqueDates[0] === lastDate.toDateString()) {
+                    streak = 1;
+                    lastDate.setDate(lastDate.getDate() - 1);
+                  } else {
+                    const yesterday = new Date();
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    if (uniqueDates[0] === yesterday.toDateString()) {
                       streak = 1;
+                      lastDate = yesterday;
                       lastDate.setDate(lastDate.getDate() - 1);
                     } else {
-                      // Check if practiced yesterday
-                      let yesterday = new Date();
-                      yesterday.setDate(yesterday.getDate() - 1);
-                      if (uniqueDates[0] === yesterday.toDateString()) {
-                        streak = 1;
-                        lastDate = yesterday;
-                        lastDate.setDate(lastDate.getDate() - 1);
-                      } else {
-                        return "0 天";
-                      }
+                      return "0 天";
                     }
-                    
-                    for (let i = 1; i < uniqueDates.length; i++) {
-                      if (new Date(uniqueDates[i]).toDateString() === lastDate.toDateString()) {
-                        streak++;
-                        lastDate.setDate(lastDate.getDate() - 1);
-                      } else {
-                        break;
-                      }
-                    }
-                    return `${streak} 天`;
-                  })()}
-                </span>
-              </div>
-              
-              <div className="hidden md:flex items-center gap-2">
-                <React.Suspense fallback={null}>
-                  <ThoughtCollector className="!p-1.5 sm:!px-3 sm:!py-1.5 !text-xs rounded-full" iconOnlyOnMobile={true} />
-                  <GoodDeedCollector />
-                </React.Suspense>
-              </div>
-
-              <button
-                onClick={async () => {
-                  if (isGuest) {
-                    setShowAuthModal(true);
-                  } else {
-                    if (fbUser) {
-                      await auth.signOut();
-                    }
-                    identityService.logout();
-                    window.dispatchEvent(new CustomEvent('auth_state_changed'));
                   }
-                }}
-                className="flex items-center justify-center p-1.5 sm:px-3 sm:py-1.5 bg-white/50 hover:bg-white/80 rounded-full text-xs font-medium text-zen-ink/70 transition-colors border border-zen-accent/10 shrink-0"
-                title={isGuest ? '游客登录' : '退出登录'}
-              >
-                {isGuest ? <Users className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> : <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5" />}
-                <span className="hidden sm:inline ml-1.5">{isGuest ? '游客登录' : '退出登录'}</span>
-              </button>
+
+                  for (let i = 1; i < uniqueDates.length; i++) {
+                    if (new Date(uniqueDates[i]).toDateString() === lastDate.toDateString()) {
+                      streak++;
+                      lastDate.setDate(lastDate.getDate() - 1);
+                    } else {
+                      break;
+                    }
+                  }
+                  return `${streak} 天`;
+                })()}
+              </span>
             </div>
+
+            <div className="flex items-center gap-2">
+              <React.Suspense fallback={null}>
+                <ThoughtCollector className="!px-3 !py-1.5 !text-xs rounded-full" />
+              </React.Suspense>
+            </div>
+
+            <button
+              onClick={async () => {
+                if (isGuest) {
+                  setShowAuthModal(true);
+                } else {
+                  if (fbUser) {
+                    await auth.signOut();
+                  }
+                  identityService.logout();
+                  window.dispatchEvent(new CustomEvent('auth_state_changed'));
+                }
+              }}
+              className="flex items-center justify-center px-3 py-1.5 bg-surface hover:bg-surface-2 rounded-full text-xs font-medium text-ink-2 transition-colors border border-line shrink-0"
+              title={isGuest ? '游客登录' : '退出登录'}
+            >
+              {isGuest ? <Users className="w-3.5 h-3.5" /> : <LogOut className="w-3.5 h-3.5" />}
+              <span className="ml-1.5">{isGuest ? '游客登录' : '退出登录'}</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Side Menu Drawer */}
+      {/* Always-mounted modal listeners for ThoughtCollector & GoodDeedCollector (triggered by 观一念 FAB & Dashboard) */}
+      <React.Suspense fallback={null}>
+        <ThoughtCollector hideTrigger />
+        <GoodDeedCollector />
+      </React.Suspense>
+
+      {/* Mobile "我" Bottom Sheet Drawer */}
+      <AnimatePresence>
+        {isMeSheetOpen && (
+          <div className="fixed inset-0 z-[90] md:hidden flex items-end justify-center">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMeSheetOpen(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+              className="relative z-10 w-full rounded-t-3xl bg-surface border-t border-line shadow-float overflow-hidden pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
+            >
+              {/* Drag Handle */}
+              <div className="w-10 h-1 rounded-full bg-line-strong mx-auto mt-3 mb-2" />
+
+              {/* User Header */}
+              <div className="px-6 py-4 border-b border-line flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-full bg-accent-mist text-accent flex items-center justify-center font-serif font-bold text-base shrink-0">
+                    {userProfile.name ? userProfile.name[0] : <UserRound size={20} strokeWidth={1.5} />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-serif font-bold text-ink truncate">
+                      {userProfile.name || (isGuest ? '随喜访客' : '修行者')}
+                    </p>
+                    <p className="text-xs text-ink-2 truncate">
+                      {personalVow || t('default_vow_text')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsMeSheetOpen(false)}
+                  className="p-2 text-ink-3 hover:text-ink rounded-full hover:bg-surface-2 transition-colors"
+                >
+                  <X size={20} strokeWidth={1.5} />
+                </button>
+              </div>
+
+              {/* Menu Items */}
+              <div className="p-4 space-y-1.5">
+                <button
+                  onClick={() => {
+                    navigateTo('settings');
+                    setIsMeSheetOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-ink hover:bg-surface-2 transition-colors text-left"
+                >
+                  <Settings size={20} strokeWidth={1.5} className="text-accent shrink-0" />
+                  <span className="font-medium text-sm">系统设置</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    navigateTo('community');
+                    setIsMeSheetOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-ink hover:bg-surface-2 transition-colors text-left"
+                >
+                  <Sparkles size={20} strokeWidth={1.5} className="text-accent shrink-0" />
+                  <span className="font-medium text-sm">共修动态</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    navigateTo('merit');
+                    setIsMeSheetOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-ink hover:bg-surface-2 transition-colors text-left"
+                >
+                  <Globe size={20} strokeWidth={1.5} className="text-accent shrink-0" />
+                  <span className="font-medium text-sm">功德地图</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowExportModal(true);
+                    setIsMeSheetOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-ink hover:bg-surface-2 transition-colors text-left"
+                >
+                  <ShieldCheck size={20} strokeWidth={1.5} className="text-accent shrink-0" />
+                  <span className="font-medium text-sm">数据同步与备份</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowInstallModal(true);
+                    setIsMeSheetOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-ink hover:bg-surface-2 transition-colors text-left"
+                >
+                  <Download size={20} strokeWidth={1.5} className="text-ink-2 shrink-0" />
+                  <span className="font-medium text-sm">下载APP到手机</span>
+                </button>
+
+                <div className="pt-2 mt-2 border-t border-line">
+                  {!isGuest ? (
+                    <button
+                      onClick={async () => {
+                        setIsMeSheetOpen(false);
+                        if (fbUser) {
+                          await auth.signOut();
+                        }
+                        identityService.logout();
+                        window.dispatchEvent(new CustomEvent('auth_state_changed'));
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-red-500 hover:bg-red-500/10 transition-colors text-left"
+                    >
+                      <LogOut size={20} strokeWidth={1.5} className="shrink-0" />
+                      <span className="font-medium text-sm">退出登录</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setShowAuthModal(true);
+                        setIsMeSheetOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-accent hover:bg-accent-mist transition-colors text-left"
+                    >
+                      <Users size={20} strokeWidth={1.5} className="shrink-0" />
+                      <span className="font-medium text-sm">登录 / 注册</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop Side Menu Drawer (≥ md) */}
       <AnimatePresence>
         {isSideMenuOpen && (
           <>
@@ -1712,65 +2207,66 @@ export default function App() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 left-0 bottom-0 w-[300px] sm:w-80 bg-zen-bg z-[80] shadow-2xl border-r border-zen-accent/10 flex flex-col"
+              className="fixed top-0 left-0 bottom-0 w-[300px] sm:w-80 bg-surface z-[80] shadow-float border-r border-line flex flex-col"
             >
-              <div className="p-5 sm:p-6 border-b border-zen-accent/10 flex items-center justify-between">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-zen-accent flex items-center justify-center text-white shrink-0">
-                    <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current" />
-                  </div>
-                  <span className="font-serif font-bold text-base sm:text-lg whitespace-nowrap">愿禅助手</span>
+              <div className="p-5 sm:p-6 border-b border-line flex items-center justify-between">
+                <div className="flex items-center gap-2.5 sm:gap-3">
+                  <img
+                    src="/assets/aistudio/logo_f2d0c65b.png"
+                    alt="愿禅助手 Logo"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-cover border border-line shrink-0 bg-paper"
+                  />
+                  <span className="font-serif font-bold text-base sm:text-lg whitespace-nowrap text-ink">愿禅助手</span>
                 </div>
-                <button 
+                <button
                   onClick={() => setIsSideMenuOpen(false)}
-                  className="p-1.5 sm:p-2 text-zen-accent/60 hover:bg-zen-accent/10 rounded-full transition-colors shrink-0"
+                  className="p-1.5 sm:p-2 text-ink-2 hover:bg-accent-mist rounded-full transition-colors shrink-0"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              
+
               <div className="flex-1 overflow-y-auto py-3 sm:py-4 space-y-4 sm:space-y-5">
                 {/* Main */}
                 <div className="px-3">
                   <button
                     onClick={() => {
-                      setActiveTab('dashboard');
+                      navigateTo('dashboard');
                       setIsSideMenuOpen(false);
                     }}
                     className={cn(
                       "w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all",
-                      activeTab === 'dashboard' 
-                        ? "bg-zen-accent text-white shadow-md" 
-                        : "text-zen-ink/70 hover:bg-zen-accent/10 hover:text-zen-accent"
+                      activeTab === 'dashboard'
+                        ? "bg-accent text-on-accent"
+                        : "text-ink-2 hover:bg-accent-mist hover:text-accent"
                     )}
                   >
                     <Home className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                    <span className="font-medium text-sm sm:text-base truncate">{t('tab_dashboard') || '首页'}</span>
+                    <span className="font-medium text-sm sm:text-base truncate">今日</span>
                   </button>
                 </div>
 
                 {/* Practice */}
                 <div className="px-3">
-                  <p className="text-[10px] sm:text-xs font-bold text-zen-accent/50 uppercase tracking-wider mb-1.5 px-4">修行</p>
+                  <p className="text-[10px] sm:text-xs font-bold text-ink-3 uppercase tracking-wider mb-1.5 px-4">修行</p>
                   <div className="space-y-0.5">
                     {[
-                      { id: 'fish', icon: BookOpen, label: t('tab_chant') || '木鱼诵经' },
-                      { id: 'meditation', icon: Moon, label: t('tab_meditation') || '静坐冥想' },
-                      { id: 'scripture', icon: Book, label: '经文数据库' },
-                      { id: 'vow', icon: Leaf, label: t('tab_vow') || '发愿' },
+                      { id: 'fish', icon: Heart, label: '木鱼' },
+                      { id: 'meditation', icon: Wind, label: '静坐' },
+                      { id: 'scripture', icon: BookOpen, label: '经藏' },
+                      { id: 'vow', icon: Leaf, label: '愿簿' },
                     ].map(item => (
                       <button
                         key={item.id}
                         onClick={() => {
-                          setActiveTab(item.id as any);
+                          navigateTo(item.id);
                           setIsSideMenuOpen(false);
-                          if (item.id === 'vow') setVowInitialSection('setup_vow');
                         }}
                         className={cn(
                           "w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all",
-                          activeTab === item.id 
-                            ? "bg-zen-accent/10 text-zen-accent font-bold" 
-                            : "text-zen-ink/70 hover:bg-zen-accent/5 hover:text-zen-accent"
+                          activeTab === item.id
+                            ? "bg-accent-mist text-accent font-bold"
+                            : "text-ink-2 hover:bg-surface-2 hover:text-accent"
                         )}
                       >
                         <item.icon className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
@@ -1780,25 +2276,26 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Records */}
+                {/* Records & Community */}
                 <div className="px-3">
-                  <p className="text-[10px] sm:text-xs font-bold text-zen-accent/50 uppercase tracking-wider mb-1.5 px-4">记录</p>
+                  <p className="text-[10px] sm:text-xs font-bold text-ink-3 uppercase tracking-wider mb-1.5 px-4">记录与共修</p>
                   <div className="space-y-0.5">
                     {[
-                      { id: 'history', icon: History, label: t('tab_history') || '功德簿' },
-                      { id: 'merit', icon: Globe, label: t('tab_merit') || '功德地图' },
+                      { id: 'history', icon: History, label: '功德簿' },
+                      { id: 'community', icon: Sparkles, label: '共修动态' },
+                      { id: 'merit', icon: Globe, label: '功德地图' },
                     ].map(item => (
                       <button
                         key={item.id}
                         onClick={() => {
-                          setActiveTab(item.id as any);
+                          navigateTo(item.id);
                           setIsSideMenuOpen(false);
                         }}
                         className={cn(
                           "w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all",
-                          activeTab === item.id 
-                            ? "bg-zen-accent/10 text-zen-accent font-bold" 
-                            : "text-zen-ink/70 hover:bg-zen-accent/5 hover:text-zen-accent"
+                          (item.id === 'history' ? (activeTab === 'vow' && vowBookSegment === 'merit') : activeTab === item.id)
+                            ? "bg-accent-mist text-accent font-bold"
+                            : "text-ink-2 hover:bg-surface-2 hover:text-accent"
                         )}
                       >
                         <item.icon className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
@@ -1810,55 +2307,50 @@ export default function App() {
 
                 {/* System */}
                 <div className="px-3">
-                  <p className="text-[10px] sm:text-xs font-bold text-zen-accent/50 uppercase tracking-wider mb-1.5 px-4">系统</p>
+                  <p className="text-[10px] sm:text-xs font-bold text-ink-3 uppercase tracking-wider mb-1.5 px-4">系统</p>
                   <div className="space-y-0.5">
-                    {[
-                      { id: 'settings', icon: Settings, label: t('tab_settings') || '设置' },
-                    ].map(item => (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          setActiveTab(item.id as any);
-                          setIsSideMenuOpen(false);
-                        }}
-                        className={cn(
-                          "w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all",
-                          activeTab === item.id 
-                            ? "bg-zen-accent/10 text-zen-accent font-bold" 
-                            : "text-zen-ink/70 hover:bg-zen-accent/5 hover:text-zen-accent"
-                        )}
-                      >
-                        <item.icon className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                        <span className="font-medium text-sm sm:text-base truncate">{item.label}</span>
-                      </button>
-                    ))}
+                    <button
+                      onClick={() => {
+                        navigateTo('settings');
+                        setIsSideMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all",
+                        activeTab === 'settings'
+                          ? "bg-accent-mist text-accent font-bold"
+                          : "text-ink-2 hover:bg-surface-2 hover:text-accent"
+                      )}
+                    >
+                      <Settings className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                      <span className="font-medium text-sm sm:text-base truncate">系统设置</span>
+                    </button>
                   </div>
                 </div>
               </div>
-              
-              <div className="p-6 border-t border-zen-accent/10 space-y-4 shrink-0">
+
+              <div className="p-6 border-t border-line space-y-4 shrink-0">
                 <button
                   onClick={() => {
                     setShowInstallModal(true);
                     setIsSideMenuOpen(false);
                   }}
-                  className="w-full flex items-center gap-3 text-zen-ink/70 hover:text-zen-accent transition-colors"
+                  className="w-full flex items-center gap-3 text-ink-2 hover:text-accent transition-colors"
                 >
                   <Download className="w-5 h-5 shrink-0" />
                   <span className="font-medium truncate">下载APP到手机</span>
                 </button>
-                
+
                 <button
                   onClick={() => {
                     setShowExportModal(true);
                     setIsSideMenuOpen(false);
                   }}
-                  className="w-full flex items-center gap-3 text-zen-ink/70 hover:text-zen-accent transition-colors"
+                  className="w-full flex items-center gap-3 text-ink-2 hover:text-accent transition-colors"
                 >
-                  <ShieldCheck className="w-5 h-5 shrink-0 text-zen-accent" />
+                  <ShieldCheck className="w-5 h-5 shrink-0 text-accent" />
                   <span className="font-medium truncate">{t('data_sync')}</span>
                 </button>
-                
+
                 {!isGuest ? (
                   <button
                     onClick={async () => {
@@ -1868,7 +2360,7 @@ export default function App() {
                       identityService.logout();
                       window.dispatchEvent(new CustomEvent('auth_state_changed'));
                     }}
-                    className="w-full flex items-center gap-3 text-red-500/70 hover:text-red-500 transition-colors"
+                    className="w-full flex items-center gap-3 text-red-500/80 hover:text-red-500 transition-colors"
                   >
                     <LogOut className="w-5 h-5 shrink-0" />
                     <span className="font-medium truncate">退出登录 (Logout)</span>
@@ -1879,7 +2371,7 @@ export default function App() {
                       setShowAuthModal(true);
                       setIsSideMenuOpen(false);
                     }}
-                    className="w-full flex items-center gap-3 text-zen-accent/70 hover:text-zen-accent transition-colors"
+                    className="w-full flex items-center gap-3 text-accent hover:text-accent-hover transition-colors"
                   >
                     <Users className="w-5 h-5 shrink-0" />
                     <span className="font-medium truncate">登录 / 注册 (Login)</span>
@@ -1894,370 +2386,71 @@ export default function App() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 pb-24 pt-4 sm:pt-6 relative z-10 overflow-x-hidden">
         {/* Content Area */}
         <AnimatePresence mode="wait">
-          {activeTab === 'dashboard' && <Dashboard onNavigate={(tab) => {
-            if (tab === 'assistant' || tab === 'vow-coach') {
-              setVowInitialSection('coach');
-              setActiveTab('vow');
-            } else if (tab === 'vow-wisdom') {
-              setVowInitialSection('wisdom');
-              setActiveTab('vow');
-            } else {
-              setActiveTab(tab as any);
-            }
-          }} />}
-          {activeTab === 'fish' && (
-            <motion.div
-              key="fish"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="flex flex-col items-center justify-start py-2 sm:py-6 space-y-2 sm:space-y-8 min-h-[60vh] sm:min-h-[70vh]"
-            >
-              <div className="w-full max-w-md space-y-2 sm:space-y-8 flex flex-col h-full">
-                {/* Scripture Selection */}
-                <div className="bg-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-zen-accent/5 shadow-sm shrink-0">
-                  <div className="flex justify-between items-center mb-3 sm:mb-6 gap-2">
-                    <p className="text-xs sm:text-sm uppercase tracking-widest text-zen-accent/50 font-bold">{t('select_scripture')}</p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setActiveTab('scripture')}
-                        className="text-xs sm:text-sm bg-zen-bg text-zen-ink/80 px-3 py-2 rounded-xl hover:bg-zen-accent/10 hover:text-zen-accent font-bold flex items-center gap-1.5 border border-zen-accent/10 transition-colors"
-                        title="打开佛教经文数据库"
-                      >
-                        <Book className="w-4 h-4" />
-                        <span>经文库</span>
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setEditingGoalValue((scriptureGoals || {})[activeScriptureId] || 108);
-                          setShowGoalModal(true);
-                        }}
-                        className="text-sm sm:text-base bg-zen-accent/10 text-zen-accent px-3 py-2 rounded-xl hover:bg-zen-accent/20 font-bold flex items-center gap-1.5"
-                      >
-                        <Trophy className="w-4 h-4" />
-                        {t('set_goal') || "定课"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <select
-                      value={activeScriptureId}
-                      onChange={(e) => {
-                        setActiveScriptureId(e.target.value);
-                        const s = allScriptures.find(i => i.id === e.target.value);
-                        if (s) setSelectedChant(s.title);
-                      }}
-                      className="w-full appearance-none bg-zen-bg/50 border border-zen-accent/10 rounded-xl px-4 py-3 sm:px-6 sm:py-4 text-lg sm:text-2xl font-bold text-zen-accent focus:outline-none focus:border-zen-accent/30 pr-12 truncate"
-                    >
-                      <optgroup label={t('buddha_name')}>
-                        {allScriptures.filter(s => s.category === 'name').map(s => (
-                          <option key={s.id} value={s.id}>{s.title}</option>
-                        ))}
-                      </optgroup>
-                      <optgroup label={t('scripture_mantra')}>
-                        {allScriptures.filter(s => s.category !== 'name' && s.category !== 'meditation').map(s => (
-                          <option key={s.id} value={s.id}>{s.title}</option>
-                        ))}
-                      </optgroup>
-                    </select>
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zen-accent/50">
-                      <ChevronDown className="w-5 h-5 sm:w-6 sm:h-6" />
-                    </div>
-                  </div>
-                  
-                  {/* Session Control */}
-                  {!isSessionActive && (
-                    <div className="flex justify-center mt-2 sm:mt-4">
-                      {!(scriptureGoals || {})[activeScriptureId] ? (
-                        <button 
-                          onClick={() => {
-                            setEditingGoalValue(108);
-                            setShowGoalModal(true);
-                          }}
-                          className="w-full bg-zen-accent/20 text-zen-accent py-2 sm:py-3 rounded-xl font-bold hover:bg-zen-accent/30 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
-                        >
-                          <Trophy className="w-4 h-4 sm:w-5 sm:h-5" />
-                          请先设定目标
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={startSession}
-                          className="w-full bg-zen-accent text-white py-2 sm:py-3 rounded-xl font-bold shadow-lg hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 text-sm sm:text-base"
-                        >
-                          <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-                          {t('start_practice') || "开始诵经"}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+          {activeTab === 'dashboard' && <Dashboard onNavigate={navigateTo} />}
+          {activeTab === 'fish' && (() => {
+            const activePracticeItem = dailyPractice.find(
+              (item) => item.scriptureId === activeScriptureId
+            );
+            const activeGoalType = activePracticeItem
+              ? 'count'
+              : ((scriptureGoalTypes || {})[activeScriptureId] || 'count');
+            const activeGoalValue =
+              activePracticeItem?.target ||
+              (scriptureGoals || {})[activeScriptureId] ||
+              getDefaultTargetForCategory(activeScripture.category);
+            const activeUnit =
+              activePracticeItem?.unit ||
+              getDefaultUnitForCategory(activeScripture.category);
 
-                {/* Scripture Content Display */}
-                {activeScripture.category !== 'name' && (
-                  <div className="bg-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-zen-accent/5 shadow-sm max-h-56 sm:max-h-80 overflow-y-auto shrink-0">
-                    <div className="flex items-center justify-between gap-2 mb-2 sm:mb-4">
-                      <button
-                        onClick={() => setActiveTab('scripture')}
-                        className="text-[11px] font-bold text-zen-accent/70 hover:text-zen-accent bg-zen-bg/60 px-2.5 py-1 rounded-lg transition-colors"
-                      >
-                        经文库
-                      </button>
-                      <h3 className="text-center font-serif font-bold text-zen-accent text-xl sm:text-3xl truncate">{activeScripture.title}</h3>
-                      {activeScripture.pinyin || activeScripture.explanation ? (
-                        <button
-                          onClick={() => setShowFishScripturePinyin(v => !v)}
-                          className={cn(
-                            "text-[11px] font-bold px-2.5 py-1 rounded-lg transition-colors",
-                            showFishScripturePinyin
-                              ? "bg-amber-100 text-amber-900"
-                              : "bg-zen-bg/60 text-zen-accent/70 hover:text-zen-accent"
-                          )}
-                        >
-                          {showFishScripturePinyin ? '隐藏注音' : '拼音/释义'}
-                        </button>
-                      ) : (
-                        <span className="w-12" />
-                      )}
-                    </div>
-                    <p className="text-zen-ink/90 font-serif leading-loose whitespace-pre-wrap text-center text-base sm:text-2xl">
-                      {activeScripture.content}
-                    </p>
-                    {showFishScripturePinyin && activeScripture.pinyin && (
-                      <div className="mt-4 pt-3 border-t border-zen-accent/10">
-                        <p className="text-[11px] font-bold text-zen-accent/60 uppercase tracking-wider mb-1 text-center">诵读拼音</p>
-                        <p className="text-xs sm:text-sm text-zen-ink/70 font-mono leading-relaxed whitespace-pre-wrap text-center">
-                          {activeScripture.pinyin}
-                        </p>
-                      </div>
-                    )}
-                    {showFishScripturePinyin && activeScripture.explanation && (
-                      <div className="mt-3 p-3 rounded-xl bg-emerald-50/50 border border-emerald-200/50">
-                        <p className="text-[11px] font-bold text-emerald-800 mb-1">简要解释</p>
-                        <p className="text-xs text-emerald-950/80 leading-relaxed">
-                          {activeScripture.explanation}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Session Control */}
-                {isSessionActive && (
-                  <div className="flex justify-center shrink-0 mt-2 sm:mt-4">
-                    <div className="flex flex-col items-center gap-2 sm:gap-4">
-                      <div className="flex items-center gap-4 sm:gap-8 bg-white px-6 sm:px-10 py-3 sm:py-4 rounded-full border border-zen-accent/10 shadow-md">
-                        <div className="text-center flex items-center gap-3">
-                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-zen-accent/10 text-zen-accent flex items-center justify-center text-xs sm:text-sm font-bold shrink-0">
-                            次数
-                          </div>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-5xl sm:text-7xl font-serif font-bold text-zen-accent tracking-tighter leading-none">
-                              {sessionCount}
-                            </span>
-                            {(scriptureGoalTypes || {})[activeScriptureId] === 'time' ? (
-                              <span className="text-lg sm:text-2xl text-zen-accent/60 font-mono">
-                                {sessionTimeLeft !== null ? `${Math.floor(sessionTimeLeft / 60)}:${(sessionTimeLeft % 60).toString().padStart(2, '0')}` : '0:00'}
-                              </span>
-                            ) : (
-                              <span className="text-2xl sm:text-4xl text-zen-accent/40">
-                                / {(scriptureGoals || {})[activeScriptureId] || 108}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="w-px h-10 sm:h-12 bg-zen-accent/10" />
-                        <button 
-                          onClick={finishSession}
-                          className="text-zen-accent font-bold hover:opacity-70 transition-opacity text-sm sm:text-lg px-2 whitespace-nowrap"
-                        >
-                          {t('finish_practice')}
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-6">
-                        <button 
-                          onClick={() => setSessionCount(0)}
-                          className="text-xs sm:text-sm text-zen-accent/40 hover:text-zen-accent/80 transition-colors font-medium"
-                        >
-                          重置计数
-                        </button>
-                        <p className="text-xs sm:text-sm text-zen-accent/50 animate-pulse italic font-medium">{t('practicing')}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Wooden Fish */}
-                <div ref={woodenFishRef} className="flex-1 flex items-center justify-center min-h-[150px] sm:min-h-[200px]">
-                  <div className="scale-75 sm:scale-90 origin-center">
-                    <WoodenFish 
-                      onHit={handleHit} 
-                      floatingText={activeScripture.category === 'name' ? activeScripture.title : t('merit_plus_one')} 
-                      volume={volume} 
-                      soundType={soundType} 
-                      appearance={woodenFishAppearance}
-                      disabled={!isSessionActive}
-                      disabledMessage="请先按开始诵经"
-                    />
-                  </div>
-                </div>
-                {/*
-                <div className="bg-white p-6 rounded-3xl border border-zen-accent/5 shadow-sm">
-                  <div className="flex justify-between items-end mb-3">
-                    <div>
-                      <p className="text-[10px] uppercase tracking-widest text-zen-accent/50 font-bold">{t('merit_progress')}</p>
-                      <p className="text-sm font-serif mt-1">{count} / 1000</p>
-                    </div>
-                    <p className="text-xs font-bold text-zen-accent">{Math.round(Math.min(100, (count / 1000) * 100))}%</p>
-                  </div>
-                  <div className="h-3 w-full bg-zen-bg rounded-full overflow-hidden p-0.5">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(100, (count / 1000) * 100)}%` }}
-                      transition={{ type: "spring", stiffness: 100, damping: 20 }}
-                      className="h-full bg-zen-accent rounded-full shadow-[0_0_10px_rgba(139,94,60,0.3)]"
-                    />
-                  </div>
-                </div>
-                */}
-
-
-                {/* Goal Achieved Modal */}
-                <AnimatePresence>
-                  {showGoalAchievedModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                        className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl text-center"
-                      >
-                        <div className="w-20 h-20 mx-auto bg-zen-accent/10 rounded-full flex items-center justify-center mb-6">
-                          <Trophy className="w-10 h-10 text-zen-accent" />
-                        </div>
-                        <h3 className="text-2xl font-serif font-bold text-zen-accent mb-2">修行圆满</h3>
-                        <p className="text-zen-ink/70 mb-8">
-                          您已完成设定的 <span className="font-bold text-zen-accent">{activeScripture.title}</span> 目标。功德无量，法喜充满。
-                        </p>
-                        <div className="flex gap-4">
-                          <button
-                            onClick={() => setShowGoalAchievedModal(false)}
-                            className="flex-1 py-3 rounded-xl font-bold border border-zen-accent/20 text-zen-accent hover:bg-zen-accent/5 transition-colors"
-                          >
-                            继续修行
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowGoalAchievedModal(false);
-                              finishSession();
-                            }}
-                            className="flex-1 py-3 rounded-xl font-bold bg-zen-accent text-white hover:opacity-90 transition-opacity shadow-lg shadow-zen-accent/20"
-                          >
-                            圆满回向
-                          </button>
-                        </div>
-                      </motion.div>
-                    </div>
-                  )}
-                </AnimatePresence>
-
-                {/* Goal Modal */}
-                <AnimatePresence>
-                  {showGoalModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/20 backdrop-blur-sm">
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl"
-                      >
-                        <h3 className="text-lg font-bold mb-4 text-center">设定每日目标</h3>
-                        <p className="text-sm text-center text-zen-accent/60 mb-4">{activeScripture.title}</p>
-                        
-                        <div className="flex bg-zen-bg/50 p-1 rounded-xl mb-6">
-                          <button
-                            onClick={() => setEditingGoalType('count')}
-                            className={cn(
-                              "flex-1 py-2 text-sm font-bold rounded-lg transition-colors",
-                              editingGoalType === 'count' ? "bg-white text-zen-accent shadow-sm" : "text-zen-accent/60"
-                            )}
-                          >
-                            算次数 (自由时间)
-                          </button>
-                          <button
-                            onClick={() => setEditingGoalType('time')}
-                            className={cn(
-                              "flex-1 py-2 text-sm font-bold rounded-lg transition-colors",
-                              editingGoalType === 'time' ? "bg-white text-zen-accent shadow-sm" : "text-zen-accent/60"
-                            )}
-                          >
-                            订时间 (自由次数)
-                          </button>
-                        </div>
-
-                        <div className="flex justify-center flex-wrap gap-4 mb-6">
-                          {editingGoalType === 'count' 
-                            ? [21, 49, 108, 1000, 10000, 100000].map(val => (
-                                <button
-                                  key={val}
-                                  onClick={() => setEditingGoalValue(val)}
-                                  className={cn(
-                                    "px-4 py-2 rounded-xl text-sm font-bold border transition-colors",
-                                    editingGoalValue === val 
-                                      ? "bg-zen-accent text-white border-zen-accent" 
-                                      : "border-zen-accent/20 text-zen-accent/60"
-                                  )}
-                                >
-                                  {val >= 1000 ? `${val / 1000}k` : val}
-                                </button>
-                              ))
-                            : [5, 10, 15, 30, 45, 60].map(val => (
-                                <button
-                                  key={val}
-                                  onClick={() => setEditingGoalValue(val)}
-                                  className={cn(
-                                    "px-4 py-2 rounded-xl text-sm font-bold border transition-colors",
-                                    editingGoalValue === val 
-                                      ? "bg-zen-accent text-white border-zen-accent" 
-                                      : "border-zen-accent/20 text-zen-accent/60"
-                                  )}
-                                >
-                                  {val} 分钟
-                                </button>
-                              ))
-                          }
-                        </div>
-
-                        <div className="flex items-center justify-center gap-2 mb-8">
-                          <input
-                            type="number"
-                            value={editingGoalValue}
-                            onChange={(e) => setEditingGoalValue(parseInt(e.target.value) || 0)}
-                            className="w-24 text-center text-3xl font-serif font-bold bg-transparent border-b-2 border-zen-accent/10 focus:border-zen-accent outline-none py-2"
-                          />
-                          <span className="text-zen-accent/60 font-bold">{editingGoalType === 'count' ? '次' : '分钟'}</span>
-                        </div>
-
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => setShowGoalModal(false)}
-                            className="flex-1 py-3 rounded-xl font-bold text-zen-accent/60 hover:bg-zen-bg transition-colors"
-                          >
-                            取消
-                          </button>
-                          <button
-                            onClick={handleSaveGoal}
-                            className="flex-1 bg-zen-accent text-white py-3 rounded-xl font-bold hover:opacity-90 transition-opacity"
-                          >
-                            确认
-                          </button>
-                        </div>
-                      </motion.div>
-                    </div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </motion.div>
-          )}
+            return (
+              <WoodenFishPracticeView
+                key="fish"
+                activeScripture={activeScripture}
+                allScriptures={allScriptures}
+                dailyPractice={dailyPractice}
+                dailyCounts={dailyCounts}
+                recentScriptureIds={recentScriptureIds}
+                goalType={activeGoalType}
+                goalValue={activeGoalValue}
+                unit={activeUnit}
+                todayCount={dailyCounts[activeScriptureId] || 0}
+                sessionCount={sessionCount}
+                isSessionActive={isSessionActive}
+                sessionStartTime={sessionStartTime}
+                sessionTimeLeft={sessionTimeLeft}
+                volume={volume}
+                soundType={soundType}
+                onChangeVolume={setVolume}
+                onChangeSoundType={setSoundType}
+                appearance={woodenFishAppearance}
+                showMeritFloat={showMeritFloat}
+                meritFloatText={activeScripture.category === 'name' ? activeScripture.title : t('merit_plus_one')}
+                dedicationText={resolveFishDedicationText(fishDedicationChoice, fishCustomDedication)}
+                personalVow={personalVow}
+                autoOpenRitual={openRitualOnFishEnter}
+                onAutoOpenRitualConsumed={() => setOpenRitualOnFishEnter(false)}
+                theme={theme}
+                completionSignal={fishCompletionSignal}
+                onSelectScripture={(scripture) => {
+                  resetFishSession();
+                  setActiveScriptureId(scripture.id);
+                  setSelectedChant(scripture.title);
+                  setRecentScriptureIds(practiceService.recordRecentScriptureId(scripture.id));
+                }}
+                onUpdateDailyPractice={handleUpdateDailyPractice}
+                onOpenLibrary={() => setActiveTab('scripture')}
+                onOpenGoalModal={() => {
+                  setEditingGoalType((scriptureGoalTypes || {})[activeScriptureId] || 'count');
+                  setEditingGoalValue((scriptureGoals || {})[activeScriptureId] || 108);
+                  setShowGoalModal(true);
+                }}
+                onHit={handleHit}
+                onResetSession={resetFishSession}
+                onRecordSession={recordFishSession}
+                onBack={() => navigateTo('dashboard')}
+              />
+            );
+          })()}
 
           {activeTab === 'meditation' && (
             <motion.div
@@ -2265,24 +2458,30 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="w-full space-y-8"
+              className="w-full"
             >
               <React.Suspense fallback={<ZenSuspenseFallback text="正在载入禅修空间..." />}>
-                <Meditation onFinish={(session) => {
-                  const newSession = {
-                    id: Date.now(),
-                    chant: session.trackTitle,
-                    count: Math.floor(session.duration / 60),
-                    startTime: Date.now() - session.duration * 1000,
-                    endTime: Date.now(),
-                    duration: session.duration,
-                    dedication: session.dedication,
-                    vow: session.vow,
-                    type: '禅修',
-                    source: '禅修',
-                  };
-                  addHistoryItem(newSession);
-                }} />
+                <Meditation
+                  presetDuration={meditationPresetDuration}
+                  onPresetConsumed={() => setMeditationPresetDuration(null)}
+                  onImmersiveChange={setImmersive}
+                  onFinish={(session) => {
+                    const newSession = {
+                      id: Date.now(),
+                      chant: session.trackTitle,
+                      count: Math.max(1, Math.floor(session.duration)),
+                      startTime: Date.now() - session.duration * 60 * 1000,
+                      endTime: Date.now(),
+                      duration: session.duration * 60,
+                      dedication: session.dedication,
+                      vow: session.vow,
+                      ...(session.mood ? { mood: session.mood } : {}),
+                      type: '禅修',
+                      source: '禅修',
+                    };
+                    addHistoryItem(newSession);
+                  }}
+                />
               </React.Suspense>
             </motion.div>
           )}
@@ -2295,52 +2494,28 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="w-full"
             >
-              <React.Suspense fallback={<ZenSuspenseFallback text="正在载入发愿修行..." />}>
-                <VowPractice 
-                  initialSection={vowInitialSection} 
-                  user={user} 
-                  onLevelUp={triggerLevelUpAnimation} 
-                />
-              </React.Suspense>
-            </motion.div>
-          )}
-
-          {activeTab === 'merit' && (
-            <motion.div
-              key="merit"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-              className="h-full"
-            >
-              <React.Suspense fallback={<div className="flex items-center justify-center min-h-[300px] text-zen-accent/60">正在加载功德地图...</div>}>
-                <MeritMap theme={theme} />
-              </React.Suspense>
-            </motion.div>
-          )}
-
-          {activeTab === 'history' && (
-            <motion.div
-              key="history"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="max-w-2xl mx-auto w-full"
-            >
-              <div className="bg-white rounded-[40px] p-6 sm:p-8 shadow-sm border border-zen-accent/5">
+              <React.Suspense fallback={<ZenSuspenseFallback text="正在载入愿簿..." />}>
+                <VowBookView
+                  activeSegment={vowBookSegment}
+                  onSegmentChange={setVowBookSegment}
+                  vowSubSection={vowFeatureSection}
+                  onVowSubSectionChange={setVowFeatureSection}
+                  user={user}
+                  onLevelUp={triggerLevelUpAnimation}
+                  historyContent={
+                    <div className="bg-surface rounded-2xl p-6 sm:p-8 border border-line">
                 {/* Permanent Vault Safety Banner */}
-                <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-white border border-emerald-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="mb-6 p-4 rounded-2xl bg-accent-mist border border-line-strong flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <div className="w-9 h-9 rounded-xl bg-surface text-accent border border-line flex items-center justify-center shrink-0">
                       <ShieldCheck className="w-5 h-5" />
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                      <div className="text-xs font-bold text-ink flex items-center gap-1.5">
                         打卡记录双重金库 (永久保护)
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
                       </div>
-                      <p className="text-[11px] text-emerald-800/80">
+                      <p className="text-[11px] text-ink-2">
                         LocalStorage + IndexedDB 永久保存 · 累计 {history.length} 条打卡记录安全在库
                       </p>
                     </div>
@@ -2348,7 +2523,7 @@ export default function App() {
                   <div className="flex items-center gap-2 self-end sm:self-auto">
                     <button
                       onClick={() => setShowExportModal(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-on-accent rounded-xl text-xs font-semibold transition-colors"
                       title="打开数据同步 (备份与恢复)"
                     >
                       <ShieldCheck className="w-3.5 h-3.5" />
@@ -2367,7 +2542,7 @@ export default function App() {
                         document.body.removeChild(a);
                         URL.revokeObjectURL(url);
                       }}
-                      className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-medium shadow-xs transition-colors"
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-2 text-accent border border-line-strong rounded-xl text-xs font-medium transition-colors"
                       title="一键下载打卡记录备份"
                     >
                       <Download className="w-3.5 h-3.5" />
@@ -2442,7 +2617,7 @@ export default function App() {
                                 exit={{ opacity: 0, y: 10 }}
                                 className="absolute right-0 top-full mt-2 z-50"
                               >
-                                <React.Suspense fallback={<div className="p-4 bg-white rounded-2xl shadow-md text-xs text-zen-accent/60 text-center">日历载入中...</div>}>
+                                <React.Suspense fallback={<div className="p-4 bg-surface rounded-2xl border border-line shadow-float text-xs text-ink-2 text-center">日历载入中...</div>}>
                                   <CustomCalendar 
                                     selectedDate={parseISO(selectedDate)} 
                                     onSelectDate={(date: any) => {
@@ -2481,24 +2656,24 @@ export default function App() {
                       exit={{ opacity: 0, height: 0 }}
                       className="overflow-hidden mb-8"
                     >
-                      <div className="bg-zen-bg/30 rounded-3xl p-6 border border-zen-accent/10">
-                        <h3 className="font-bold text-lg mb-4 text-zen-accent">补录功德</h3>
+                      <div className="bg-surface-2 rounded-2xl p-6 border border-line">
+                        <h3 className="font-bold text-lg mb-4 text-accent">补录功德</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                           <div>
-                            <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">时间</label>
+                            <label className="block text-xs font-bold text-ink-2 mb-1 uppercase tracking-wider">时间</label>
                             <input
                               type="datetime-local"
                               value={newRecordDate}
                               onChange={(e) => setNewRecordDate(e.target.value)}
-                              className="w-full bg-white border border-zen-accent/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zen-accent/30"
+                              className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">修行内容</label>
+                            <label className="block text-xs font-bold text-ink-2 mb-1 uppercase tracking-wider">修行内容</label>
                             <select
                               value={newRecordType}
                               onChange={(e) => setNewRecordType(e.target.value as any)}
-                              className="w-full bg-white border border-zen-accent/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zen-accent/30"
+                              className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent"
                             >
                               <option value="诵经">诵经</option>
                               <option value="禅修">禅修</option>
@@ -2506,11 +2681,11 @@ export default function App() {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">具体项目</label>
+                            <label className="block text-xs font-bold text-ink-2 mb-1 uppercase tracking-wider">具体项目</label>
                             <select
                               value={newRecordChant}
                               onChange={(e) => setNewRecordChant(e.target.value)}
-                              className="w-full bg-white border border-zen-accent/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zen-accent/30"
+                              className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent"
                             >
                               <option value="功德 +1">功德 +1</option>
                               {allScriptures.map(s => (
@@ -2522,50 +2697,50 @@ export default function App() {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">数量 (遍/声)</label>
+                            <label className="block text-xs font-bold text-ink-2 mb-1 uppercase tracking-wider">数量 (遍/声)</label>
                             <input
                               type="number"
                               min="1"
                               value={newRecordCount}
                               onChange={(e) => setNewRecordCount(parseInt(e.target.value) || 0)}
-                              className="w-full bg-white border border-zen-accent/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zen-accent/30"
+                              className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">时长 (分钟)</label>
+                            <label className="block text-xs font-bold text-ink-2 mb-1 uppercase tracking-wider">时长 (分钟)</label>
                             <input
                               type="number"
                               min="1"
                               value={newRecordDuration}
                               onChange={(e) => setNewRecordDuration(parseInt(e.target.value) || 0)}
-                              className="w-full bg-white border border-zen-accent/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zen-accent/30"
+                              className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent"
                             />
                           </div>
                         </div>
                         <div className="space-y-4 mb-4">
                           <div>
-                            <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">功德回向 (选填)</label>
+                            <label className="block text-xs font-bold text-ink-2 mb-1 uppercase tracking-wider">功德回向 (选填)</label>
                             <textarea
                               value={newRecordDedication}
                               onChange={(e) => setNewRecordDedication(e.target.value)}
                               placeholder="愿以此功德，庄严佛净土..."
-                              className="w-full bg-white border border-zen-accent/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zen-accent/30 resize-none h-20"
+                              className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent resize-none h-20"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-zen-accent/60 mb-1 uppercase tracking-wider">发愿 (选填)</label>
+                            <label className="block text-xs font-bold text-ink-2 mb-1 uppercase tracking-wider">发愿 (选填)</label>
                             <textarea
                               value={newRecordVow}
                               onChange={(e) => setNewRecordVow(e.target.value)}
                               placeholder="我愿..."
-                              className="w-full bg-white border border-zen-accent/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zen-accent/30 resize-none h-20"
+                              className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent resize-none h-20"
                             />
                           </div>
                         </div>
                         <div className="flex gap-3">
                           <button
                             onClick={() => setShowAddRecord(false)}
-                            className="flex-1 bg-white text-zen-accent/60 py-2 rounded-xl text-sm font-bold hover:bg-zen-accent/5 transition-colors"
+                            className="flex-1 bg-surface border border-line text-ink-2 py-2 rounded-xl text-sm font-bold hover:bg-accent-mist transition-colors"
                           >
                             取消
                           </button>
@@ -2592,7 +2767,7 @@ export default function App() {
                                 setNewRecordVow("");
                               }
                             }}
-                            className="flex-1 bg-zen-accent text-white py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+                            className="flex-1 bg-accent text-on-accent py-2 rounded-xl text-sm font-bold hover:bg-accent-hover transition-colors"
                           >
                             确认补录
                           </button>
@@ -2603,28 +2778,28 @@ export default function App() {
                 </AnimatePresence>
 
                 {filteredHistory.length === 0 ? (
-                  <div className="text-center py-12 px-4 rounded-3xl bg-zen-bg/20 border border-zen-accent/5 my-4">
-                    <div className="w-12 h-12 rounded-full bg-zen-accent/10 text-zen-accent flex items-center justify-center mx-auto mb-3">
+                  <div className="text-center py-12 px-4 rounded-2xl bg-surface-2 border border-line my-4">
+                    <div className="w-12 h-12 rounded-full bg-accent-mist text-accent flex items-center justify-center mx-auto mb-3">
                       <Heart className="w-6 h-6" />
                     </div>
-                    <p className="text-sm font-medium text-zen-ink mb-1">
+                    <p className="text-sm font-medium text-ink mb-1">
                       {historyPeriod === 'daily' ? '所选日期暂无打卡记录' : '当前时段暂无打卡记录'}
                     </p>
-                    <p className="text-xs text-zen-accent/60 max-w-sm mx-auto mb-4">
-                      您累计已有 <span className="font-bold text-zen-accent">{history.length}</span> 条打卡记录安全保存在双重金库中。
+                    <p className="text-xs text-ink-2 max-w-sm mx-auto mb-4">
+                      您累计已有 <span className="font-bold text-accent">{history.length}</span> 条打卡记录安全保存在双重金库中。
                     </p>
                     <div className="flex justify-center gap-2">
                       {historyPeriod !== 'all' && history.length > 0 && (
                         <button
                           onClick={() => setHistoryPeriod('all')}
-                          className="px-4 py-2 bg-white border border-zen-accent/20 rounded-xl text-xs font-semibold text-zen-ink hover:bg-zen-bg transition-colors"
+                          className="px-4 py-2 bg-surface border border-line-strong rounded-xl text-xs font-semibold text-ink hover:bg-surface-2 transition-colors"
                         >
                           查看全部 ({history.length}) 条记录
                         </button>
                       )}
                       <button
                         onClick={() => setActiveTab('fish')}
-                        className="px-4 py-2 bg-zen-accent text-white rounded-xl text-xs font-bold hover:opacity-90 transition-opacity"
+                        className="px-4 py-2 bg-accent text-on-accent rounded-xl text-xs font-bold hover:bg-accent-hover transition-colors"
                       >
                         去敲木鱼打卡
                       </button>
@@ -2666,6 +2841,9 @@ export default function App() {
                           <p className="text-[10px] text-zen-accent/40 mt-1">
                             {format(new Date(item.endTime), 'yyyy年M月d日 HH:mm')} · {item.duration >= 60 ? `${Math.floor(item.duration / 60)}分${item.duration % 60}秒` : `${item.duration}秒`}
                             {item.source && ` · 来自${item.source === '木鱼' ? '诵经' : item.source}`}
+                            {item.ritualMode && ` · ${ritualService.formatRunModeLabel(item.ritualMode)}`}
+                            {item.dedicationTarget && ` · 发愿对象：${item.dedicationTarget}`}
+                            {item.mood && ` · 此刻的心：${item.mood}`}
                           </p>
                           {(item.dedication || item.vow) && (
                             <div className="mt-3 pt-3 border-t border-zen-accent/5 space-y-2">
@@ -2685,7 +2863,12 @@ export default function App() {
                           )}
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="font-serif text-lg text-zen-accent">+{item.count}</p>
+                          <p className="font-serif text-lg text-zen-accent">
+                            {(() => {
+                              const displayUnit = getHistoryDisplayUnit(item);
+                              return `+${item.count}${displayUnit ? ` ${displayUnit}` : ''}`;
+                            })()}
+                          </p>
                           <p className="text-[10px] text-zen-accent/40 uppercase tracking-widest font-bold">功德</p>
                         </div>
                       </div>
@@ -2693,6 +2876,24 @@ export default function App() {
                   </div>
                 )}
               </div>
+                  }
+                />
+              </React.Suspense>
+            </motion.div>
+          )}
+
+          {activeTab === 'merit' && (
+            <motion.div
+              key="merit"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+              className="h-full"
+            >
+              <React.Suspense fallback={<div className="flex items-center justify-center min-h-[300px] text-accent">正在加载功德地图...</div>}>
+                <MeritMap theme={theme} />
+              </React.Suspense>
             </motion.div>
           )}
 
@@ -2706,45 +2907,45 @@ export default function App() {
             >
               {/* Community Feed */}
               <div className="space-y-4">
-                <div className="bg-zen-accent/5 rounded-2xl p-3 border border-zen-accent/10 flex gap-2 items-center">
-                  <div className="p-1.5 bg-white rounded-lg text-zen-accent shrink-0">
+                <div className="bg-accent-mist rounded-2xl p-3 border border-line flex gap-2 items-center">
+                  <div className="p-1.5 bg-surface rounded-lg text-accent shrink-0 border border-line">
                     <Sparkles className="w-4 h-4" />
                   </div>
-                  <p className="text-[10px] text-teal-600 leading-relaxed">
+                  <p className="text-[10px] text-ink-2 leading-relaxed">
                     随喜赞叹，是修心最快的法门之一。因为当你真心为别人的善而欢喜，你的心已经离开嫉妒，走向慈悲。随喜，是与善同行。赞叹，是让善在世间继续发光。
                   </p>
                 </div>
 
-                <div className="bg-white rounded-2xl p-4 shadow-sm border border-zen-accent/5 flex items-center justify-between">
+                <div className="bg-surface rounded-2xl p-4 border border-line flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Heart className="w-4 h-4 text-zen-accent" />
-                    <span className="font-bold text-sm text-zen-ink">随喜赞叹</span>
+                    <Heart className="w-4 h-4 text-accent" />
+                    <span className="font-bold text-sm text-ink">随喜赞叹</span>
                   </div>
                   <div className="flex gap-4 text-center">
                     <div>
-                      <p className="text-[10px] text-zen-accent/50 uppercase tracking-widest font-bold">今日</p>
+                      <p className="text-[10px] text-ink-3 uppercase tracking-widest font-bold">今日</p>
                       <p className="text-sm font-serif font-semibold">{rejoiceStats.today}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-zen-accent/50 uppercase tracking-widest font-bold">本周</p>
+                      <p className="text-[10px] text-ink-3 uppercase tracking-widest font-bold">本周</p>
                       <p className="text-sm font-serif font-semibold">{rejoiceStats.week}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-zen-accent/50 uppercase tracking-widest font-bold">总计</p>
+                      <p className="text-[10px] text-ink-3 uppercase tracking-widest font-bold">总计</p>
                       <p className="text-sm font-serif font-semibold">{rejoiceStats.total}</p>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between px-2">
                   <h3 className="font-bold text-lg flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-zen-accent" />
+                    <Sparkles className="w-5 h-5 text-accent" />
                     {t('community_feed')}
                   </h3>
                   <div className="flex items-center gap-2">
                     <select
                       value={communityPeriod}
                       onChange={(e) => setCommunityPeriod(e.target.value as any)}
-                      className="bg-zen-bg/50 border border-zen-accent/10 rounded-xl px-3 py-2 text-sm text-zen-ink focus:outline-none focus:border-zen-accent/30 hover:bg-zen-bg transition-colors cursor-pointer"
+                      className="bg-surface-2 border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent hover:bg-surface transition-colors cursor-pointer"
                     >
                       <option value="daily">按日</option>
                       <option value="monthly">按月</option>
@@ -2756,7 +2957,7 @@ export default function App() {
                       <div className="relative">
                         <button 
                           onClick={() => setShowCommunityCalendarModal(!showCommunityCalendarModal)}
-                          className="bg-zen-bg/50 border border-zen-accent/10 rounded-xl px-4 py-2 text-sm text-zen-ink focus:outline-none focus:border-zen-accent/30 flex items-center gap-2 hover:bg-zen-bg transition-colors"
+                          className="bg-surface-2 border border-line rounded-xl px-4 py-2 text-sm text-ink focus:outline-none focus:border-accent flex items-center gap-2 hover:bg-surface transition-colors"
                         >
                           {communityPeriod === 'daily' ? communitySelectedDate : communityPeriod === 'monthly' ? communitySelectedDate.substring(0, 7) : communitySelectedDate.substring(0, 4)}
                         </button>
@@ -2769,7 +2970,7 @@ export default function App() {
                               exit={{ opacity: 0, y: 10 }}
                               className="absolute right-0 top-full mt-2 z-50"
                             >
-                              <React.Suspense fallback={<div className="p-4 bg-white rounded-2xl shadow-md text-xs text-zen-accent/60 text-center">日历载入中...</div>}>
+                              <React.Suspense fallback={<div className="p-4 bg-surface rounded-2xl border border-line shadow-float text-xs text-ink-2 text-center">日历载入中...</div>}>
                                 <CustomCalendar 
                                   selectedDate={parseISO(communitySelectedDate)} 
                                   onSelectDate={(date: any) => {
@@ -2786,13 +2987,16 @@ export default function App() {
                     )}
                   </div>
                 </div>
+                {isCommunityOffline && (
+                  <p className="text-caption px-2">目前离线，恢复网络后会自动更新</p>
+                )}
                 {filteredCommunityPosts.length === 0 ? (
-                  <div className="text-center py-20 text-zen-accent/30 italic">
+                  <div className="text-center py-20 text-ink-3 italic">
                     该时间段暂无共修记录。
                   </div>
                 ) : (
                   filteredCommunityPosts.map((post) => (
-                    <div key={post.id} className="bg-white rounded-[24px] p-6 shadow-sm border border-zen-accent/5">
+                    <div key={post.id} className="bg-surface rounded-2xl p-6 border border-line">
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-zen-bg flex items-center justify-center text-zen-accent font-bold text-sm">
@@ -2934,15 +3138,15 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="max-w-2xl mx-auto w-full space-y-6"
             >
-              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
-                <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-zen-accent" />
+              <div className="bg-surface rounded-2xl p-8 border border-line">
+                <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-ink">
+                  <Settings className="w-5 h-5 text-accent" />
                   {t('preferences')}
                 </h2>
 
                 <div className="space-y-8">
                   {['chewsj07@gmail.com'].includes(auth.currentUser?.email || '') && (
-                    <div className="bg-white rounded-[30px] sm:rounded-[40px] p-4 sm:p-8 shadow-sm border border-zen-accent/5">
+                    <div className="bg-surface-2 rounded-2xl p-4 sm:p-8 border border-line">
                       <h2 className="text-lg sm:text-xl font-bold mb-4 sm:mb-6 flex items-center gap-2">
                         <Music className="w-5 h-5 text-zen-accent" />
                         音频管理 (Admin)
@@ -3081,22 +3285,22 @@ export default function App() {
                               <label className="block text-sm font-bold text-zen-accent/70 mb-3">{t('theme')}</label>
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 {[
-                                  { id: 'zen', label: t('theme_zen'), color: '#f5f5f0' },
-                                  { id: 'lotus', label: t('theme_lotus'), color: '#fff0f5' },
-                                  { id: 'sky', label: t('theme_sky'), color: '#f0f8ff' },
-                                  { id: 'dark', label: t('theme_dark'), color: '#1a1a1a' }
+                                  { id: 'zen', label: t('theme_zen'), color: '#FAF9F5' },
+                                  { id: 'lotus', label: t('theme_lotus'), color: '#FBF5F4' },
+                                  { id: 'sky', label: t('theme_sky'), color: '#F4F7F8' },
+                                  { id: 'dark', label: t('theme_dark'), color: '#121614' }
                                 ].map((t) => (
                                   <button
                                     key={t.id}
                                     onClick={() => setTheme(t.id as any)}
                                     className={cn(
                                       "rounded-2xl flex flex-col items-center justify-center gap-2 border-2 transition-all p-3",
-                                      theme === t.id ? "border-zen-accent scale-105 shadow-md" : "border-transparent hover:scale-105"
+                                      theme === t.id ? "border-accent scale-105" : "border-line hover:scale-105"
                                     )}
                                     style={{ backgroundColor: t.color }}
                                   >
-                                    <div className={cn("w-4 h-4 rounded-full", theme === t.id ? "bg-zen-accent" : "bg-black/10")} />
-                                    <span className={cn("text-xs font-bold text-center", t.id === 'dark' ? "text-gray-400" : "text-zen-accent")}>{t.label}</span>
+                                    <div className={cn("w-4 h-4 rounded-full", theme === t.id ? "bg-accent" : "bg-black/15")} />
+                                    <span className={cn("text-xs font-bold text-center", t.id === 'dark' ? "text-[#E7E9E4]" : "text-ink")}>{t.label}</span>
                                   </button>
                                 ))}
                               </div>
@@ -3117,8 +3321,8 @@ export default function App() {
                                     className={cn(
                                       "flex-1 py-3 rounded-xl text-sm font-bold transition-all border",
                                       fontSize === s.id
-                                        ? "bg-zen-accent text-white border-zen-accent shadow-md"
-                                        : "bg-zen-bg/50 text-zen-accent border-zen-accent/10 hover:border-zen-accent/30"
+                                        ? "bg-accent text-on-accent border-accent"
+                                        : "bg-surface-2 text-accent border-line hover:border-line-strong"
                                     )}
                                   >
                                     {s.label}
@@ -3166,8 +3370,8 @@ export default function App() {
                                     className={cn(
                                       "flex-1 py-3 rounded-xl text-sm font-bold transition-all border",
                                       woodenFishAppearance === a.id
-                                        ? "bg-zen-accent text-white border-zen-accent shadow-md"
-                                        : "bg-zen-bg/50 text-zen-accent border-zen-accent/10 hover:border-zen-accent/30"
+                                        ? "bg-accent text-on-accent border-accent"
+                                        : "bg-surface-2 text-accent border-line hover:border-line-strong"
                                     )}
                                   >
                                     {a.label}
@@ -3188,6 +3392,72 @@ export default function App() {
                               />
                             </div>
 
+                            {/* Show Merit Floating Text Toggle (off by default) */}
+                            <div className="flex items-center justify-between gap-4 p-3 rounded-xl bg-surface-2 border border-line">
+                              <div>
+                                <p className="text-sm font-bold text-ink">显示功德飘字</p>
+                                <p className="text-xs text-ink-3 mt-0.5">默认关闭；开启后敲击时轻柔上浮提示</p>
+                              </div>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={showMeritFloat}
+                                onClick={() => setShowMeritFloat(v => !v)}
+                                className={cn(
+                                  "w-12 h-7 rounded-full p-1 transition-colors shrink-0 flex items-center",
+                                  showMeritFloat ? "bg-accent justify-end" : "bg-line-strong justify-start"
+                                )}
+                              >
+                                <span className="w-5 h-5 rounded-full bg-surface shadow-sm block" />
+                              </button>
+                            </div>
+
+                            {/* WoodenFish Completion Dedication Presets (3 Presets + Custom) */}
+                            <div>
+                              <label className="block text-sm font-bold text-zen-accent/70 mb-2">木鱼圆满回向文</label>
+                              <div className="space-y-2">
+                                {FISH_DEDICATION_PRESETS.map((preset) => (
+                                  <button
+                                    key={preset.id}
+                                    type="button"
+                                    onClick={() => setFishDedicationChoice(preset.id)}
+                                    className={cn(
+                                      "w-full text-left p-3 rounded-xl border transition-colors",
+                                      fishDedicationChoice === preset.id
+                                        ? "bg-accent-mist border-accent text-ink"
+                                        : "bg-surface-2 border-line text-ink-2 hover:border-line-strong"
+                                    )}
+                                  >
+                                    <p className="text-xs font-bold text-accent mb-1">{preset.label}</p>
+                                    <p className="text-xs leading-relaxed">{preset.text}</p>
+                                  </button>
+                                ))}
+
+                                <div
+                                  onClick={() => setFishDedicationChoice('custom')}
+                                  className={cn(
+                                    "w-full text-left p-3 rounded-xl border transition-colors cursor-pointer",
+                                    fishDedicationChoice === 'custom'
+                                      ? "bg-accent-mist border-accent text-ink"
+                                      : "bg-surface-2 border-line text-ink-2 hover:border-line-strong"
+                                  )}
+                                >
+                                  <p className="text-xs font-bold text-accent mb-1.5">自定义回向文</p>
+                                  <textarea
+                                    value={fishCustomDedication}
+                                    onFocus={() => setFishDedicationChoice('custom')}
+                                    onChange={(e) => {
+                                      setFishDedicationChoice('custom');
+                                      setFishCustomDedication(e.target.value);
+                                    }}
+                                    placeholder="写下您自己的回向文..."
+                                    rows={2}
+                                    className="w-full bg-surface/80 border border-line rounded-lg px-2.5 py-2 text-xs text-ink resize-none focus:outline-none focus:border-accent"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
                             {/* Sound Type */}
                             <div>
                               <label className="block text-sm font-bold text-zen-accent/70 mb-2">{t('sound_selection')}</label>
@@ -3203,8 +3473,8 @@ export default function App() {
                                     className={cn(
                                       "flex-1 py-2 rounded-xl text-sm font-bold transition-colors border",
                                       soundType === type.id
-                                        ? "bg-zen-accent text-white border-zen-accent"
-                                        : "bg-zen-bg/50 text-zen-accent border-zen-accent/10 hover:border-zen-accent/30"
+                                        ? "bg-accent text-on-accent border-accent"
+                                        : "bg-surface-2 text-accent border-line hover:border-line-strong"
                                     )}
                                   >
                                     {type.label}
@@ -3277,6 +3547,154 @@ export default function App() {
                     </AnimatePresence>
                   </div>
 
+                  {/* Ritual Preferences */}
+                  <div>
+                    <button
+                      onClick={() => setIsRitualSettingsExpanded(!isRitualSettingsExpanded)}
+                      className="w-full flex items-center justify-between text-sm font-bold text-zen-accent/70 mb-3 hover:text-zen-accent transition-colors"
+                    >
+                      <span>念诵仪轨</span>
+                      <ChevronDown className={cn("w-4 h-4 transition-transform", isRitualSettingsExpanded ? "rotate-180" : "")} />
+                    </button>
+
+                    <AnimatePresence>
+                      {isRitualSettingsExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="space-y-5 pb-4">
+                            {/* Ritual Mode */}
+                            <div>
+                              <label className="block text-sm font-bold text-zen-accent/70 mb-2">仪轨版本</label>
+                              <div className="flex gap-2">
+                                {[
+                                  { id: 'full' as const, label: '完整版（约 4–6 分钟）' },
+                                  { id: 'brief' as const, label: '简要版（约 1 分钟）' },
+                                ].map((opt) => {
+                                  const effectiveMode = ritualService.getEffectiveMode(ritualSettings);
+                                  const active = effectiveMode === opt.id;
+                                  return (
+                                    <button
+                                      key={opt.id}
+                                      onClick={() => {
+                                        const next = ritualService.saveSettings({
+                                          mode: opt.id,
+                                          userChosenMode: true,
+                                        });
+                                        setRitualSettings(next);
+                                      }}
+                                      className={cn(
+                                        "flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-colors border",
+                                        active
+                                          ? "bg-accent text-on-accent border-accent"
+                                          : "bg-surface-2 text-accent border-line hover:border-line-strong"
+                                      )}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-[11px] text-ink-3 mt-1.5 leading-relaxed">
+                                {ritualSettings.hasCompletedFirstRitual
+                                  ? '完整版含调息、礼佛、净口、忏悔、发愿、开经与念诵要点；简要版保留礼佛、发愿与开经偈。'
+                                  : '首次念诵将自动以「完整版」引导仪轨，完成后默认切换为「简要版」，可随时在此调整。'}
+                              </p>
+                            </div>
+
+                            {/* Homage Style */}
+                            <div>
+                              <label className="block text-sm font-bold text-zen-accent/70 mb-2">礼佛方式</label>
+                              <div className="flex gap-2">
+                                {[
+                                  { id: 'bow1' as const, label: '问讯一次' },
+                                  { id: 'prostrate3' as const, label: '礼拜三拜' },
+                                ].map((opt) => (
+                                  <button
+                                    key={opt.id}
+                                    onClick={() => {
+                                      const next = ritualService.saveSettings({
+                                        homageStyle: opt.id,
+                                      });
+                                      setRitualSettings(next);
+                                    }}
+                                    className={cn(
+                                      "flex-1 py-2 rounded-xl text-sm font-bold transition-colors border",
+                                      ritualSettings.homageStyle === opt.id
+                                        ? "bg-accent text-on-accent border-accent"
+                                        : "bg-surface-2 text-accent border-line hover:border-line-strong"
+                                    )}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Pure Mouth Mantra Reps */}
+                            <div>
+                              <label className="block text-sm font-bold text-zen-accent/70 mb-2">净口业真言遍数</label>
+                              <div className="flex gap-2">
+                                {([1, 3, 7] as const).map((rep) => (
+                                  <button
+                                    key={rep}
+                                    onClick={() => {
+                                      const next = ritualService.saveSettings({
+                                        pureMouthReps: rep,
+                                      });
+                                      setRitualSettings(next);
+                                    }}
+                                    className={cn(
+                                      "flex-1 py-2 rounded-xl text-sm font-bold transition-colors border",
+                                      ritualSettings.pureMouthReps === rep
+                                        ? "bg-accent text-on-accent border-accent"
+                                        : "bg-surface-2 text-accent border-line hover:border-line-strong"
+                                    )}
+                                  >
+                                    {rep} 遍
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Show Why */}
+                            <div className="flex items-center justify-between gap-4 py-2 px-3 rounded-xl bg-surface-2 border border-line">
+                              <div>
+                                <p className="text-sm font-bold text-ink">显示「为什么」说明</p>
+                                <p className="text-[11px] text-ink-3">在仪轨每一步右上角显示「为什么？」解说按钮</p>
+                              </div>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={ritualSettings.showWhy}
+                                onClick={() => {
+                                  const next = ritualService.saveSettings({
+                                    showWhy: !ritualSettings.showWhy,
+                                  });
+                                  setRitualSettings(next);
+                                }}
+                                className={cn(
+                                  "w-11 h-6 rounded-full transition-colors relative shrink-0",
+                                  ritualSettings.showWhy ? "bg-accent" : "bg-line-strong"
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "block w-5 h-5 rounded-full bg-surface shadow-sm transition-transform absolute top-0.5",
+                                    ritualSettings.showWhy ? "translate-x-5.5 left-0" : "translate-x-0.5 left-0"
+                                  )}
+                                />
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
                   {/* Meditation Preferences */}
                   <div>
                     <button 
@@ -3311,8 +3729,8 @@ export default function App() {
                                     className={cn(
                                       "flex-1 py-3 rounded-xl text-sm font-bold transition-all border",
                                       meditationWoodenFishAppearance === a.id
-                                        ? "bg-zen-accent text-white border-zen-accent shadow-md"
-                                        : "bg-zen-bg/50 text-zen-accent border-zen-accent/10 hover:border-zen-accent/30"
+                                        ? "bg-accent text-on-accent border-accent"
+                                        : "bg-surface-2 text-accent border-line hover:border-line-strong"
                                     )}
                                   >
                                     {a.label}
@@ -3443,15 +3861,15 @@ export default function App() {
                 </div>
               </div>
 
-              {/* AI Zen Master */}
-              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5" ref={aiSettingsRef}>
+              {/* Vowzen AI Companion */}
+              <div className="bg-surface rounded-2xl p-8 border border-line" ref={aiSettingsRef}>
                 <button 
                   onClick={() => setIsAiSettingsExpanded(!isAiSettingsExpanded)}
-                  className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-zen-accent transition-colors"
+                  className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-accent transition-colors text-ink"
                 >
                   <div className="flex items-center gap-2">
-                    <Brain className="w-5 h-5 text-zen-accent" />
-                    AI 禅师 (AI Zen Master)
+                    <Brain className="w-5 h-5 text-accent" />
+                    愿禅助手 AI 陪伴
                   </div>
                   <ChevronDown className={cn("w-5 h-5 transition-transform", isAiSettingsExpanded ? "rotate-180" : "")} />
                 </button>
@@ -3464,11 +3882,11 @@ export default function App() {
                       exit={{ height: 0, opacity: 0 }}
                       className="overflow-hidden"
                     >
-                      <div className="space-y-6 pt-6">
+                      <div className="space-y-4 pt-6">
                         <div className="flex items-center justify-between">
                           <div>
-                            <h3 className="text-sm font-bold text-zen-accent/70 mb-1">开启 AI 禅师感悟</h3>
-                            <p className="text-xs text-zen-accent/50">在修行结束后获取专属的禅意感悟</p>
+                            <h3 className="text-sm font-bold text-ink-2 mb-1">开启愿禅助手对话与感悟</h3>
+                            <p className="text-xs text-ink-3">以温和、不盲修的方式陪伴日常观心与修行解惑</p>
                           </div>
                           <button
                             onClick={() => {
@@ -3478,46 +3896,16 @@ export default function App() {
                             }}
                             className={cn(
                               "w-12 h-6 rounded-full transition-colors relative",
-                              aiEnabled ? "bg-zen-accent" : "bg-zen-accent/20"
+                              aiEnabled ? "bg-accent" : "bg-surface-2 border border-line"
                             )}
                           >
                             <motion.div
-                              className="w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm"
+                              className="w-5 h-5 bg-surface rounded-full absolute top-0.5 border border-line"
                               animate={{ left: aiEnabled ? "26px" : "2px" }}
                               transition={{ type: "spring", stiffness: 500, damping: 30 }}
                             />
                           </button>
                         </div>
-
-                        {aiEnabled && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            className="space-y-4"
-                          >
-                            <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
-                              <p className="text-xs text-amber-800/80 leading-relaxed">
-                                <b>提示：</b>为了保证应用永久免费，AI 禅师功能需要您提供自己的 Gemini API Key。
-                                <br />
-                                您可以前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-amber-600 underline font-bold">Google AI Studio</a> 免费申请一个 Key。
-                              </p>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-zen-accent/60 mb-2">您的 Gemini API Key</label>
-                              <input
-                                type="password"
-                                value={aiApiKey}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setAiApiKey(val);
-                                  practiceService.saveSettings({ ...practiceService.getSettings(), aiApiKey: val });
-                                }}
-                                placeholder="AIzaSy..."
-                                className="w-full bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent font-mono"
-                              />
-                            </div>
-                          </motion.div>
-                        )}
                       </div>
                     </motion.div>
                   )}
@@ -3525,13 +3913,13 @@ export default function App() {
               </div>
 
               {/* Feedback */}
-              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
+              <div className="bg-surface rounded-2xl p-8 border border-line">
                 <button 
                   onClick={() => setIsFeedbackExpanded(!isFeedbackExpanded)}
-                  className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-zen-accent transition-colors"
+                  className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-accent transition-colors text-ink"
                 >
                   <div className="flex items-center gap-2">
-                    <MessageCircle className="w-5 h-5 text-zen-accent" />
+                    <MessageCircle className="w-5 h-5 text-accent" />
                     用户反馈 (Feedback)
                   </div>
                   <ChevronDown className={cn("w-5 h-5 transition-transform", isFeedbackExpanded ? "rotate-180" : "")} />
@@ -3546,17 +3934,17 @@ export default function App() {
                       className="overflow-hidden"
                     >
                       <div className="space-y-4 pt-6">
-                        <p className="text-sm text-zen-ink/70">
+                        <p className="text-sm text-ink-2">
                           如果您在使用过程中遇到任何问题，或有任何建议，欢迎告诉我们。您的反馈将帮助我们不断改进。
                         </p>
                         <textarea 
                           placeholder="请在此输入您的反馈意见..." 
                           value={feedbackText}
                           onChange={(e) => setFeedbackText(e.target.value)}
-                          className="w-full h-32 bg-zen-bg/50 border border-zen-accent/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-zen-accent resize-none"
+                          className="w-full h-32 bg-surface-2 border border-line rounded-2xl px-4 py-3 text-sm text-ink focus:outline-none focus:border-accent resize-none"
                         ></textarea>
                         {feedbackSuccess && (
-                          <div className="p-3 bg-green-50 text-green-600 text-sm rounded-xl border border-green-100 flex items-center gap-2">
+                          <div className="p-3 bg-accent-mist text-accent text-sm rounded-xl border border-line flex items-center gap-2">
                             <Check className="w-4 h-4" />
                             感谢您的反馈！我们会认真阅读并不断改进。
                           </div>
@@ -3570,7 +3958,7 @@ export default function App() {
                             setTimeout(() => setFeedbackSuccess(false), 3000);
                           }}
                           disabled={!feedbackText.trim()}
-                          className="w-full bg-zen-accent text-white py-3 rounded-2xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                          className="w-full bg-accent text-on-accent py-3 rounded-2xl font-bold hover:bg-accent-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                           <MessageCircle className="w-4 h-4" />
                           提交反馈
@@ -3582,7 +3970,7 @@ export default function App() {
               </div>
 
               {/* System */}
-              <div className="bg-white rounded-[40px] p-8 shadow-sm border border-zen-accent/5">
+              <div className="bg-surface rounded-2xl p-8 border border-line">
                 <button 
                   onClick={() => setIsSystemSettingsExpanded(!isSystemSettingsExpanded)}
                   className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-zen-accent transition-colors"
@@ -3626,11 +4014,11 @@ export default function App() {
                                 a.click();
                                 URL.revokeObjectURL(url);
                               }}
-                              className="flex-1 bg-zen-bg border border-zen-accent/20 text-zen-accent py-3 rounded-2xl font-bold hover:bg-zen-accent/5 transition-colors text-sm"
+                              className="flex-1 bg-surface-2 border border-line-strong text-accent py-3 rounded-2xl font-bold hover:bg-accent-mist transition-colors text-sm"
                             >
                               {t('export_backup')}
                             </button>
-                            <label className="flex-1 bg-zen-accent text-white py-3 rounded-2xl font-bold hover:opacity-90 transition-opacity cursor-pointer text-center text-sm">
+                            <label className="flex-1 bg-accent text-on-accent py-3 rounded-2xl font-bold hover:bg-accent-hover transition-colors cursor-pointer text-center text-sm">
                               {t('restore_data')}
                               <input 
                                 type="file" 
@@ -3663,18 +4051,18 @@ export default function App() {
                         </div>
 
                         {/* Clear Data */}
-                        <div className="border-t border-zen-accent/10 pt-6">
+                        <div className="border-t border-line pt-6">
                           <h3 className="text-sm font-bold text-red-500 mb-3 flex items-center gap-2">
                             <Trash2 className="w-4 h-4" />
                             清除所有数据
                           </h3>
-                          <p className="text-xs text-zen-accent/60 mb-4 leading-relaxed">
+                          <p className="text-xs text-ink-2 mb-4 leading-relaxed">
                             此操作将清除您设备上的所有本地数据（包括功德、历史记录、设置和冥想音频），且不可恢复。如果您已登录，云端数据不会被删除。
                           </p>
                           {!showClearConfirm ? (
                             <button 
                               onClick={() => setShowClearConfirm(true)}
-                              className="w-full bg-red-50 border border-red-200 text-red-600 py-3 rounded-2xl font-bold hover:bg-red-100 transition-colors text-sm"
+                              className="w-full bg-red-500/10 border border-red-500/30 text-red-500 py-3 rounded-2xl font-bold hover:bg-red-500/20 transition-colors text-sm"
                             >
                               清除所有本地数据
                             </button>
@@ -3682,7 +4070,7 @@ export default function App() {
                             <div className="flex gap-4">
                               <button 
                                 onClick={() => setShowClearConfirm(false)}
-                                className="flex-1 bg-zen-bg border border-zen-accent/20 text-zen-accent py-3 rounded-2xl font-bold hover:bg-zen-accent/5 transition-colors text-sm"
+                                className="flex-1 bg-surface-2 border border-line-strong text-accent py-3 rounded-2xl font-bold hover:bg-accent-mist transition-colors text-sm"
                               >
                                 取消
                               </button>
@@ -3709,7 +4097,7 @@ export default function App() {
                         </div>
 
                         {/* Auth Status / Logout */}
-                        <div className="border-t border-zen-accent/10 pt-6">
+                        <div className="border-t border-line pt-6">
                           {!isGuest ? (
                             <button
                               onClick={async () => {
@@ -3719,7 +4107,7 @@ export default function App() {
                                 identityService.logout();
                                 window.dispatchEvent(new CustomEvent('auth_state_changed'));
                               }}
-                              className="w-full bg-zen-bg border border-zen-accent/20 text-zen-accent py-3 rounded-2xl font-bold hover:bg-zen-accent/5 transition-colors text-sm flex items-center justify-center gap-2"
+                              className="w-full bg-surface-2 border border-line-strong text-accent py-3 rounded-2xl font-bold hover:bg-accent-mist transition-colors text-sm flex items-center justify-center gap-2"
                             >
                               <LogOut className="w-4 h-4" />
                               退出登录 (Logout)
@@ -3727,7 +4115,7 @@ export default function App() {
                           ) : (
                             <button
                               onClick={() => setShowAuthModal(true)}
-                              className="w-full bg-zen-accent text-white py-3 rounded-2xl font-bold hover:opacity-90 transition-opacity text-sm flex items-center justify-center gap-2"
+                              className="w-full bg-accent text-on-accent py-3 rounded-2xl font-bold hover:bg-accent-hover transition-colors text-sm flex items-center justify-center gap-2"
                             >
                               <Users className="w-4 h-4" />
                               登录 / 注册 (Login / Register)
@@ -3830,6 +4218,7 @@ export default function App() {
               <ScriptureLibrary
                 allScriptures={allScriptures}
                 activeScriptureId={activeScriptureId}
+                onImmersiveChange={setImmersive}
                 onSelectScripture={(scripture, goToFish) => {
                   setActiveScriptureId(scripture.id);
                   setSelectedChant(scripture.title);
@@ -3855,38 +4244,155 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Fixed Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-zen-accent/10 pb-safe pt-2 px-3 z-50">
-        <div className="flex justify-around items-center max-w-2xl mx-auto">
+      {/* 「观一念」Floating Action Button (Only on 今日/dashboard) */}
+      <ObserveThoughtFab visible={activeTab === 'dashboard' && !immersive} />
+
+      {/* Fixed Bottom Navigation (5 items) */}
+      <nav
+        aria-label="主导航"
+        style={{
+          height: 'calc(64px + env(safe-area-inset-bottom))',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
+        className={cn(
+          "fixed bottom-0 left-0 right-0 z-50 bg-surface/85 backdrop-blur-xl border-t border-line shadow-float px-2 transition-all duration-300 ease-[var(--ease-zen)]",
+          immersive ? "opacity-0 translate-y-full pointer-events-none" : "opacity-100 translate-y-0"
+        )}
+      >
+        <div className="h-16 flex justify-around items-center max-w-2xl mx-auto">
           {[
-            { id: 'dashboard', icon: Target, label: t('tab_dashboard') },
-            { id: 'fish', icon: Heart, label: t('tab_chant') },
-            { id: 'scripture', icon: Book, label: '经文库' },
-            { id: 'meditation', icon: Wind, label: t('tab_meditation') },
-            { id: 'history', icon: History, label: '功德簿' },
-            { id: 'vow', icon: Leaf, label: t('tab_vow') },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id as any);
-                if (tab.id === 'vow') {
-                  setVowInitialSection('setup_vow');
-                }
-              }}
-              className={cn(
-                "flex flex-col items-center gap-1 p-2 rounded-xl transition-all flex-1 min-w-0",
-                activeTab === tab.id 
-                  ? "text-zen-accent" 
-                  : "text-zen-accent/40 hover:text-zen-accent/60"
-              )}
-            >
-              <tab.icon className={cn("w-6 h-6 shrink-0", activeTab === tab.id && "fill-current")} />
-              <span className="text-[10px] font-bold truncate w-full text-center">{tab.label}</span>
-            </button>
-          ))}
+            { id: 'dashboard', icon: Home, label: '今日' },
+            { id: 'fish', icon: Heart, label: '木鱼' },
+            { id: 'meditation', icon: Wind, label: '静坐' },
+            { id: 'scripture', icon: BookOpen, label: '经藏' },
+            { id: 'vow', icon: Leaf, label: '愿簿' },
+          ].map(tab => {
+            const isSelected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => navigateTo(tab.id)}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[48px] min-h-[48px] rounded-2xl transition-colors",
+                  isSelected
+                    ? "text-accent font-semibold"
+                    : "text-ink-3 hover:text-ink-2"
+                )}
+              >
+                <span className="relative inline-flex items-center justify-center px-4 py-1">
+                  {isSelected && (
+                    <motion.span
+                      layoutId="bottom-nav-pill"
+                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                      className="absolute inset-0 bg-accent-mist rounded-full -z-10"
+                    />
+                  )}
+                  <tab.icon size={22} strokeWidth={1.5} className="shrink-0" />
+                </span>
+                <span className="text-[11px] leading-none truncate w-full text-center">
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </nav>
+      {/* Goal Modal (Global z-70 so it layers cleanly above WoodenFishPracticeView) */}
+      <AnimatePresence>
+        {showGoalModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6 bg-black/30 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-surface w-full max-w-sm rounded-3xl p-6 shadow-float border border-line"
+            >
+              <h3 className="text-lg font-bold mb-4 text-center text-ink">设定每日目标</h3>
+              <p className="text-sm text-center text-ink-2 mb-4">{activeScripture.title}</p>
+
+              <div className="flex bg-surface-2 p-1 rounded-xl mb-6">
+                <button
+                  onClick={() => setEditingGoalType('count')}
+                  className={cn(
+                    "flex-1 py-2 text-sm font-bold rounded-lg transition-colors",
+                    editingGoalType === 'count' ? "bg-surface text-accent border border-line" : "text-ink-2"
+                  )}
+                >
+                  算次数 (自由时间)
+                </button>
+                <button
+                  onClick={() => setEditingGoalType('time')}
+                  className={cn(
+                    "flex-1 py-2 text-sm font-bold rounded-lg transition-colors",
+                    editingGoalType === 'time' ? "bg-surface text-accent border border-line" : "text-ink-2"
+                  )}
+                >
+                  订时间 (自由次数)
+                </button>
+              </div>
+
+              <div className="flex justify-center flex-wrap gap-4 mb-6">
+                {editingGoalType === 'count'
+                  ? [21, 49, 108, 1000, 10000, 100000].map(val => (
+                      <button
+                        key={val}
+                        onClick={() => setEditingGoalValue(val)}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-sm font-bold border transition-colors",
+                          editingGoalValue === val
+                            ? "bg-accent text-on-accent border-accent"
+                            : "border-line text-ink-2"
+                        )}
+                      >
+                        {val >= 1000 ? `${val / 1000}k` : val}
+                      </button>
+                    ))
+                  : [5, 10, 15, 30, 45, 60].map(val => (
+                      <button
+                        key={val}
+                        onClick={() => setEditingGoalValue(val)}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-sm font-bold border transition-colors",
+                          editingGoalValue === val
+                            ? "bg-accent text-on-accent border-accent"
+                            : "border-line text-ink-2"
+                        )}
+                      >
+                        {val} 分钟
+                      </button>
+                    ))}
+              </div>
+
+              <div className="flex items-center justify-center gap-2 mb-8">
+                <input
+                  type="number"
+                  value={editingGoalValue}
+                  onChange={(e) => setEditingGoalValue(parseInt(e.target.value) || 0)}
+                  className="w-24 text-center text-3xl font-serif font-bold bg-transparent border-b-2 border-line focus:border-accent outline-none py-2 text-ink"
+                />
+                <span className="text-ink-2 font-bold">{editingGoalType === 'count' ? '次' : '分钟'}</span>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowGoalModal(false)}
+                  className="flex-1 py-3 rounded-xl font-bold text-ink-2 hover:bg-surface-2 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSaveGoal}
+                  className="flex-1 bg-accent text-on-accent py-3 rounded-xl font-bold hover:bg-accent-hover transition-colors"
+                >
+                  确认
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <React.Suspense fallback={null}>
         <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
         <ChangePasswordModal isOpen={showChangePasswordModal} onClose={() => setShowChangePasswordModal(false)} />
@@ -3920,5 +4426,6 @@ export default function App() {
       <Toaster />
       </div>
     </ChantingProvider>
+    </MotionConfig>
   );
 }

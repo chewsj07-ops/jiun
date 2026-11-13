@@ -4,9 +4,10 @@ import { Sparkles, Loader2, Send, ShieldCheck, AlertCircle, Calendar, ChevronDow
 import { useTranslation } from '../../i18n';
 import { parseISO } from 'date-fns';
 import { toast } from 'sonner';
-import { GoogleGenAI } from "@google/genai";
 import { containsBadWords } from '../../utils/badWords';
 import { practiceService } from '../../services/practiceService';
+import { aiGenerate } from '../../services/geminiClient';
+import { ZEN_ASSISTANT_SYSTEM_PROMPT } from '../../data/zenAssistantPrompt';
 import { useFirebase } from '../../contexts/FirebaseContext';
 import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -71,9 +72,9 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
     }
 
     const settings = practiceService.getSettings();
-    if (!settings.aiEnabled || !settings.aiApiKey) {
-      toast.error("AI 禅师未开启或未配置 API Key。", {
-        description: "开启后，AI 禅师将为您提供深度修行洞察。若不开启，您仍可记录自己的修行总结。",
+    if (!settings.aiEnabled) {
+      toast.error("愿禅助手 AI 陪伴尚未开启。", {
+        description: "开启后，愿禅助手将为您提供温和踏实的修行回馈。",
         action: {
           label: "前往设置",
           onClick: () => window.dispatchEvent(new CustomEvent('navigate_to_settings', { detail: { section: 'ai-settings' } }))
@@ -86,43 +87,39 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
     setResult(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: settings.aiApiKey });
       const prompt = `
         用户输入: ${input}
         类型: ${isRepentance ? '忏悔/改过' : '每日一善'}
-        请根据《了凡四训》的五维权重（真、端、阴、正、满）评估此行为。
-        返回以下JSON格式:
+        请以温和踏实、不夸大、不做交易回报承诺的语气回馈用户，并返回以下 JSON 格式:
         {
           "ledger_entry": {
             "deed": "行为概括(限10字)",
-            "liufan_category": "五维评估结果",
-            "mindset_applied": "运用的心法"
+            "liufan_category": "当下心行观察",
+            "mindset_applied": "运用的心念"
           },
           "merit_calculation": {
             "base": 10,
             "multiplier": 1.0,
             "total_this_time": 10,
-            "progress_to_3000": "142/3000"
+            "progress_to_3000": "记录善行"
           },
           "fate_insight": {
-            "current_trend": "趋势(限10字)",
-            "wisdom_quote": "了凡四训名句(最精简)",
-            "daily_habit_task": "明日建议(限15字)"
+            "current_trend": "踏实前行",
+            "wisdom_quote": "一句温和踏实的鼓励或佛法提醒(限24字)",
+            "daily_habit_task": "一个明天可做的小练习(限15字)"
           },
           "visual_cue": "GOLDEN_FLARE"
         }
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+      const responseText = await aiGenerate({
         contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        },
+        systemInstruction: ZEN_ASSISTANT_SYSTEM_PROMPT,
+        responseMimeType: "application/json",
       });
 
-      if (response.text) {
-        const res = JSON.parse(response.text);
+      if (responseText) {
+        const res = JSON.parse(responseText);
         setResult(res);
         
         // Ensure date is in ISO 8601 format with Z
@@ -193,11 +190,11 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
   };
 
   return (
-    <div className="relative bg-white rounded-3xl sm:rounded-[40px] p-6 sm:p-8 shadow-sm border border-zen-accent/5 space-y-6">
+    <div className="relative bg-surface rounded-2xl p-6 sm:p-8 border border-line space-y-6">
       {onClose && (
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 sm:top-6 sm:right-6 p-1.5 sm:p-2 text-zen-ink/40 hover:text-zen-ink hover:bg-zen-accent/10 rounded-full transition-colors z-10"
+          className="absolute top-4 right-4 sm:top-6 sm:right-6 p-1.5 sm:p-2 text-ink-3 hover:text-ink hover:bg-surface-2 rounded-full transition-colors z-10"
           title="关闭"
         >
           <X className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -205,10 +202,10 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
       )}
       
       <div className="flex items-center justify-between gap-2 pr-8 sm:pr-12">
-        <h2 className="text-lg sm:text-2xl font-serif font-bold text-zen-ink whitespace-nowrap shrink-0">每日一善</h2>
+        <h2 className="text-lg sm:text-2xl font-serif font-bold text-ink whitespace-nowrap shrink-0">每日一善</h2>
         <button 
           onClick={() => setIsRepentance(!isRepentance)}
-          className={`flex items-center justify-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-bold whitespace-nowrap shrink-0 ${isRepentance ? 'bg-red-100 text-red-600' : 'bg-zen-bg text-zen-accent'}`}
+          className={`flex items-center justify-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-bold whitespace-nowrap shrink-0 border border-line ${isRepentance ? 'bg-red-500/10 text-red-600' : 'bg-surface-2 text-accent'}`}
         >
           {isRepentance ? <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
           {isRepentance ? '忏悔/改过' : '记录善行'}
@@ -221,9 +218,9 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
           { label: '本周', count: summary.weekCount, filter: 'week' },
           { label: '总计', count: summary.totalCount, filter: 'all' }
         ].map((item, i) => (
-          <button key={i} onClick={() => toggleFilter(item.filter as any)} className={`p-4 rounded-2xl ${activeFilter === item.filter ? 'bg-zen-accent text-white' : 'bg-zen-bg'}`}>
-            <p className={`text-xs mb-1 ${activeFilter === item.filter ? 'text-white/80' : 'text-zen-accent/60'}`}>{item.label}</p>
-            <p className={`text-xl font-bold ${activeFilter === item.filter ? 'text-white' : 'text-zen-ink'}`}>{item.count}</p>
+          <button key={i} onClick={() => toggleFilter(item.filter as any)} className={`p-4 rounded-2xl border transition-colors ${activeFilter === item.filter ? 'bg-accent text-on-accent border-accent' : 'bg-surface-2 border-line'}`}>
+            <p className={`text-xs mb-1 ${activeFilter === item.filter ? 'text-on-accent/80' : 'text-ink-2'}`}>{item.label}</p>
+            <p className={`text-xl font-bold tabular-nums ${activeFilter === item.filter ? 'text-on-accent' : 'text-ink'}`}>{item.count}</p>
           </button>
         ))}
       </div>
@@ -233,9 +230,9 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {filteredHistory.map(h => (
-                <div key={h.id} className="text-xs p-3 bg-zen-bg rounded-xl flex justify-between items-center">
-                  <span>{new Date(h.date).toLocaleString()}</span>
-                  <span className={h.type === 'good' ? 'text-green-600' : 'text-red-600'}>{h.content.substring(0, 10)}...</span>
+                <div key={h.id} className="text-xs p-3 bg-surface-2 border border-line rounded-xl flex justify-between items-center text-ink">
+                  <span className="text-ink-2">{new Date(h.date).toLocaleString()}</span>
+                  <span className={h.type === 'good' ? 'text-accent font-medium' : 'text-red-500 font-medium'}>{h.content.substring(0, 10)}...</span>
                 </div>
               ))}
             </div>
@@ -249,7 +246,7 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
             type="datetime-local"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full p-3 rounded-2xl bg-zen-bg border-none text-sm focus:ring-1 focus:ring-zen-accent outline-none"
+            className="w-full p-3 rounded-2xl bg-surface-2 border border-line text-sm text-ink focus:ring-1 focus:ring-accent focus:border-accent outline-none"
           />
           <div className="grid grid-rows-2 grid-flow-col sm:grid-rows-none sm:grid-cols-4 gap-2 overflow-x-auto pb-2 -mx-2 px-2 sm:mx-0 sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {(isRepentance 
@@ -259,7 +256,7 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
               <button
                 key={tag}
                 onClick={() => setInput(prev => prev ? `${prev}，${tag}` : tag)}
-                className="px-3 py-2 bg-zen-accent/5 text-zen-accent rounded-xl text-xs hover:bg-zen-accent/10 transition-colors flex items-center justify-center text-center leading-tight whitespace-nowrap sm:whitespace-normal"
+                className="px-3 py-2 bg-accent-mist text-accent rounded-xl text-xs hover:bg-accent hover:text-on-accent transition-colors flex items-center justify-center text-center leading-tight whitespace-nowrap sm:whitespace-normal"
               >
                 + {tag}
               </button>
@@ -269,12 +266,12 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={isRepentance ? "输入今日过失..." : "输入今日善行..."}
-            className="w-full h-32 p-4 rounded-2xl bg-zen-bg border-none focus:ring-1 focus:ring-zen-accent outline-none text-sm"
+            className="w-full h-32 p-4 rounded-2xl bg-surface-2 border border-line text-ink placeholder:text-ink-3 focus:ring-1 focus:ring-accent focus:border-accent outline-none text-sm"
           />
           <button
             onClick={handleSend}
             disabled={isLoading}
-            className="w-full bg-zen-accent text-white py-3 rounded-2xl font-bold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full bg-accent text-on-accent hover:bg-accent-hover py-3 rounded-2xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             提交
@@ -286,13 +283,13 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4 text-sm"
         >
-          <div className="p-4 bg-zen-bg rounded-2xl">
-            <p className="font-bold text-zen-accent mb-2">{result.ledger_entry.deed}</p>
-            <p className="text-zen-ink/70">{result.fate_insight.wisdom_quote}</p>
+          <div className="p-4 bg-surface-2 border border-line rounded-2xl">
+            <p className="font-bold text-accent mb-2">{result.ledger_entry.deed}</p>
+            <p className="text-ink-2">{result.fate_insight.wisdom_quote}</p>
           </div>
           <button 
             onClick={() => setResult(null)}
-            className="w-full text-zen-accent text-xs font-bold"
+            className="w-full text-accent hover:text-accent-hover text-xs font-bold"
           >
             继续记录
           </button>

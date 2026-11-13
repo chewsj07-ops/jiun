@@ -1,27 +1,86 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI } from "@google/genai";
+import { AnimatePresence } from 'motion/react';
 import { practiceService } from '../../services/practiceService';
-import { Loader2, Sparkles, Brain, Heart, Leaf, ArrowRight } from 'lucide-react';
+import { aiGenerate } from '../../services/geminiClient';
+import { buildThoughtGuidanceSystemPrompt } from '../../data/zenAssistantPrompt';
+import { Loader2, Brain, ArrowRight, Lock } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import {
+  containsSafetyPauseKeywords,
+  matchOfflineGuidance,
+} from '../../data/offlineGuidance';
+import { SafetyNetCard } from './SafetyNetCard';
+import { GuidanceCards, StructuredGuidance } from './GuidanceCards';
+
+const AI_TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error('AI_TIMEOUT'));
+    }, ms);
+    promise
+      .then((val) => {
+        window.clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        window.clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 export const ThoughtCoach = () => {
   const { t, language } = useTranslation();
-  const [emotion, setEmotion] = useState("");
+  const [emotion, setEmotion] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [response, setResponse] = useState<{
-    observation: string;
-    reflection: string;
-    practice: string;
-    compassion: string;
-  } | null>(null);
+  const [response, setResponse] = useState<StructuredGuidance | null>(null);
+  const [showSafetyNet, setShowSafetyNet] = useState(false);
+  const [safetyDismissedForEdit, setSafetyDismissedForEdit] = useState(false);
+
+  const handleEmotionChange = (nextValue: string) => {
+    setEmotion(nextValue);
+    if (containsSafetyPauseKeywords(nextValue)) {
+      if (!safetyDismissedForEdit) {
+        setShowSafetyNet(true);
+        setResponse(null);
+      }
+    } else {
+      setShowSafetyNet(false);
+      setSafetyDismissedForEdit(false);
+    }
+  };
+
+  const applyOfflineFallback = (text: string) => {
+    const matched = matchOfflineGuidance({
+      freeText: text,
+      eventText: text,
+    });
+    setResponse({
+      observe: matched.observe,
+      reflect: matched.reflect,
+      act: matched.act,
+      compassion: matched.compassion,
+      verse: matched.verse,
+      isOffline: true,
+    });
+  };
 
   const handleAnalyze = async () => {
-    if (!emotion.trim()) return;
-    
+    const trimmed = emotion.trim();
+    if (!trimmed) return;
+
+    // Safety Net: never call AI or display 4-step guidance on crisis or severe distress content
+    if (containsSafetyPauseKeywords(trimmed)) {
+      setResponse(null);
+      setShowSafetyNet(true);
+      return;
+    }
+
     const settings = practiceService.getSettings();
-    if (!settings.aiEnabled || !settings.aiApiKey) {
-      alert("AI 禅师未开启或未配置 API Key。请前往「设置」->「AI 禅师」中开启。");
+    if (!settings.aiEnabled) {
+      applyOfflineFallback(trimmed);
       return;
     }
 
@@ -29,138 +88,109 @@ export const ThoughtCoach = () => {
     setResponse(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: settings.aiApiKey });
-      const prompt = `
-        User is feeling: "${emotion}".
-        Current language: "${language}".
-        Act as a gentle, non-judgmental mindfulness coach inspired by Ksitigarbha's compassion.
-        Provide a response in JSON format with exactly these 4 fields:
-        1. observation: Acknowledge the feeling gently (e.g., "Anger seems to be arising").
-        2. reflection: A brief Buddhist-inspired philosophical insight (non-self, impermanence).
-        3. practice: A simple, immediate mindfulness action (breathing, noting).
-        4. compassion: A short wish for the user and others.
-        
-        Keep it concise, warm, and soothing.
-        Response must be valid JSON.
-        IMPORTANT: The response content MUST be in the "${language}" language.
-      `;
+      const prompt = `用户输入的心念或情绪感受：\n"${trimmed}"`;
 
-      const result = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
+      const text = await withTimeout(
+        aiGenerate({
+          contents: prompt,
+          systemInstruction: buildThoughtGuidanceSystemPrompt(language),
+          responseMimeType: 'application/json',
+        }),
+        AI_TIMEOUT_MS
+      );
 
-      if (result.text) {
-        setResponse(JSON.parse(result.text));
+      if (text) {
+        const parsed = JSON.parse(text);
+        if (
+          parsed &&
+          parsed.observation &&
+          parsed.reflection &&
+          parsed.practice &&
+          parsed.compassion
+        ) {
+          setResponse({
+            observe: String(parsed.observation),
+            reflect: String(parsed.reflection),
+            act: String(parsed.practice),
+            compassion: String(parsed.compassion),
+            verse: parsed.verse ? String(parsed.verse) : undefined,
+            isOffline: false,
+          });
+          return;
+        }
       }
-    } catch (error) {
-      console.error("AI Error:", error);
-      // Fallback
-      setResponse({
-        observation: "This feeling is present right now.",
-        reflection: "Like clouds in the sky, emotions come and go.",
-        practice: "Take three deep breaths and watch the feeling change.",
-        compassion: "May you be free from suffering and find peace."
-      });
+      applyOfflineFallback(trimmed);
+    } catch {
+      // Silent seamless fallback to offline guidance (no error modal or toast)
+      applyOfflineFallback(trimmed);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleOpenThreeMinMeditation = () => {
+    window.dispatchEvent(
+      new CustomEvent('open-meditation-preset', {
+        detail: { duration: 3 },
+      })
+    );
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="bg-white/50 p-6 rounded-3xl border border-zen-accent/5 backdrop-blur-sm">
-        <h3 className="text-lg font-bold text-zen-accent mb-4 flex items-center gap-2">
-          <Brain className="w-5 h-5" />
-          {t('thought_coach_title')}
+    <div className="space-y-5">
+      <div className="flex items-center gap-1.5 text-caption px-1">
+        <Lock size={13} strokeWidth={1.5} className="text-ink-3 shrink-0" />
+        <span>这里写下的只存在你的设备里，不会公开。</span>
+      </div>
+
+      <div className="bg-surface p-6 rounded-2xl border border-line space-y-4">
+        <h3 className="text-title text-ink flex items-center gap-2">
+          <Brain className="w-5 h-5 text-accent" strokeWidth={1.5} />
+          <span>{t('thought_coach_title')}</span>
         </h3>
-        
+
         <div className="relative">
           <textarea
             value={emotion}
-            onChange={(e) => setEmotion(e.target.value)}
+            onChange={(e) => handleEmotionChange(e.target.value)}
             placeholder={t('thought_coach_placeholder')}
-            className="w-full bg-white p-4 rounded-2xl border border-zen-accent/10 focus:outline-none focus:border-zen-accent/30 min-h-[100px] resize-none text-zen-ink"
+            className="w-full bg-surface-2 p-4 pb-12 rounded-2xl border border-line focus:outline-none focus:border-accent min-h-[120px] resize-none text-ink placeholder:text-ink-3 leading-relaxed"
           />
           <button
+            type="button"
             onClick={handleAnalyze}
             disabled={isLoading || !emotion.trim()}
-            className="absolute bottom-3 right-3 bg-zen-accent text-white p-2 rounded-xl disabled:opacity-50 hover:scale-105 transition-transform"
+            aria-label="倾听此刻"
+            className="absolute bottom-3 right-3 bg-accent text-on-accent hover:bg-accent-hover h-10 px-3.5 rounded-full disabled:opacity-45 transition-all flex items-center gap-1.5 text-xs font-medium"
           >
-            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <span>观照</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      <AnimatePresence>
-        {response && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="space-y-4"
-          >
-            <div className="bg-white p-6 rounded-3xl border border-zen-accent/10 shadow-sm space-y-6">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-zen-accent/60 text-xs font-bold uppercase tracking-wider">
-                  <Leaf className="w-4 h-4" />
-                  {t('coach_observation')}
-                </div>
-                <p className="text-zen-ink font-serif text-lg">{response.observation}</p>
-              </div>
+      <AnimatePresence mode="wait">
+        {showSafetyNet && (
+          <SafetyNetCard
+            key="coach-safety-net"
+            onMeditate={handleOpenThreeMinMeditation}
+            onContinue={() => {
+              setSafetyDismissedForEdit(true);
+              setShowSafetyNet(false);
+            }}
+          />
+        )}
 
-              <div className="h-px bg-zen-accent/5" />
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-zen-accent/60 text-xs font-bold uppercase tracking-wider">
-                  <Sparkles className="w-4 h-4" />
-                  {t('coach_reflection')}
-                </div>
-                <p className="text-zen-ink/80 italic">{response.reflection}</p>
-              </div>
-
-              <div className="bg-zen-bg/50 p-4 rounded-2xl space-y-2">
-                <div className="flex items-center gap-2 text-zen-accent/60 text-xs font-bold uppercase tracking-wider">
-                  <Wind className="w-4 h-4" />
-                  {t('coach_practice')}
-                </div>
-                <p className="text-zen-accent font-medium">{response.practice}</p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-zen-accent/60 text-xs font-bold uppercase tracking-wider">
-                  <Heart className="w-4 h-4" />
-                  {t('coach_compassion')}
-                </div>
-                <p className="text-zen-ink font-serif">{response.compassion}</p>
-              </div>
-            </div>
-          </motion.div>
+        {!showSafetyNet && response && (
+          <GuidanceCards key={`coach-guidance-${response.observe.slice(0, 8)}`} guidance={response} />
         )}
       </AnimatePresence>
     </div>
   );
 };
-
-// Helper icon
-function Wind(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2" />
-      <path d="M9.6 4.6A2 2 0 1 1 11 8H2" />
-      <path d="M12.6 19.4A2 2 0 1 0 14 16H2" />
-    </svg>
-  )
-}

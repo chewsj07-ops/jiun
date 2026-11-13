@@ -75,15 +75,16 @@ export const MeritMap: React.FC<{ theme?: 'zen' | 'lotus' | 'sky' | 'dark' }> = 
   }, [allVows.length]);
 
   const themeColors = {
-    zen: { bg: 'bg-transparent', accent: '#5A5A40', text: 'text-zen-ink', mapFill: '#EAEAEA', mapStroke: '#D6D6DA', cardBg: 'bg-white/50', statsBg: 'bg-white' },
-    lotus: { bg: 'bg-pink-50/50', accent: '#d65db1', text: 'text-pink-900', mapFill: '#fbcfe8', mapStroke: '#f9a8d4', cardBg: 'bg-white/60', statsBg: 'bg-pink-50' },
-    sky: { bg: 'bg-blue-50/50', accent: '#4682b4', text: 'text-blue-900', mapFill: '#bfdbfe', mapStroke: '#93c5fd', cardBg: 'bg-white/60', statsBg: 'bg-blue-50' },
-    dark: { bg: 'bg-zinc-900', accent: '#d4af37', text: 'text-zinc-100', mapFill: '#3f3f46', mapStroke: '#52525b', cardBg: 'bg-zinc-800', statsBg: 'bg-zinc-800' }
+    zen: { bg: 'bg-transparent', accent: '#4A755A', text: 'text-ink', mapFill: '#E6E2D8', mapStroke: '#C9CBC6', cardBg: 'bg-surface', statsBg: 'bg-surface' },
+    lotus: { bg: 'bg-transparent', accent: '#9A5470', text: 'text-ink', mapFill: '#EDE0DE', mapStroke: '#DDCBC8', cardBg: 'bg-surface', statsBg: 'bg-surface' },
+    sky: { bg: 'bg-transparent', accent: '#3F6E8C', text: 'text-ink', mapFill: '#DEE6E9', mapStroke: '#C9D5DA', cardBg: 'bg-surface', statsBg: 'bg-surface' },
+    dark: { bg: 'bg-transparent', accent: '#9CC7A8', text: 'text-ink', mapFill: '#2A302D', mapStroke: '#353C38', cardBg: 'bg-surface', statsBg: 'bg-surface' }
   };
 
   const colors = themeColors[theme];
 
   useEffect(() => {
+    practiceService.connectRealtime();
     // Load personal stats
     setMeritStats(practiceService.getMeritStats());
 
@@ -143,25 +144,25 @@ export const MeritMap: React.FC<{ theme?: 'zen' | 'lotus' | 'sky' | 'dark' }> = 
       </div>
 
       {/* Global Stats Card */}
-      <div className={`p-6 rounded-3xl shadow-xl relative overflow-hidden mx-4 ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zen-ink'} text-white`}>
-        <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/20 rounded-full blur-3xl -mr-10 -mt-10" />
+      <div className="p-6 rounded-2xl border border-line relative overflow-hidden mx-4 bg-accent text-on-accent">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-10 -mt-10" />
         
         <div className="relative z-10">
           <div className="text-center mb-6">
-            <p className="text-amber-200 text-xs uppercase tracking-widest font-bold mb-2">{t('global_merit_today')}</p>
+            <p className="opacity-80 text-xs uppercase tracking-widest font-bold mb-2">{t('global_merit_today')}</p>
             <div className="text-4xl font-serif font-bold flex items-center justify-center gap-2">
-              <Sparkles className="w-6 h-6 text-amber-400" />
+              <Sparkles className="w-6 h-6" />
               {globalStats.today.toLocaleString()}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-4">
+          <div className="grid grid-cols-2 gap-4 border-t border-white/15 pt-4">
             <div className="text-center">
-              <p className="text-white/40 text-[10px] uppercase tracking-wider mb-1">{t('merit_week')}</p>
+              <p className="opacity-70 text-[10px] uppercase tracking-wider mb-1">{t('merit_week')}</p>
               <p className="text-lg font-bold">{globalStats.week.toLocaleString()}</p>
             </div>
-            <div className="text-center border-l border-white/10">
-              <p className="text-white/40 text-[10px] uppercase tracking-wider mb-1">{t('merit_total')}</p>
+            <div className="text-center border-l border-white/15">
+              <p className="opacity-70 text-[10px] uppercase tracking-wider mb-1">{t('merit_total')}</p>
               <p className="text-lg font-bold">{globalStats.total.toLocaleString()}</p>
             </div>
           </div>
@@ -169,7 +170,7 @@ export const MeritMap: React.FC<{ theme?: 'zen' | 'lotus' | 'sky' | 'dark' }> = 
       </div>
 
       {/* Map */}
-      <div className={`rounded-3xl border border-zen-accent/10 overflow-hidden h-[240px] relative mx-4 ${colors.cardBg}`}>
+      <div className={`rounded-2xl border border-line overflow-hidden h-[240px] relative mx-4 ${colors.cardBg}`}>
         <ComposableMap
           projectionConfig={{ scale: 140 }}
           className="w-full h-full"
@@ -219,12 +220,12 @@ export const MeritMap: React.FC<{ theme?: 'zen' | 'lotus' | 'sky' | 'dark' }> = 
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
-              className={`bg-white/90 backdrop-blur-md px-5 py-2.5 rounded-2xl shadow-lg border border-zen-accent/10 max-w-full flex flex-col items-center text-center`}
+              className="bg-surface/95 backdrop-blur-md px-5 py-2.5 rounded-2xl shadow-float border border-line max-w-full flex flex-col items-center text-center"
             >
               <p className={`text-xs italic ${colors.text} font-medium mb-1 line-clamp-2`}>
                 "{allVows[currentVowIndex].text}"
               </p>
-              <p className="text-[10px] text-zen-accent/60 font-bold uppercase tracking-widest">
+              <p className="text-[10px] text-ink-2 font-bold uppercase tracking-widest">
                 — {allVows[currentVowIndex].author} —
               </p>
             </motion.div>
@@ -237,26 +238,26 @@ export const MeritMap: React.FC<{ theme?: 'zen' | 'lotus' | 'sky' | 'dark' }> = 
         <p className={`text-sm font-bold ${colors.text} opacity-80 uppercase tracking-widest`}>{t('personal_merit_data')}</p>
       </div>
       <div className="grid grid-cols-3 gap-4 mx-4">
-        <div className={`p-4 rounded-2xl border border-zen-accent/5 text-center shadow-sm ${colors.statsBg}`}>
-          <div className="w-8 h-8 mx-auto bg-amber-50 rounded-full flex items-center justify-center mb-2">
-            <Zap className="w-4 h-4 text-amber-500" />
+        <div className={`p-4 rounded-2xl border border-line text-center ${colors.statsBg}`}>
+          <div className="w-8 h-8 mx-auto bg-accent-mist rounded-full flex items-center justify-center mb-2">
+            <Zap className="w-4 h-4 text-gold" />
           </div>
           <div className={`text-xl font-bold ${colors.text}`}>{meritStats.today}</div>
-          <div className="text-[10px] opacity-60 uppercase tracking-wider">{t('merit_today')}</div>
+          <div className="text-[10px] text-ink-2 uppercase tracking-wider">{t('merit_today')}</div>
         </div>
-        <div className={`p-4 rounded-2xl border border-zen-accent/5 text-center shadow-sm ${colors.statsBg}`}>
-          <div className="w-8 h-8 mx-auto bg-amber-50 rounded-full flex items-center justify-center mb-2">
-            <Trophy className="w-4 h-4 text-amber-500" />
+        <div className={`p-4 rounded-2xl border border-line text-center ${colors.statsBg}`}>
+          <div className="w-8 h-8 mx-auto bg-accent-mist rounded-full flex items-center justify-center mb-2">
+            <Trophy className="w-4 h-4 text-gold" />
           </div>
           <div className={`text-xl font-bold ${colors.text}`}>{meritStats.week}</div>
-          <div className="text-[10px] opacity-60 uppercase tracking-wider">{t('merit_week')}</div>
+          <div className="text-[10px] text-ink-2 uppercase tracking-wider">{t('merit_week')}</div>
         </div>
-        <div className={`p-4 rounded-2xl border border-zen-accent/5 text-center shadow-sm ${colors.statsBg}`}>
-          <div className="w-8 h-8 mx-auto bg-amber-50 rounded-full flex items-center justify-center mb-2">
-            <Heart className="w-4 h-4 text-amber-500" />
+        <div className={`p-4 rounded-2xl border border-line text-center ${colors.statsBg}`}>
+          <div className="w-8 h-8 mx-auto bg-accent-mist rounded-full flex items-center justify-center mb-2">
+            <Heart className="w-4 h-4 text-gold" />
           </div>
           <div className={`text-xl font-bold ${colors.text}`}>{meritStats.total}</div>
-          <div className="text-[10px] opacity-60 uppercase tracking-wider">{t('merit_total')}</div>
+          <div className="text-[10px] text-ink-2 uppercase tracking-wider">{t('merit_total')}</div>
         </div>
       </div>
     </div>

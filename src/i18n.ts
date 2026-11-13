@@ -247,15 +247,15 @@ const translations = {
     tip_3: '禅师会实时倾听并回应您的呼吸与心声。',
     
     // Vowzen
-    zen_assistant_title: '禅修指引',
-    zen_assistant_placeholder: '“心如止水，鉴常明。”\n有什么困惑想与禅师聊聊吗？',
-    ask_zen_master: '向禅师请教...',
-    zen_master_busy: '禅师正在冥想，请稍后再试。',
-    zen_master_error: '缘分未到，请稍后再试。',
-    zen_system_instruction: '你是一位智慧、慈悲且平和的禅修导师。你的回答应当充满禅意，简洁而深刻。你可以解释佛经、提供冥想建议、或者在用户感到焦虑时给予安慰。使用温暖、自然的语气。如果用户问及念经，你可以鼓励他们保持正念。',
-    zen_mindfulness_coach_instruction: '你是一位温柔、不带评判的正念教练。当用户表达情绪时，请严格按照以下结构回应：\n\n**觉察**：温柔地确认当下的感受。\n**观照**：简短的佛法智慧（如无我、无常）。\n**练习**：一个简单即时的正念练习（如呼吸、标记）。\n**慈悲**：对用户和众生的简短祝福。\n\n保持平和、慈悲、支持的语气。不要说教。专注于正念和情绪觉察。',
-    mode_general: '通用禅师',
-    mode_mindfulness: '正念教练',
+    zen_assistant_title: '愿禅助手',
+    zen_assistant_placeholder: '合十。我是愿禅助手，一个陪你踏实修行的同伴。\n打坐、念经或日常起心动念有困惑，都可以说说。',
+    ask_zen_master: '说说此刻的感受或修行困惑…',
+    zen_master_busy: '愿禅助手正在整理思绪，请稍后再试。',
+    zen_master_error: '暂时没有连上，先做一次深呼吸，稍后再试。',
+    zen_system_instruction: '你是「愿禅助手」，一位温和、踏实的修行陪伴者，引导用户不盲修、不执著、走稳中道。',
+    zen_mindfulness_coach_instruction: '你是「愿禅助手」，一位温和、踏实的修行陪伴者。',
+    mode_general: '修行陪伴',
+    mode_mindfulness: '正念观照',
     
     // Community Levels & UI
     current_merit: '当前功德值',
@@ -606,15 +606,15 @@ const translations = {
     tip_3: '禪師會實時傾聽並回應您的呼吸與心聲。',
     
     // Vowzen
-    zen_assistant_title: '禪修指引',
-    zen_assistant_placeholder: '“心如止水，鑑常明。”\n有什麼困惑想與禪師聊聊嗎？',
-    ask_zen_master: '向禪師請教...',
-    zen_master_busy: '禪師正在冥想，請稍後再試。',
-    zen_master_error: '緣分未到，請稍後再試。',
-    zen_system_instruction: '你是一位智慧、慈悲且平和的禪修導師。你的回答應當充滿禪意，簡潔而深刻。你可以解釋佛經、提供冥想建議、或者在用戶感到焦慮時給予安慰。使用溫暖、自然的語氣。如果用戶問及唸經，你可以鼓勵他們保持正念。',
-    zen_mindfulness_coach_instruction: '你是一位溫柔、不帶評判的正念教練。當用戶表達情緒時，請嚴格按照以下結構回應：\n\n**覺察**：溫柔地確認當下的感受。\n**觀照**：簡短的佛法智慧（如無我、無常）。\n**練習**：一個簡單即時的正念練習（如呼吸、標記）。\n**慈悲**：對用戶和眾生的簡短祝福。\n\n保持平和、慈悲、支持的語氣。不要說教。專注於正念和情緒覺察。',
-    mode_general: '通用禪師',
-    mode_mindfulness: '正念教練',
+    zen_assistant_title: '願禪助手',
+    zen_assistant_placeholder: '合十。我是願禪助手，一個陪你踏實修行的同伴。\n打坐、唸經或日常起心動念有困惑，都可以說說。',
+    ask_zen_master: '說說此刻的感受或修行困惑…',
+    zen_master_busy: '願禪助手正在整理思緒，請稍後再試。',
+    zen_master_error: '暫時沒有連上，先做一次深呼吸，稍後再試。',
+    zen_system_instruction: '你是「願禪助手」，一位溫和、踏實的修行陪伴者，引導用戶不盲修、不執著、走穩中道。',
+    zen_mindfulness_coach_instruction: '你是「願禪助手」，一位溫和、踏實的修行陪伴者。',
+    mode_general: '修行陪伴',
+    mode_mindfulness: '正念觀照',
     
     // Community Levels & UI
     current_merit: '當前功德值',
@@ -952,15 +952,15 @@ const translations = {
     tip_3: 'The Zen Master listens and responds to your breath and voice in real-time.',
     
     // Vowzen
-    zen_assistant_title: 'Zen Guide',
-    zen_assistant_placeholder: '"Mind like still water, reflecting clearly."\nAny confusion to discuss with the Zen Master?',
-    ask_zen_master: 'Ask Zen Master...',
-    zen_master_busy: 'The Zen Master is meditating, please try again later.',
-    zen_master_error: 'Fate has not arrived, please try again later.',
-    zen_system_instruction: 'You are a wise, compassionate, and peaceful Zen meditation mentor. Your answers should be full of Zen, concise and profound. You can explain Buddhist scriptures, provide meditation advice, or comfort users when they feel anxious. Use a warm, natural tone. If users ask about chanting, encourage them to maintain mindfulness.',
-    zen_mindfulness_coach_instruction: 'You are a gentle, non-judgmental mindfulness coach. When the user expresses emotions, respond using this exact structure:\n\n**Observation**: Acknowledge the feeling gently.\n**Reflection**: A brief Buddhist-inspired philosophical insight (non-self, impermanence).\n**Practice**: A simple, immediate mindfulness action (breathing, noting).\n**Compassion**: A short wish for the user and others.\n\nKeep the tone calm, compassionate, and supportive. Do not preach religion. Focus on mindfulness and emotional awareness.',
-    mode_general: 'General Zen Master',
-    mode_mindfulness: 'Mindfulness Coach',
+    zen_assistant_title: 'Vowzen Companion',
+    zen_assistant_placeholder: 'Warm greetings. I am Vowzen Companion, here to walk steadily beside your practice.\nShare whatever is on your mind or any practice question.',
+    ask_zen_master: 'Share how you feel or ask a practice question...',
+    zen_master_busy: 'Gathering thoughts, please try again in a moment.',
+    zen_master_error: 'Connection paused. Take a slow breath and try again shortly.',
+    zen_system_instruction: 'You are Vowzen Companion, a warm and grounded practice companion guiding mindful, balanced practice.',
+    zen_mindfulness_coach_instruction: 'You are Vowzen Companion, a warm and grounded practice companion.',
+    mode_general: 'Practice Companion',
+    mode_mindfulness: 'Mindfulness',
     
     // Community Levels & UI
     current_merit: 'Current Merit',

@@ -8,10 +8,19 @@ export type PracticeActivityType =
   | 'full_dedication'
   | 'evening_class';
 
+export interface DailyPracticeItem {
+  scriptureId: string;
+  target: number;
+  unit: '遍' | '声';
+  order: number;
+  enabled: boolean;
+}
+
 export interface DailyPractice {
   date: string; // YYYY-MM-DD
   chanting: number; // Count
   scriptureCounts: Record<string, number>; // Count per scripture
+  celebratedScriptures?: string[]; // Scripture IDs whose completion celebration already fired today
   meditation: number; // Minutes
   observing_thoughts: number; // Count
   rejoicing: number; // Count
@@ -24,6 +33,8 @@ export interface DailyPractice {
 export interface PracticeSettings {
   scriptureGoals: Record<string, number>;
   scriptureGoalTypes?: Record<string, 'count' | 'time'>;
+  dailyPractice?: DailyPracticeItem[];
+  dailyPracticeUpdatedAt?: number;
   aiEnabled?: boolean;
   aiApiKey?: string;
 }

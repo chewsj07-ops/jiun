@@ -32,17 +32,17 @@ export class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-zen-bg flex items-center justify-center p-4">
-          <div className="bg-white p-6 rounded-2xl shadow-sm max-w-md w-full border border-red-100">
+        <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+          <div className="bg-surface p-6 rounded-2xl max-w-md w-full border border-line">
             <h2 className="text-xl font-bold text-red-600 mb-4">应用遇到了一些问题 (App Error)</h2>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-ink-2 mb-4">
               很抱歉，应用在加载时遇到了错误。请截图此页面并反馈给我们，以便修复。
             </p>
-            <div className="bg-gray-50 p-4 rounded-lg overflow-auto max-h-64 mb-4">
+            <div className="bg-surface-2 p-4 rounded-lg overflow-auto max-h-64 mb-4 border border-line">
               <p className="font-mono text-xs text-red-500 font-bold mb-2">
                 {this.state.error && this.state.error.toString()}
               </p>
-              <pre className="font-mono text-[10px] text-gray-500 whitespace-pre-wrap">
+              <pre className="font-mono text-[10px] text-ink-2 whitespace-pre-wrap">
                 {this.state.errorInfo?.componentStack}
               </pre>
             </div>
@@ -51,7 +51,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 onClick={() => {
                   window.location.reload();
                 }}
-                className="w-full bg-zen-accent text-white py-3 rounded-xl font-bold hover:opacity-90 transition-opacity"
+                className="w-full bg-accent text-on-accent hover:bg-accent-hover py-3 rounded-xl font-bold transition-colors"
               >
                 刷新并重试 (Reload & Continue)
               </button>
@@ -66,7 +66,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   }
                   window.location.reload();
                 }}
-                className="w-full bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
+                className="w-full bg-surface-2 text-ink py-2.5 rounded-xl text-sm font-medium hover:bg-accent-mist transition-colors border border-line"
               >
                 修复临时缓存 (Repair Temporary Cache)
               </button>
