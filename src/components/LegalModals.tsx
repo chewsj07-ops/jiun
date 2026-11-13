@@ -6,7 +6,9 @@ export const LegalModals = () => {
   const [activeModal, setActiveModal] = useState<'privacy' | 'terms' | 'ai' | 'deletion' | null>(null);
 
   useEffect(() => {
-    const handleOpenPrivacy = () => setActiveModal('privacy');
+    const handleOpenPrivacy = () => {
+      window.dispatchEvent(new CustomEvent('open-privacy-policy'));
+    };
     const handleOpenTerms = () => setActiveModal('terms');
     const handleOpenAI = () => setActiveModal('ai');
     const handleOpenDeletion = () => setActiveModal('deletion');
@@ -16,11 +18,9 @@ export const LegalModals = () => {
     window.addEventListener('open-ai-modal', handleOpenAI);
     window.addEventListener('open-deletion-modal', handleOpenDeletion);
 
-    // Check URL for direct links
+    // Check URL for direct links (privacy is handled by PrivacyPolicyView)
     const path = window.location.pathname;
-    if (path === '/privacy' || path === '/privacy.html') {
-      setActiveModal('privacy');
-    } else if (path === '/terms' || path === '/terms.html') {
+    if (path === '/terms' || path === '/terms.html') {
       setActiveModal('terms');
     }
 

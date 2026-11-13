@@ -7,6 +7,8 @@ import { recordVault } from '../services/recordVault';
 import { practiceService } from '../services/practiceService';
 import { DailyPracticeItem } from '../types/practice';
 
+import { safeStorage } from '../utils/safeStorage';
+
 export function useFirebaseSync(
   userProfile: any, setUserProfile: (data: any) => void,
   history: any[], setHistory: (data: any[]) => void,
@@ -21,15 +23,21 @@ export function useFirebaseSync(
   woodenFishAppearance: string, setWoodenFishAppearance: (data: any) => void,
   customScriptures: any[], setCustomScriptures: (data: any[]) => void,
   dailyPractice: DailyPracticeItem[], setDailyPractice: (data: DailyPracticeItem[]) => void,
-  dailyPracticeUpdatedAt: number, setDailyPracticeUpdatedAt: (ts: number) => void
+  dailyPracticeUpdatedAt: number, setDailyPracticeUpdatedAt: (ts: number) => void,
+  cloudSyncEnabled: boolean = false
 ) {
   const { user, isAuthReady } = useFirebase();
   const isInitialSyncDone = useRef(false);
   const isSyncing = useRef(false);
 
-  // Initial fetch from Firebase when user logs in
+  // Initial fetch from Firebase when user logs in AND cloudSyncEnabled is granted
   useEffect(() => {
     if (!isAuthReady) return;
+    if (!cloudSyncEnabled) {
+      isInitialSyncDone.current = false;
+      isSyncing.current = false;
+      return;
+    }
     
     if (user && !isInitialSyncDone.current) {
       const fetchUserData = async () => {
@@ -136,7 +144,7 @@ export function useFirebaseSync(
           const vowsData = vowsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           if (vowsData.length > 0) {
             setVows(vowsData);
-            localStorage.setItem('zen_vows', JSON.stringify(vowsData));
+            safeStorage.setItem('zen_vows', JSON.stringify(vowsData));
           } else if (vows && vows.length > 0) {
             const batch = writeBatch(db);
             vows.forEach(item => {
@@ -151,7 +159,7 @@ export function useFirebaseSync(
           const deedsSnapshot = await getDocs(collection(db, `users/${user.uid}/goodDeeds`));
           const deedsData = deedsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           if (deedsData.length > 0) {
-            localStorage.setItem('good_deed_history', JSON.stringify(deedsData));
+            safeStorage.setItem('good_deed_history', JSON.stringify(deedsData));
           }
 
           // Fetch Thoughts (preserve any isLocalOnly local records)
@@ -160,7 +168,7 @@ export function useFirebaseSync(
           if (thoughtsData.length > 0) {
             let localOnlyThoughts: any[] = [];
             try {
-              const existingLocal = JSON.parse(localStorage.getItem('zen_thoughts') || '[]');
+              const existingLocal = JSON.parse(safeStorage.getItem('zen_thoughts') || '[]');
               if (Array.isArray(existingLocal)) {
                 localOnlyThoughts = existingLocal.filter((t: any) => Boolean(t?.isLocalOnly));
               }
@@ -180,7 +188,7 @@ export function useFirebaseSync(
             const mergedThoughts = Array.from(mergedThoughtsMap.values()).sort(
               (a: any, b: any) => Number(b.id || 0) - Number(a.id || 0)
             );
-            localStorage.setItem('zen_thoughts', JSON.stringify(mergedThoughts));
+            safeStorage.setItem('zen_thoughts', JSON.stringify(mergedThoughts));
           }
 
           isInitialSyncDone.current = true;
@@ -194,11 +202,11 @@ export function useFirebaseSync(
     } else if (!user) {
       isInitialSyncDone.current = false;
     }
-  }, [user, isAuthReady]);
+  }, [user, isAuthReady, cloudSyncEnabled]);
 
   // Sync Profile changes to Firebase
   useEffect(() => {
-    if (!user || !isInitialSyncDone.current || isSyncing.current) return;
+    if (!cloudSyncEnabled || !user || !isInitialSyncDone.current || isSyncing.current) return;
     
     const syncProfile = async () => {
       try {
@@ -250,7 +258,7 @@ export function useFirebaseSync(
     const timeoutId = setTimeout(syncProfile, 2000); // Debounce
     return () => clearTimeout(timeoutId);
   }, [
-    user, isInitialSyncDone, userProfile, personalVow, count, userExp, selectedChant, 
+    cloudSyncEnabled, user, isInitialSyncDone, userProfile, personalVow, count, userExp, selectedChant, 
     volume, soundType, woodenFishAppearance, scriptureGoals, customScriptures,
     dailyPractice, dailyPracticeUpdatedAt
   ]);

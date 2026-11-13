@@ -2,8 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowUpDown,
+  Bell,
   Check,
   Clock,
+  CloudRain,
+  Droplets,
   Edit2,
   Eye,
   EyeOff,
@@ -13,9 +16,12 @@ import {
   Pause,
   Play,
   SortAsc,
+  Square,
   Trash2,
   Upload,
   Volume2,
+  Waves,
+  Wind,
   X,
 } from 'lucide-react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
@@ -25,9 +31,116 @@ import { cn } from '../lib/utils';
 import { useTranslation } from '../i18n';
 import { practiceService } from '../services/practiceService';
 import { audioStreamService } from '../services/audioStreamService';
-import { playCompletionBell } from '../utils/zenAudio';
+import {
+  AmbientSoundType,
+  MeditationReminderTone,
+  playBreathChime,
+  playMeditationCue,
+  startAmbientSound,
+  stopAmbientSound,
+  updateAmbientVolume,
+} from '../utils/zenAudio';
 
 export type MeditationMood = '散乱' | '微乱' | '平常' | '安定' | '清明';
+export type MeditationIntervalReminder = 'off' | '5' | '10' | 'half';
+
+interface MeditationSoundPrefs {
+  ambientId: AmbientSoundType | null;
+  reminderTone: MeditationReminderTone;
+  startEndBell: boolean;
+  intervalReminder: MeditationIntervalReminder;
+  breathCueEnabled: boolean;
+  vibrateOnComplete: boolean;
+  volume: number;
+}
+
+const SOUND_PREFS_STORAGE_KEY = 'zen_meditation_sound_prefs';
+
+const DEFAULT_SOUND_PREFS: MeditationSoundPrefs = {
+  ambientId: null,
+  reminderTone: 'bell',
+  startEndBell: true,
+  intervalReminder: 'off',
+  breathCueEnabled: false,
+  vibrateOnComplete: true,
+  volume: 0.7,
+};
+
+function loadSoundPrefs(): MeditationSoundPrefs {
+  try {
+    const raw = localStorage.getItem(SOUND_PREFS_STORAGE_KEY);
+    if (!raw) return DEFAULT_SOUND_PREFS;
+    const parsed = JSON.parse(raw);
+    return {
+      ambientId:
+        parsed.ambientId === 'wind' ||
+        parsed.ambientId === 'rain' ||
+        parsed.ambientId === 'stream' ||
+        parsed.ambientId === 'drone'
+          ? parsed.ambientId
+          : null,
+      reminderTone:
+        parsed.reminderTone === 'bell' ||
+        parsed.reminderTone === 'bowl' ||
+        parsed.reminderTone === 'chime' ||
+        parsed.reminderTone === 'wood' ||
+        parsed.reminderTone === 'none'
+          ? parsed.reminderTone
+          : 'bell',
+      startEndBell:
+        typeof parsed.startEndBell === 'boolean' ? parsed.startEndBell : true,
+      intervalReminder:
+        parsed.intervalReminder === '5' ||
+        parsed.intervalReminder === '10' ||
+        parsed.intervalReminder === 'half' ||
+        parsed.intervalReminder === 'off'
+          ? parsed.intervalReminder
+          : 'off',
+      breathCueEnabled:
+        typeof parsed.breathCueEnabled === 'boolean' ? parsed.breathCueEnabled : false,
+      vibrateOnComplete:
+        typeof parsed.vibrateOnComplete === 'boolean' ? parsed.vibrateOnComplete : true,
+      volume:
+        typeof parsed.volume === 'number' && Number.isFinite(parsed.volume)
+          ? Math.max(0, Math.min(1, parsed.volume))
+          : 0.7,
+    };
+  } catch {
+    return DEFAULT_SOUND_PREFS;
+  }
+}
+
+const AMBIENT_SOUNDS: {
+  id: AmbientSoundType;
+  title: string;
+  subtitle: string;
+}[] = [
+  { id: 'wind', title: '松林微风', subtitle: '轻柔山风拂过林梢，舒缓心绪' },
+  { id: 'rain', title: '松涧细雨', subtitle: '绵密温和的林间细雨声' },
+  { id: 'stream', title: '山涧清泉', subtitle: '低缓流动的溪水白噪音' },
+  { id: 'drone', title: '古刹禅鸣', subtitle: '温暖低频的泛音余韵' },
+];
+
+const REMINDER_TONE_OPTIONS: {
+  id: MeditationReminderTone;
+  label: string;
+}[] = [
+  { id: 'bell', label: '铜磬' },
+  { id: 'bowl', label: '颂钵' },
+  { id: 'chime', label: '引磬' },
+  { id: 'wood', label: '木鱼' },
+  { id: 'none', label: '静音' },
+];
+
+const INTERVAL_REMINDER_OPTIONS: {
+  id: MeditationIntervalReminder;
+  label: string;
+}[] = [
+  { id: 'off', label: '不提醒' },
+  { id: '5', label: '每 5 分' },
+  { id: '10', label: '每 10 分' },
+  { id: 'half', label: '半程' },
+];
 
 const MOOD_OPTIONS: { label: MeditationMood; color: string }[] = [
   { label: '散乱', color: 'var(--theme-line-strong)' },
@@ -104,15 +217,33 @@ export const Meditation: React.FC<MeditationProps> = ({
   // Post-session mood selector
   const [selectedMood, setSelectedMood] = useState<MeditationMood | undefined>(undefined);
 
-  // Sound bottom sheet & tracks
+  // Sound bottom sheet, ambient & reminder prefs
+  const initialSoundPrefs = React.useMemo(() => loadSoundPrefs(), []);
   const [showSoundSheet, setShowSoundSheet] = useState<boolean>(false);
   const [currentTrack, setCurrentTrack] = useState<any>(null);
+  const [selectedAmbientId, setSelectedAmbientId] = useState<AmbientSoundType | null>(
+    initialSoundPrefs.ambientId
+  );
+  const [previewingAmbientId, setPreviewingAmbientId] = useState<AmbientSoundType | null>(null);
+  const [reminderTone, setReminderTone] = useState<MeditationReminderTone>(
+    initialSoundPrefs.reminderTone
+  );
+  const [startEndBell, setStartEndBell] = useState<boolean>(initialSoundPrefs.startEndBell);
+  const [intervalReminder, setIntervalReminder] = useState<MeditationIntervalReminder>(
+    initialSoundPrefs.intervalReminder
+  );
+  const [breathCueEnabled, setBreathCueEnabled] = useState<boolean>(
+    initialSoundPrefs.breathCueEnabled
+  );
+  const [vibrateOnComplete, setVibrateOnComplete] = useState<boolean>(
+    initialSoundPrefs.vibrateOnComplete
+  );
   const [localTracks, setLocalTracks] = useState<any[]>([]);
   const [firestoreTracks, setFirestoreTracks] = useState<any[]>([]);
   const [lastSavedProgress, setLastSavedProgress] = useState<
     Record<string, { currentTime: number; timeLeft: number }>
   >({});
-  const [volume, setVolume] = useState<number>(0.7);
+  const [volume, setVolume] = useState<number>(initialSoundPrefs.volume);
   const [isLooping, setIsLooping] = useState<boolean>(true);
   const [sortOrder, setSortOrder] = useState<'newest' | 'name'>('newest');
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -130,6 +261,51 @@ export const Meditation: React.FC<MeditationProps> = ({
   const endTimeRef = useRef<number | null>(null);
   const sessionStartRef = useRef<number | null>(null);
   const lastSaveTimeRef = useRef<number>(0);
+  const lastMilestoneRef = useRef<number>(0);
+  const previewTimerRef = useRef<number | null>(null);
+  const soundPrefsRef = useRef({
+    reminderTone,
+    startEndBell,
+    intervalReminder,
+    breathCueEnabled,
+    vibrateOnComplete,
+    volume,
+  });
+
+  useEffect(() => {
+    soundPrefsRef.current = {
+      reminderTone,
+      startEndBell,
+      intervalReminder,
+      breathCueEnabled,
+      vibrateOnComplete,
+      volume,
+    };
+    try {
+      localStorage.setItem(
+        SOUND_PREFS_STORAGE_KEY,
+        JSON.stringify({
+          ambientId: selectedAmbientId,
+          reminderTone,
+          startEndBell,
+          intervalReminder,
+          breathCueEnabled,
+          vibrateOnComplete,
+          volume,
+        } satisfies MeditationSoundPrefs)
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [
+    selectedAmbientId,
+    reminderTone,
+    startEndBell,
+    intervalReminder,
+    breathCueEnabled,
+    vibrateOnComplete,
+    volume,
+  ]);
 
   const DB_NAME = 'ZenMeditationDB';
   const STORE_NAME = 'tracks';
@@ -295,12 +471,22 @@ export const Meditation: React.FC<MeditationProps> = ({
     }
     setBreathPhase('吸');
     const interval = window.setInterval(() => {
-      setBreathPhase((prev) => (prev === '吸' ? '呼' : '吸'));
+      setBreathPhase((prev) => {
+        const next: '吸' | '呼' = prev === '吸' ? '呼' : '吸';
+        const prefs = soundPrefsRef.current;
+        if (prefs.breathCueEnabled && prefs.volume > 0) {
+          playBreathChime(
+            Math.max(0.1, prefs.volume * 0.32),
+            next === '吸' ? 'inhale' : 'exhale'
+          );
+        }
+        return next;
+      });
     }, 4000);
     return () => window.clearInterval(interval);
   }, [phase, isPaused]);
 
-  // Drift-proof meditation countdown timer
+  // Drift-proof meditation countdown timer + interval reminder cues
   useEffect(() => {
     if (phase !== 'active' || isPaused) {
       endTimeRef.current = null;
@@ -308,26 +494,60 @@ export const Meditation: React.FC<MeditationProps> = ({
     }
 
     endTimeRef.current = Date.now() + timeLeft * 1000;
+    const totalSec = selectedDuration * 60;
 
     const interval = window.setInterval(() => {
       if (!endTimeRef.current) return;
       const diff = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
       setTimeLeft(diff);
 
+      const prefs = soundPrefsRef.current;
+      const elapsedSec = totalSec - diff;
+      if (diff > 15 && prefs.reminderTone !== 'none' && prefs.volume > 0) {
+        if (prefs.intervalReminder === '5' || prefs.intervalReminder === '10') {
+          const stepSec = prefs.intervalReminder === '5' ? 300 : 600;
+          const milestone = Math.floor(elapsedSec / stepSec);
+          if (milestone > 0 && milestone > lastMilestoneRef.current) {
+            lastMilestoneRef.current = milestone;
+            playMeditationCue(prefs.reminderTone, Math.max(0.25, prefs.volume * 0.85), false);
+          }
+        } else if (prefs.intervalReminder === 'half' && totalSec >= 120) {
+          const halfPoint = Math.floor(totalSec / 2);
+          if (elapsedSec >= halfPoint && lastMilestoneRef.current === 0) {
+            lastMilestoneRef.current = 1;
+            playMeditationCue(prefs.reminderTone, Math.max(0.25, prefs.volume * 0.85), false);
+          }
+        }
+      }
+
       if (diff <= 0) {
         window.clearInterval(interval);
         endTimeRef.current = null;
         if (audioRef.current) audioRef.current.pause();
-        playCompletionBell(0.6);
+        stopAmbientSound();
 
-        try {
-          if (window.Notification && Notification.permission === 'granted') {
-            new Notification(t('meditation_completed'), {
-              body: t('meditation_title'),
-            });
+        if (prefs.startEndBell && prefs.reminderTone !== 'none') {
+          playMeditationCue(prefs.reminderTone, Math.max(0.35, prefs.volume), true);
+        }
+
+        if (prefs.vibrateOnComplete && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          try {
+            navigator.vibrate([140, 90, 140]);
+          } catch {
+            // ignore unsupported vibrate
           }
-        } catch {
-          // ignore
+        }
+
+        if (prefs.vibrateOnComplete) {
+          try {
+            if (window.Notification && Notification.permission === 'granted') {
+              new Notification(t('meditation_completed'), {
+                body: t('meditation_title'),
+              });
+            }
+          } catch {
+            // ignore
+          }
         }
 
         try {
@@ -346,12 +566,34 @@ export const Meditation: React.FC<MeditationProps> = ({
     return () => window.clearInterval(interval);
   }, [phase, isPaused, selectedDuration, t]);
 
-  // Keep audio volume & playback synced with active state
+  // Keep audio & built-in ambient volume synced
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = volume;
     }
+    updateAmbientVolume(volume);
   }, [volume]);
+
+  // Built-in Web Audio ambient playback during active session or idle sheet preview
+  useEffect(() => {
+    if (phase === 'active' && !isPaused && selectedAmbientId && !currentTrack) {
+      startAmbientSound(selectedAmbientId, volume);
+    } else if (phase === 'idle' && showSoundSheet && previewingAmbientId) {
+      startAmbientSound(previewingAmbientId, volume);
+    } else {
+      stopAmbientSound();
+    }
+  }, [phase, isPaused, selectedAmbientId, currentTrack, showSoundSheet, previewingAmbientId, volume]);
+
+  useEffect(() => {
+    if (!showSoundSheet) {
+      setPreviewingAmbientId(null);
+      if (previewTimerRef.current !== null) {
+        window.clearTimeout(previewTimerRef.current);
+        previewTimerRef.current = null;
+      }
+    }
+  }, [showSoundSheet]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -385,8 +627,12 @@ export const Meditation: React.FC<MeditationProps> = ({
 
   useEffect(() => {
     return () => {
+      stopAmbientSound();
       if (controlsHideTimerRef.current !== null) {
         window.clearTimeout(controlsHideTimerRef.current);
+      }
+      if (previewTimerRef.current !== null) {
+        window.clearTimeout(previewTimerRef.current);
       }
     };
   }, []);
@@ -403,12 +649,20 @@ export const Meditation: React.FC<MeditationProps> = ({
 
   const handleStartSitting = () => {
     if (
+      vibrateOnComplete &&
       window.Notification &&
       Notification.permission !== 'granted' &&
       Notification.permission !== 'denied'
     ) {
       Notification.requestPermission().catch(() => {});
     }
+
+    if (previewTimerRef.current !== null) {
+      window.clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+    setPreviewingAmbientId(null);
+    lastMilestoneRef.current = 0;
 
     const totalSeconds = selectedDuration * 60;
     setTimeLeft(totalSeconds);
@@ -417,13 +671,18 @@ export const Meditation: React.FC<MeditationProps> = ({
     setControlsVisible(false);
     setShowTimer(true);
     setAudioError(null);
-    playCompletionBell(0.55);
+    if (startEndBell && reminderTone !== 'none') {
+      playMeditationCue(reminderTone, Math.max(0.35, volume), false);
+    }
     setPhase('active');
   };
 
   const handleManualEndSession = () => {
     if (audioRef.current) audioRef.current.pause();
-    playCompletionBell(0.6);
+    stopAmbientSound();
+    if (startEndBell && reminderTone !== 'none') {
+      playMeditationCue(reminderTone, Math.max(0.3, volume * 0.85), false);
+    }
 
     const elapsedMinutes = sessionStartRef.current
       ? Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 60000))
@@ -441,6 +700,11 @@ export const Meditation: React.FC<MeditationProps> = ({
     setSelectedMood(undefined);
     setPhase('complete');
   };
+
+  const activeAmbientMeta = selectedAmbientId
+    ? AMBIENT_SOUNDS.find((a) => a.id === selectedAmbientId) || null
+    : null;
+  const activeSoundTitle = currentTrack?.title || activeAmbientMeta?.title || '静音静坐';
 
   const handleSaveToVowBook = () => {
     practiceService.updateActivity('dedication', true);
@@ -467,7 +731,7 @@ export const Meditation: React.FC<MeditationProps> = ({
 
     onFinish?.({
       duration: sessionDuration,
-      trackTitle: currentTrack?.title || '静音静坐',
+      trackTitle: activeSoundTitle,
       dedication,
       vow,
       mood: selectedMood,
@@ -499,6 +763,10 @@ export const Meditation: React.FC<MeditationProps> = ({
 
   const selectTrack = (track: any | null) => {
     setCurrentTrack(track);
+    if (track) {
+      setSelectedAmbientId(null);
+      setPreviewingAmbientId(null);
+    }
     setAudioError(null);
     if (!track) {
       setAudioCurrentTime(0);
@@ -525,6 +793,66 @@ export const Meditation: React.FC<MeditationProps> = ({
       audioRef.current.load();
     }
   };
+
+  const selectAmbient = (ambientId: AmbientSoundType | null, previewInIdle = true) => {
+    setCurrentTrack(null);
+    if (audioRef.current) audioRef.current.pause();
+    setAudioCurrentTime(0);
+    setAudioDuration(0);
+    setIsLoadingAudio(false);
+    setAudioError(null);
+    setSelectedAmbientId(ambientId);
+
+    if (previewTimerRef.current !== null) {
+      window.clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+
+    if (phase === 'idle' && ambientId && previewInIdle) {
+      setPreviewingAmbientId(ambientId);
+      previewTimerRef.current = window.setTimeout(() => {
+        setPreviewingAmbientId(null);
+        previewTimerRef.current = null;
+      }, 4500);
+    } else {
+      setPreviewingAmbientId(null);
+    }
+  };
+
+  const toggleAmbientPreview = (ambientId: AmbientSoundType) => {
+    if (previewTimerRef.current !== null) {
+      window.clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+    if (previewingAmbientId === ambientId) {
+      setPreviewingAmbientId(null);
+    } else {
+      setPreviewingAmbientId(ambientId);
+      previewTimerRef.current = window.setTimeout(() => {
+        setPreviewingAmbientId(null);
+        previewTimerRef.current = null;
+      }, 6000);
+    }
+  };
+
+  const reminderToneLabel =
+    REMINDER_TONE_OPTIONS.find((item) => item.id === reminderTone)?.label || '铜磬';
+  const intervalLabel =
+    intervalReminder === '5'
+      ? '每5分'
+      : intervalReminder === '10'
+      ? '每10分'
+      : intervalReminder === 'half'
+      ? '半程'
+      : '';
+  const hasAnyReminder =
+    reminderTone !== 'none' &&
+    (startEndBell || intervalReminder !== 'off' || breathCueEnabled);
+  const reminderSummary = hasAnyReminder
+    ? [reminderToneLabel, intervalLabel, breathCueEnabled ? '呼吸音' : '']
+        .filter(Boolean)
+        .join('·')
+    : '无提醒音';
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -848,11 +1176,11 @@ export const Meditation: React.FC<MeditationProps> = ({
             <button
               type="button"
               onClick={() => setShowSoundSheet(true)}
-              className="mx-auto flex items-center justify-center gap-2 h-10 px-4 rounded-full text-caption text-ink-2 hover:text-ink hover:bg-surface-2 transition-colors"
+              className="mx-auto flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-full text-caption text-ink-2 hover:text-ink hover:bg-surface-2 transition-colors"
             >
-              <Volume2 size={15} strokeWidth={1.5} className="text-accent" />
-              <span className="truncate max-w-[220px]">
-                声音：{currentTrack ? currentTrack.title : '静音静坐'}
+              <Volume2 size={15} strokeWidth={1.5} className="text-accent shrink-0" />
+              <span className="truncate max-w-[260px]">
+                声音：{activeSoundTitle} · {reminderSummary}
               </span>
             </button>
           </div>
@@ -1059,7 +1387,7 @@ export const Meditation: React.FC<MeditationProps> = ({
             className="fixed inset-0 z-40 h-[100dvh] w-full bg-paper flex flex-col items-center justify-between px-6 py-12 pb-[calc(2.5rem+env(safe-area-inset-bottom))]"
           >
             <div className="text-caption pt-4">
-              本次静坐 {sessionDuration} 分钟 · {currentTrack ? currentTrack.title : '静音静坐'}
+              本次静坐 {sessionDuration} 分钟 · {activeSoundTitle}
             </div>
 
             <div className="w-full max-w-sm flex flex-col items-center text-center space-y-8">
@@ -1148,14 +1476,14 @@ export const Meditation: React.FC<MeditationProps> = ({
 
               {/* Sheet Header */}
               <div className="px-6 py-3 border-b border-line flex items-center justify-between gap-3 shrink-0">
-                <h3 className="text-title text-ink">声音</h3>
+                <h3 className="text-title text-ink">声音与提醒</h3>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() =>
                       setSortOrder((s) => (s === 'newest' ? 'name' : 'newest'))
                     }
-                    className="h-9 px-3 rounded-full bg-surface-2 text-ink-2 hover:text-ink text-xs flex items-center gap-1.5 transition-colors"
+                    className="h-9 px-3 rounded-full bg-surface-2 text-ink-2 hover:text-ink text-xs flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
                     title={sortOrder === 'newest' ? t('sort_by_time') : t('sort_by_name')}
                   >
                     {sortOrder === 'newest' ? (
@@ -1169,7 +1497,7 @@ export const Meditation: React.FC<MeditationProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowUrlInput((v) => !v)}
-                    className="w-9 h-9 rounded-full bg-surface-2 text-ink-2 hover:text-ink flex items-center justify-center transition-colors"
+                    className="w-9 h-9 rounded-full bg-surface-2 text-ink-2 hover:text-ink flex items-center justify-center transition-colors shrink-0"
                     title="导入音频链接"
                   >
                     <LinkIcon size={15} strokeWidth={1.5} />
@@ -1178,7 +1506,7 @@ export const Meditation: React.FC<MeditationProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="h-9 px-3 rounded-full bg-accent-mist text-accent text-xs font-medium flex items-center gap-1.5 transition-colors"
+                    className="h-9 px-3 rounded-full bg-accent-mist text-accent text-xs font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
                   >
                     <Upload size={14} strokeWidth={1.5} />
                     <span>{t('upload_audio')}</span>
@@ -1188,7 +1516,7 @@ export const Meditation: React.FC<MeditationProps> = ({
                     type="button"
                     onClick={() => setShowSoundSheet(false)}
                     aria-label="关闭"
-                    className="w-9 h-9 rounded-full text-ink-2 hover:text-ink flex items-center justify-center"
+                    className="w-9 h-9 rounded-full text-ink-2 hover:text-ink flex items-center justify-center shrink-0"
                   >
                     <X size={18} strokeWidth={1.5} />
                   </button>
@@ -1196,7 +1524,7 @@ export const Meditation: React.FC<MeditationProps> = ({
               </div>
 
               {/* Volume, Loop & Optional URL Import */}
-              <div className="px-6 py-4 border-b border-line space-y-3 shrink-0">
+              <div className="px-6 py-3.5 border-b border-line space-y-3 shrink-0">
                 <div className="flex items-center gap-3">
                   <Volume2 size={16} strokeWidth={1.5} className="text-ink-2 shrink-0" />
                   <input
@@ -1206,21 +1534,26 @@ export const Meditation: React.FC<MeditationProps> = ({
                     step="0.01"
                     value={volume}
                     onChange={(e) => setVolume(parseFloat(e.target.value))}
-                    className="flex-1 h-1 bg-surface-2 rounded-full appearance-none cursor-pointer accent-accent"
+                    className="flex-1 h-1.5 bg-surface-2 rounded-full appearance-none cursor-pointer accent-accent"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setIsLooping((l) => !l)}
-                    className={cn(
-                      'h-8 px-3 rounded-full text-xs flex items-center gap-1 transition-colors border',
-                      isLooping
-                        ? 'bg-accent-mist text-accent border-transparent font-medium'
-                        : 'bg-surface-2 text-ink-2 border-line'
-                    )}
-                  >
-                    <ArrowUpDown size={12} strokeWidth={1.5} />
-                    <span>{isLooping ? t('loop_play') : t('single_play')}</span>
-                  </button>
+                  <span className="text-xs text-ink-2 tabular-nums w-9 text-right">
+                    {Math.round(volume * 100)}%
+                  </span>
+                  {currentTrack && (
+                    <button
+                      type="button"
+                      onClick={() => setIsLooping((l) => !l)}
+                      className={cn(
+                        'h-8 px-3 rounded-full text-xs flex items-center gap-1 transition-colors border whitespace-nowrap shrink-0',
+                        isLooping
+                          ? 'bg-accent-mist text-accent border-transparent font-medium'
+                          : 'bg-surface-2 text-ink-2 border-line'
+                      )}
+                    >
+                      <ArrowUpDown size={12} strokeWidth={1.5} />
+                      <span>{isLooping ? t('loop_play') : t('single_play')}</span>
+                    </button>
+                  )}
                 </div>
 
                 {currentTrack && audioDuration > 0 && (
@@ -1266,7 +1599,7 @@ export const Meditation: React.FC<MeditationProps> = ({
                         <button
                           type="button"
                           onClick={handleUrlImport}
-                          className="h-10 px-4 rounded-xl bg-accent text-on-accent text-xs font-medium hover:bg-accent-hover transition-colors"
+                          className="h-10 px-4 rounded-xl bg-accent text-on-accent text-xs font-medium hover:bg-accent-hover transition-colors whitespace-nowrap shrink-0"
                         >
                           {t('import_btn')}
                         </button>
@@ -1276,41 +1609,279 @@ export const Meditation: React.FC<MeditationProps> = ({
                 </AnimatePresence>
               </div>
 
-              {/* Track List */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 divide-y divide-line">
-                {/* Silent Option */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    selectTrack(null);
-                    setShowSoundSheet(false);
-                  }}
-                  className="w-full py-3.5 px-3 flex items-center justify-between text-left rounded-xl hover:bg-surface-2 transition-colors"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-ink">静音静坐</p>
-                    <p className="text-caption">无背景音乐，仅保留开始与结束磬声</p>
+              {/* Scrollable Reminder Settings + Ambient & Track List */}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+                {/* 1. Reminder Settings */}
+                <section className="space-y-3.5">
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2">
+                      <Bell size={15} strokeWidth={1.5} className="text-accent" />
+                      <h4 className="text-sm font-medium text-ink">静坐提醒</h4>
+                    </div>
+                    <span className="text-xs text-ink-2">点击音色可试听</span>
                   </div>
-                  {!currentTrack && <Check size={17} className="text-accent shrink-0" />}
-                </button>
 
-                {allTracks.length === 0 ? (
-                  <div className="py-10 text-center">
-                    <Music className="w-8 h-8 text-ink-3 mx-auto mb-2" strokeWidth={1.5} />
-                    <p className="text-caption">{t('no_track')}</p>
+                  {/* Selectable Reminder Tone */}
+                  <div className="grid grid-cols-5 gap-1.5 p-1 rounded-2xl bg-surface-2">
+                    {REMINDER_TONE_OPTIONS.map((tone) => {
+                      const active = reminderTone === tone.id;
+                      return (
+                        <button
+                          key={tone.id}
+                          type="button"
+                          onClick={() => {
+                            setReminderTone(tone.id);
+                            if (tone.id !== 'none') {
+                              if (volume <= 0) {
+                                toast('当前音量为 0%，可向右调整音量试听');
+                              } else {
+                                playMeditationCue(tone.id, Math.max(0.35, volume), false);
+                              }
+                            }
+                          }}
+                          className={cn(
+                            'min-h-[40px] px-2 rounded-xl text-xs transition-colors whitespace-nowrap',
+                            active
+                              ? 'bg-surface text-ink font-medium shadow-sm'
+                              : 'text-ink-2 hover:text-ink'
+                          )}
+                        >
+                          {tone.label}
+                        </button>
+                      );
+                    })}
                   </div>
-                ) : (
-                  allTracks.map((track) => {
-                    const isSelected = currentTrack?.id === track.id;
-                    return (
-                      <div
-                        key={track.id}
-                        onClick={() => {
-                          selectTrack(track);
-                          setShowSoundSheet(false);
-                        }}
-                        className="py-3.5 px-3 flex items-center justify-between gap-3 cursor-pointer rounded-xl hover:bg-surface-2 transition-colors"
+
+                  {/* Interval Reminder Selector */}
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-ink-2 px-1">中途间隔提醒</p>
+                    <div className="grid grid-cols-4 gap-1.5 p-1 rounded-2xl bg-surface-2">
+                      {INTERVAL_REMINDER_OPTIONS.map((opt) => {
+                        const active = intervalReminder === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setIntervalReminder(opt.id)}
+                            className={cn(
+                              'min-h-[40px] px-2 rounded-xl text-xs transition-colors whitespace-nowrap',
+                              active
+                                ? 'bg-surface text-ink font-medium shadow-sm'
+                                : 'text-ink-2 hover:text-ink'
+                            )}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Reminder Toggles */}
+                  <div className="divide-y divide-line border-t border-b border-line">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !startEndBell;
+                        setStartEndBell(next);
+                        if (next && reminderTone !== 'none' && volume > 0) {
+                          playMeditationCue(reminderTone, Math.max(0.35, volume), false);
+                        }
+                      }}
+                      className="w-full min-h-[52px] py-2.5 px-1 flex items-center justify-between gap-3 text-left"
+                    >
+                      <div>
+                        <p className="text-sm text-ink">入座与圆满提示音</p>
+                        <p className="text-xs text-ink-2">开始入座与时间到时响起所选提醒音</p>
+                      </div>
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 flex items-center',
+                          startEndBell ? 'bg-accent justify-end' : 'bg-surface-2 justify-start'
+                        )}
                       >
+                        <span className="w-5 h-5 rounded-full bg-surface shadow-sm block" />
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !breathCueEnabled;
+                        setBreathCueEnabled(next);
+                        if (next && volume > 0) {
+                          playBreathChime(Math.max(0.15, volume * 0.35), 'inhale');
+                        }
+                      }}
+                      className="w-full min-h-[52px] py-2.5 px-1 flex items-center justify-between gap-3 text-left"
+                    >
+                      <div>
+                        <p className="text-sm text-ink">呼吸换息微音</p>
+                        <p className="text-xs text-ink-2">每 4 秒吸气/呼气转换时轻声引导，闭眼可用</p>
+                      </div>
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 flex items-center',
+                          breathCueEnabled ? 'bg-accent justify-end' : 'bg-surface-2 justify-start'
+                        )}
+                      >
+                        <span className="w-5 h-5 rounded-full bg-surface shadow-sm block" />
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setVibrateOnComplete((v) => !v)}
+                      className="w-full min-h-[52px] py-2.5 px-1 flex items-center justify-between gap-3 text-left"
+                    >
+                      <div>
+                        <p className="text-sm text-ink">圆满震动与系统提醒</p>
+                        <p className="text-xs text-ink-2">静坐结束时温和震动及浏览器通知</p>
+                      </div>
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 flex items-center',
+                          vibrateOnComplete ? 'bg-accent justify-end' : 'bg-surface-2 justify-start'
+                        )}
+                      >
+                        <span className="w-5 h-5 rounded-full bg-surface shadow-sm block" />
+                      </span>
+                    </button>
+                  </div>
+                </section>
+
+                {/* 2. Background / Ambient Sound Selection */}
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <h4 className="text-sm font-medium text-ink">静坐伴音</h4>
+                    <span className="text-xs text-ink-2">内置自然声离线可用</span>
+                  </div>
+
+                  <div className="divide-y divide-line">
+                    {/* Silent Option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        selectAmbient(null, false);
+                        setShowSoundSheet(false);
+                      }}
+                      className="w-full min-h-[56px] py-3 px-2 flex items-center justify-between text-left rounded-xl hover:bg-surface-2 transition-colors"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-ink">静音静坐</p>
+                        <p className="text-caption">无背景音乐，仅按上方提醒设置响铃</p>
+                      </div>
+                      {!currentTrack && !selectedAmbientId && (
+                        <Check size={17} className="text-accent shrink-0" />
+                      )}
+                    </button>
+
+                    {/* Built-in Offline Ambient Soundscapes */}
+                    {AMBIENT_SOUNDS.map((ambient) => {
+                      const isSelected = !currentTrack && selectedAmbientId === ambient.id;
+                      const isPreviewing = previewingAmbientId === ambient.id;
+                      const AmbientIcon =
+                        ambient.id === 'wind'
+                          ? Wind
+                          : ambient.id === 'rain'
+                          ? CloudRain
+                          : ambient.id === 'stream'
+                          ? Droplets
+                          : Waves;
+                      return (
+                        <div
+                          key={ambient.id}
+                          onClick={() => {
+                            selectAmbient(ambient.id, phase === 'idle');
+                            if (phase === 'active') {
+                              setShowSoundSheet(false);
+                            }
+                          }}
+                          className="min-h-[56px] py-3 px-2 flex items-center justify-between gap-3 cursor-pointer rounded-xl hover:bg-surface-2 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div
+                              className={cn(
+                                'w-9 h-9 rounded-full flex items-center justify-center shrink-0',
+                                isSelected
+                                  ? 'bg-accent-mist text-accent'
+                                  : 'bg-surface-2 text-ink-2'
+                              )}
+                            >
+                              <AmbientIcon size={16} strokeWidth={1.5} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-ink truncate">
+                                {ambient.title}
+                              </p>
+                              <p className="text-caption truncate">{ambient.subtitle}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {phase === 'idle' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleAmbientPreview(ambient.id);
+                                }}
+                                aria-label={isPreviewing ? '停止试听' : '试听'}
+                                className={cn(
+                                  'h-8 px-2.5 rounded-full text-xs flex items-center gap-1 transition-colors whitespace-nowrap',
+                                  isPreviewing
+                                    ? 'bg-accent text-on-accent'
+                                    : 'bg-surface-2 text-ink-2 hover:text-ink'
+                                )}
+                              >
+                                {isPreviewing ? (
+                                  <>
+                                    <Square size={10} fill="currentColor" />
+                                    <span>停止</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play size={11} />
+                                    <span>试听</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                            {isSelected && <Check size={17} className="text-accent ml-1" />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {/* 3. Cloud & Local Custom Tracks */}
+                <section className="space-y-2">
+                  <div className="px-1">
+                    <h4 className="text-sm font-medium text-ink">我的与云端音频</h4>
+                  </div>
+
+                  {allTracks.length === 0 ? (
+                    <div className="py-6 text-center">
+                      <Music className="w-7 h-7 text-ink-3 mx-auto mb-1.5" strokeWidth={1.5} />
+                      <p className="text-caption">{t('no_track')}</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-line">
+                      {allTracks.map((track) => {
+                        const isSelected = currentTrack?.id === track.id;
+                        return (
+                          <div
+                            key={track.id}
+                            onClick={() => {
+                              selectTrack(track);
+                              setShowSoundSheet(false);
+                            }}
+                            className="min-h-[56px] py-3 px-2 flex items-center justify-between gap-3 cursor-pointer rounded-xl hover:bg-surface-2 transition-colors"
+                          >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div
                             className={cn(
@@ -1399,12 +1970,14 @@ export const Meditation: React.FC<MeditationProps> = ({
                               </button>
                             </>
                           )}
-                          {isSelected && <Check size={17} className="text-accent ml-1" />}
+                            {isSelected && <Check size={17} className="text-accent ml-1" />}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
               </div>
             </motion.div>
           </div>

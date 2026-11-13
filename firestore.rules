@@ -163,6 +163,17 @@ service cloud.firestore {
              data.isDefault is bool;
     }
 
+    function isValidConsentDoc() {
+      let data = request.resource.data;
+      return (!('mindConsentVersion' in data) || (data.mindConsentVersion is string && data.mindConsentVersion.size() <= 64)) &&
+             (!('mindConsentAt' in data) || (data.mindConsentAt is string && data.mindConsentAt.size() <= 64)) &&
+             (!('cloudConsentVersion' in data) || (data.cloudConsentVersion is string && data.cloudConsentVersion.size() <= 64)) &&
+             (!('cloudConsentAt' in data) || (data.cloudConsentAt is string && data.cloudConsentAt.size() <= 64)) &&
+             (!('cloudSyncOptedOut' in data) || data.cloudSyncOptedOut is bool) &&
+             (!('cloudSyncOptedOutAt' in data) || (data.cloudSyncOptedOutAt is string && data.cloudSyncOptedOutAt.size() <= 64)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
     function isValidSharedMerit() {
       let data = request.resource.data;
       return data.keys().hasAll(['userId', 'userName', 'type', 'title', 'rejoiceCount', 'timestamp']) &&
@@ -257,6 +268,12 @@ service cloud.firestore {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId) && isValidVow();
         allow update: if isOwner(userId) && isValidVow();
+        allow delete: if isOwner(userId);
+      }
+
+      match /private/{docId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && docId == 'consent' && isValidConsentDoc();
         allow delete: if isOwner(userId);
       }
     }

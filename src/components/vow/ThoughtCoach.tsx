@@ -11,6 +11,8 @@ import {
 } from '../../data/offlineGuidance';
 import { SafetyNetCard } from './SafetyNetCard';
 import { GuidanceCards, StructuredGuidance } from './GuidanceCards';
+import { consentService } from '../../services/consentService';
+import { MindConsentSheet } from '../ConsentModals';
 
 const AI_TIMEOUT_MS = 10000;
 
@@ -38,6 +40,14 @@ export const ThoughtCoach = () => {
   const [response, setResponse] = useState<StructuredGuidance | null>(null);
   const [showSafetyNet, setShowSafetyNet] = useState(false);
   const [safetyDismissedForEdit, setSafetyDismissedForEdit] = useState(false);
+  const [hasMindConsent, setHasMindConsent] = useState<boolean>(() => consentService.hasMindConsent());
+  const [showMindConsent, setShowMindConsent] = useState(false);
+
+  React.useEffect(() => {
+    const syncConsent = () => setHasMindConsent(consentService.hasMindConsent());
+    window.addEventListener('zen_consent_updated', syncConsent);
+    return () => window.removeEventListener('zen_consent_updated', syncConsent);
+  }, []);
 
   const handleEmotionChange = (nextValue: string) => {
     setEmotion(nextValue);
@@ -68,6 +78,10 @@ export const ThoughtCoach = () => {
   };
 
   const handleAnalyze = async () => {
+    if (!consentService.hasMindConsent()) {
+      setShowMindConsent(true);
+      return;
+    }
     const trimmed = emotion.trim();
     if (!trimmed) return;
 
@@ -152,28 +166,61 @@ export const ThoughtCoach = () => {
         <div className="relative">
           <textarea
             value={emotion}
-            onChange={(e) => handleEmotionChange(e.target.value)}
-            placeholder={t('thought_coach_placeholder')}
+            onChange={(e) => {
+              if (!hasMindConsent) {
+                setShowMindConsent(true);
+                return;
+              }
+              handleEmotionChange(e.target.value);
+            }}
+            onFocus={() => {
+              if (!hasMindConsent) setShowMindConsent(true);
+            }}
+            readOnly={!hasMindConsent}
+            placeholder={
+              hasMindConsent
+                ? t('thought_coach_placeholder')
+                : '请先查看并同意《隐私说明》后，再开始转念觉察...'
+            }
             className="w-full bg-surface-2 p-4 pb-12 rounded-2xl border border-line focus:outline-none focus:border-accent min-h-[120px] resize-none text-ink placeholder:text-ink-3 leading-relaxed"
           />
-          <button
-            type="button"
-            onClick={handleAnalyze}
-            disabled={isLoading || !emotion.trim()}
-            aria-label="倾听此刻"
-            className="absolute bottom-3 right-3 bg-accent text-on-accent hover:bg-accent-hover h-10 px-3.5 rounded-full disabled:opacity-45 transition-all flex items-center gap-1.5 text-xs font-medium"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <span>观照</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
+          {!hasMindConsent ? (
+            <button
+              type="button"
+              onClick={() => setShowMindConsent(true)}
+              className="absolute bottom-3 right-3 bg-accent text-on-accent hover:bg-accent-hover h-10 px-3.5 rounded-full transition-all flex items-center gap-1.5 text-xs font-medium"
+            >
+              查看并同意
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAnalyze}
+              disabled={isLoading || !emotion.trim()}
+              aria-label="倾听此刻"
+              className="absolute bottom-3 right-3 bg-accent text-on-accent hover:bg-accent-hover h-10 px-3.5 rounded-full disabled:opacity-45 transition-all flex items-center gap-1.5 text-xs font-medium"
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <span>观照</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
+
+      <MindConsentSheet
+        isOpen={showMindConsent}
+        onConsentAccepted={() => {
+          setHasMindConsent(true);
+          setShowMindConsent(false);
+        }}
+        onCancel={() => setShowMindConsent(false)}
+      />
 
       <AnimatePresence mode="wait">
         {showSafetyNet && (

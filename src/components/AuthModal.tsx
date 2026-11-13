@@ -399,7 +399,7 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                 </div>
 
                 <p className="text-xs text-ink-2 leading-relaxed">
-                  观心内容会加密保存，只有你能看见。
+                  观心内容会加密保存，你也可以设定观心口令，让连我们都无法读取。
                 </p>
 
                 <div className="flex items-start gap-3 mt-2">
@@ -424,7 +424,7 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                     {t('auth_and')}
                     <button
                       type="button"
-                      onClick={() => window.dispatchEvent(new CustomEvent('open-privacy-modal'))}
+                      onClick={() => window.dispatchEvent(new CustomEvent('open-privacy-policy'))}
                       className="text-accent hover:underline mx-1"
                     >
                       {t('auth_privacy')}
@@ -488,6 +488,17 @@ export const AuthModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                 </button>
               </div>
             )}
+
+            <p className="text-caption text-center pt-5 mt-5 border-t border-line">
+              登录即表示你已阅读
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-privacy-policy'))}
+                className="text-accent hover:underline mx-0.5 font-medium"
+              >
+                《隐私说明》
+              </button>
+            </p>
           </div>
         </motion.div>
       </div>

@@ -12,6 +12,8 @@ import { useFirebase } from '../../contexts/FirebaseContext';
 import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { handleFirestoreError, OperationType } from '../../utils/firebaseErrors';
+import { consentService } from '../../services/consentService';
+import { safeStorage } from '../../utils/safeStorage';
 
 interface DeedEntry {
   id: string;
@@ -37,18 +39,18 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
 
   useEffect(() => {
     const fetchHistory = async () => {
-      if (isAuthReady && fbUser) {
+      if (isAuthReady && fbUser && consentService.hasCloudConsent()) {
         try {
           const snapshot = await getDocs(collection(db, `users/${fbUser.uid}/goodDeeds`));
           const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DeedEntry));
           const sorted = data.sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
           setHistory(sorted);
-          localStorage.setItem('good_deed_history', JSON.stringify(sorted));
+          safeStorage.setItem('good_deed_history', JSON.stringify(sorted));
         } catch (error) {
           handleFirestoreError(error, OperationType.GET, `users/${fbUser.uid}/goodDeeds`);
         }
       } else {
-        const saved = localStorage.getItem('good_deed_history');
+        const saved = safeStorage.getItem('good_deed_history');
         if (saved) {
           const parsed = JSON.parse(saved);
           const filtered = parsed.filter((d: any) => {
@@ -61,6 +63,8 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
       }
     };
     fetchHistory();
+    window.addEventListener('zen_consent_updated', fetchHistory);
+    return () => window.removeEventListener('zen_consent_updated', fetchHistory);
   }, [fbUser, isAuthReady]);
 
   const handleSend = async () => {
@@ -135,9 +139,9 @@ export const DailyGoodDeed = ({ user, onLevelUp, onClose }: { user: any, onLevel
         };
         const newHistory = [newEntry, ...history].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
         setHistory(newHistory);
-        localStorage.setItem('good_deed_history', JSON.stringify(newHistory));
+        safeStorage.setItem('good_deed_history', JSON.stringify(newHistory));
         
-        if (fbUser) {
+        if (fbUser && consentService.hasCloudConsent()) {
           try {
             const cleanEntry = Object.fromEntries(Object.entries(newEntry).filter(([_, v]) => v !== undefined));
             await setDoc(doc(db, `users/${fbUser.uid}/goodDeeds`, newEntry.id), cleanEntry);

@@ -63,6 +63,16 @@ import { recordVault } from './services/recordVault';
 import { scriptureDatabaseService } from './services/scriptureDatabaseService';
 import { playCompletionBell } from './utils/zenAudio';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { PrivacyPolicyView } from './components/PrivacyPolicyView';
+import { CloudConsentSheet } from './components/ConsentModals';
+import { ConfirmSheet } from './components/ConfirmSheet';
+import { consentService, ZenConsentRecord } from './services/consentService';
+import { PRIVACY_VERSION } from './content/privacyPolicy';
+import {
+  detectUserAuthKind,
+  executeRealAccountDeletion,
+  clearAllDevicePracticeData,
+} from './utils/accountDeletion';
 
 interface CommunityPost {
   id: number | string;
@@ -599,7 +609,7 @@ export default function App() {
     }).catch(err => console.warn('Record vault startup recovery:', err));
   }, []);
 
-  const { user: fbUser } = useFirebase();
+  const { user: fbUser, isAuthReady } = useFirebase();
 
   const shareMerit = async (meritData: any, isCommunity: boolean = false) => {
     if (isSharing) return;
@@ -746,7 +756,7 @@ export default function App() {
       recordVault.saveRecords(next);
       return next;
     });
-    if (fbUser) {
+    if (fbUser && consentService.hasCloudConsent()) {
       try {
         const cleanItem = Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
         await setDoc(doc(db, `users/${fbUser.uid}/history`, item.id.toString()), cleanItem);
@@ -762,7 +772,7 @@ export default function App() {
       recordVault.saveRecords(next);
       return next;
     });
-    if (fbUser) {
+    if (fbUser && consentService.hasCloudConsent()) {
       try {
         await deleteDoc(doc(db, `users/${fbUser.uid}/history`, id.toString()));
       } catch (error) {
@@ -774,7 +784,7 @@ export default function App() {
   const restoreHistory = async (newHistory: any[]) => {
     setHistory(newHistory);
     recordVault.saveRecords(newHistory);
-    if (fbUser) {
+    if (fbUser && consentService.hasCloudConsent()) {
       try {
         const batch = writeBatch(db);
         newHistory.forEach(item => {
@@ -791,7 +801,7 @@ export default function App() {
 
   const updateVows = async (newVows: any[]) => {
     setVows(newVows);
-    if (fbUser) {
+    if (fbUser && consentService.hasCloudConsent()) {
       try {
         const batch = writeBatch(db);
         newVows.forEach(vow => {
@@ -851,6 +861,34 @@ export default function App() {
     ...userProfile
   };
 
+  const [consentState, setConsentState] = useState<ZenConsentRecord>(() => consentService.getConsent());
+  const [showCloudConsentSheet, setShowCloudConsentSheet] = useState(false);
+
+  useEffect(() => {
+    const syncConsentState = () => setConsentState(consentService.getConsent());
+    window.addEventListener('zen_consent_updated', syncConsentState);
+    return () => window.removeEventListener('zen_consent_updated', syncConsentState);
+  }, []);
+
+  const cloudSyncEnabled = Boolean(
+    fbUser &&
+    consentState.cloudConsentVersion === PRIVACY_VERSION &&
+    !consentState.cloudSyncOptedOut
+  );
+
+  useEffect(() => {
+    if (!isAuthReady) return;
+    if (
+      fbUser &&
+      consentState.cloudConsentVersion !== PRIVACY_VERSION &&
+      !consentState.cloudSyncOptedOut
+    ) {
+      setShowCloudConsentSheet(true);
+    } else if (!fbUser) {
+      setShowCloudConsentSheet(false);
+    }
+  }, [isAuthReady, fbUser, consentState.cloudConsentVersion, consentState.cloudSyncOptedOut]);
+
   useFirebaseSync(
     userProfile, setUserProfile,
     history, setHistory,
@@ -865,7 +903,8 @@ export default function App() {
     woodenFishAppearance, setWoodenFishAppearance,
     customScriptures, setCustomScriptures,
     dailyPractice, setDailyPractice,
-    dailyPracticeUpdatedAt, setDailyPracticeUpdatedAt
+    dailyPracticeUpdatedAt, setDailyPracticeUpdatedAt,
+    cloudSyncEnabled
   );
 
   const [realtimeOffline, setRealtimeOffline] = useState<boolean>(() => isRealtimeOffline());
@@ -1343,9 +1382,35 @@ export default function App() {
   const [isVowSettingsExpanded, setIsVowSettingsExpanded] = useState(true);
   const [isFeedbackExpanded, setIsFeedbackExpanded] = useState(true);
   const [isAiSettingsExpanded, setIsAiSettingsExpanded] = useState(true);
+  const [isPrivacySettingsExpanded, setIsPrivacySettingsExpanded] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isSystemSettingsExpanded, setIsSystemSettingsExpanded] = useState(true);
+  const [withdrawTarget, setWithdrawTarget] = useState<'mind' | 'cloud' | null>(null);
+  const [withdrawDeleteData, setWithdrawDeleteData] = useState(false);
+  const [isWithdrawingConsent, setIsWithdrawingConsent] = useState(false);
+  const [deleteAccountStep, setDeleteAccountStep] = useState<'idle' | 'warn' | 'reauth' | 'local_cleanup'>('idle');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const aiSettingsRef = React.useRef<HTMLDivElement>(null);
+
+  const handleExportBackup = () => {
+    const data = {
+      count,
+      history,
+      customChants,
+      customDedication,
+      customVow,
+      volume,
+    };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `zen_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('已导出备份文件');
+  };
 
   useEffect(() => {
     const handleNavigateToSettings = (event: any) => {
@@ -2135,6 +2200,17 @@ export default function App() {
 
                 <button
                   onClick={() => {
+                    window.dispatchEvent(new CustomEvent('open-privacy-policy'));
+                    setIsMeSheetOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-ink hover:bg-surface-2 transition-colors text-left"
+                >
+                  <ShieldCheck size={20} strokeWidth={1.5} className="text-accent shrink-0" />
+                  <span className="font-medium text-sm">隐私说明</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     navigateTo('community');
                     setIsMeSheetOpen(false);
                   }}
@@ -2344,6 +2420,17 @@ export default function App() {
                     >
                       <Settings className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
                       <span className="font-medium text-sm sm:text-base truncate">系统设置</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('open-privacy-policy'));
+                        setIsSideMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all text-ink-2 hover:bg-surface-2 hover:text-accent"
+                    >
+                      <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                      <span className="font-medium text-sm sm:text-base truncate">隐私说明</span>
                     </button>
                   </div>
                 </div>
@@ -3125,7 +3212,7 @@ export default function App() {
                           const newHistory = [newEntry, ...history].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
                           safeStorage.setJSON('good_deed_history', newHistory);
                           
-                          if (fbUser) {
+                          if (fbUser && consentService.hasCloudConsent()) {
                             try {
                               const cleanEntry = Object.fromEntries(Object.entries(newEntry).filter(([_, v]) => v !== undefined));
                               await setDoc(doc(db, `users/${fbUser.uid}/goodDeeds`, newEntry.id), cleanEntry);
@@ -4014,6 +4101,156 @@ export default function App() {
                 </AnimatePresence>
               </div>
 
+              {/* Privacy & Account */}
+              <div className="bg-surface rounded-2xl p-8 border border-line">
+                <button
+                  type="button"
+                  onClick={() => setIsPrivacySettingsExpanded(!isPrivacySettingsExpanded)}
+                  className="w-full flex items-center justify-between text-xl font-bold mb-2 hover:text-accent transition-colors text-ink"
+                >
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-accent" />
+                    <span>隐私与账户</span>
+                  </div>
+                  <ChevronDown className={cn("w-5 h-5 transition-transform", isPrivacySettingsExpanded ? "rotate-180" : "")} />
+                </button>
+
+                <AnimatePresence>
+                  {isPrivacySettingsExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="space-y-6 pt-6">
+                        {/* Privacy Policy Entry */}
+                        <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-surface-2 border border-line">
+                          <div>
+                            <p className="text-sm font-bold text-ink">《隐私说明》</p>
+                            <p className="text-xs text-ink-2 mt-0.5">版本：{PRIVACY_VERSION}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => window.dispatchEvent(new CustomEvent('open-privacy-policy'))}
+                            className="px-4 py-2 rounded-full bg-surface border border-line hover:border-line-strong text-xs font-medium text-accent transition-colors shrink-0"
+                          >
+                            查看全文
+                          </button>
+                        </div>
+
+                        {/* Cloud Sync Status */}
+                        <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-surface-2 border border-line">
+                          <div>
+                            <p className="text-sm font-bold text-ink">
+                              云端同步：{!fbUser ? '未登录（仅本机）' : cloudSyncEnabled ? '已开启' : '已关闭'}
+                            </p>
+                            <p className="text-xs text-ink-2 mt-0.5">
+                              {!fbUser
+                                ? '登录后可选择是否将修行记录同步到云端'
+                                : cloudSyncEnabled
+                                ? '修行记录、定课与加密观心将自动同步至你的账号云端'
+                                : '已暂停上传与下载个人云端资料，目前仅在本机保存'}
+                            </p>
+                          </div>
+                          {fbUser && !cloudSyncEnabled && (
+                            <button
+                              type="button"
+                              onClick={() => setShowCloudConsentSheet(true)}
+                              className="px-4 py-2 rounded-full bg-accent text-on-accent hover:bg-accent-hover text-xs font-medium transition-colors shrink-0"
+                            >
+                              开启云端同步
+                            </button>
+                          )}
+                        </div>
+
+                        {/* My Consent Records */}
+                        <div className="space-y-3">
+                          <h3 className="text-sm font-bold text-ink-2">我的同意记录</h3>
+                          <div className="rounded-2xl border border-line divide-y divide-line bg-surface-2">
+                            {/* Mind Consent Row */}
+                            <div className="p-4 flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-medium text-ink">观心内容收集与加密</p>
+                                <p className="text-xs text-ink-2 mt-0.5">
+                                  {consentState.mindConsentVersion === PRIVACY_VERSION && consentState.mindConsentAt
+                                    ? `已同意 · ${consentState.mindConsentAt.slice(0, 10)}`
+                                    : '尚未同意'}
+                                </p>
+                              </div>
+                              {consentState.mindConsentVersion === PRIVACY_VERSION && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setWithdrawDeleteData(false);
+                                    setWithdrawTarget('mind');
+                                  }}
+                                  className="px-3 py-1.5 rounded-full border border-line bg-surface text-xs text-ink-2 hover:text-red-500 hover:border-red-500/40 transition-colors shrink-0"
+                                >
+                                  撤回同意
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Cloud Sync Consent Row */}
+                            <div className="p-4 flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-medium text-ink">云端同步与跨境存储</p>
+                                <p className="text-xs text-ink-2 mt-0.5">
+                                  {consentState.cloudConsentVersion === PRIVACY_VERSION &&
+                                  !consentState.cloudSyncOptedOut &&
+                                  consentState.cloudConsentAt
+                                    ? `已同意 · ${consentState.cloudConsentAt.slice(0, 10)}`
+                                    : consentState.cloudSyncOptedOut
+                                    ? '已关闭（仅在本机使用）'
+                                    : '尚未同意'}
+                                </p>
+                              </div>
+                              {consentState.cloudConsentVersion === PRIVACY_VERSION && !consentState.cloudSyncOptedOut && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setWithdrawDeleteData(false);
+                                    setWithdrawTarget('cloud');
+                                  }}
+                                  className="px-3 py-1.5 rounded-full border border-line bg-surface text-xs text-ink-2 hover:text-red-500 hover:border-red-500/40 transition-colors shrink-0"
+                                >
+                                  撤回同意
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Real Account Deletion */}
+                        <div className="border-t border-line pt-6 space-y-3">
+                          <h3 className="text-sm font-bold text-red-500 flex items-center gap-2">
+                            <Trash2 className="w-4 h-4" />
+                            <span>删除账号</span>
+                          </h3>
+                          <p className="text-xs text-ink-2 leading-relaxed">
+                            永久删除你的账号以及 Firestore 中的全部云端资料（个人文档、观心、善行、修行记录、发愿与同意记录）。此操作无法恢复，建议先导出备份。
+                          </p>
+                          {fbUser ? (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteAccountStep('warn')}
+                              className="w-full py-3 px-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-500 font-bold hover:bg-red-500/20 transition-colors text-sm"
+                            >
+                              删除账号
+                            </button>
+                          ) : (
+                            <p className="text-xs text-ink-3">
+                              当前为未登录状态，无云端账号；如需清除本机记录，请使用下方「系统 › 清除所有本地数据」。
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
               {/* System */}
               <div className="bg-surface rounded-2xl p-8 border border-line">
                 <button 
@@ -4047,18 +4284,7 @@ export default function App() {
                           </p>
                           <div className="flex gap-4">
                             <button 
-                              onClick={() => {
-                                const data = {
-                                  count, history, customChants, customDedication, customVow, volume
-                                };
-                                const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement("a");
-                                a.href = url;
-                                a.download = `zen_backup_${new Date().toISOString().split('T')[0]}.json`;
-                                a.click();
-                                URL.revokeObjectURL(url);
-                              }}
+                              onClick={handleExportBackup}
                               className="flex-1 bg-surface-2 border border-line-strong text-accent py-3 rounded-2xl font-bold hover:bg-accent-mist transition-colors text-sm"
                             >
                               {t('export_backup')}
@@ -4082,9 +4308,9 @@ export default function App() {
                                         if (data.customDedication) setCustomDedication(data.customDedication);
                                         if (data.customVow) setCustomVow(data.customVow);
                                         if (data.volume !== undefined) setVolume(data.volume);
-                                        alert(t('restore_success'));
+                                        toast.success(t('restore_success'));
                                       } catch (err) {
-                                        alert(t('restore_fail'));
+                                        toast.error(t('restore_fail'));
                                       }
                                     };
                                     reader.readAsText(file);
@@ -4121,16 +4347,7 @@ export default function App() {
                               </button>
                               <button 
                                 onClick={() => {
-                                  try {
-                                    safeStorage.clear();
-                                  } catch (e) {
-                                    console.warn("Storage clear notice:", e);
-                                  }
-                                  try {
-                                    indexedDB.deleteDatabase('ZenMeditationDB');
-                                  } catch (e) {
-                                    console.warn("IndexedDB delete notice:", e);
-                                  }
+                                  clearAllDevicePracticeData();
                                   window.location.reload();
                                 }}
                                 className="flex-1 bg-red-500 text-white py-3 rounded-2xl font-bold hover:bg-red-600 transition-colors text-sm"
@@ -4168,85 +4385,32 @@ export default function App() {
                           )}
                         </div>
 
-                        {/* Account Deletion */}
-                        <div className="border-t border-zen-accent/10 pt-6">
-                          <details className="group">
-                            <summary className="flex items-center justify-between cursor-pointer list-none">
-                              <h3 className="text-sm font-bold text-red-500 flex items-center gap-2">
-                                <Trash2 className="w-4 h-4" />
-                                账号删除 (Account Deletion)
-                              </h3>
-                              <div className="flex items-center gap-3">
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    window.dispatchEvent(new CustomEvent('open-deletion-modal'));
-                                  }}
-                                  className="text-xs text-zen-accent underline hover:text-zen-accent/80 transition-colors"
-                                >
-                                  数据删除政策
-                                </button>
-                                <ChevronDown className="w-4 h-4 text-zen-accent/50 group-open:rotate-180 transition-transform" />
-                              </div>
-                            </summary>
-                            
-                            <div className="pt-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                              <p className="text-xs text-zen-accent/60 mb-4 leading-relaxed">
-                                删除账号将永久清除您的所有数据（包括修行记录、偏好设置等）。此操作不可逆。建议您在删除前先导出备份数据。
-                              </p>
-                              <button
-                                onClick={() => {
-                                  if (confirm("警告：您确定要永久删除您的账号和所有数据吗？此操作无法撤销。")) {
-                                    // 1. Clear local storage safely
-                                    identityService.logout();
-                                    // 2. Reset state
-                                    setCount(0);
-                                    setHistory([]);
-                                    setCustomChants([]);
-                                    setCustomDedication("");
-                                    setCustomVow("");
-                                    // 3. Revoke token/logout if applicable
-                                    if (fbUser) {
-                                      auth.signOut();
-                                    }
-                                    alert("账号及数据已成功删除。");
-                                    window.dispatchEvent(new CustomEvent('auth_state_changed'));
-                                  }
-                                }}
-                                className="w-full bg-red-50 text-red-500 border border-red-200 py-3 rounded-2xl font-bold hover:bg-red-100 transition-colors text-sm"
-                              >
-                                永久删除账号
-                              </button>
-                            </div>
-                          </details>
-                        </div>
-
                         {/* Version and Legal */}
-                        <div className="border-t border-zen-accent/10 pt-6 text-center space-y-3">
-                          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-zen-accent/60">
+                        <div className="border-t border-line pt-6 text-center space-y-3">
+                          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-ink-2">
                             <button 
                               onClick={() => window.dispatchEvent(new CustomEvent('open-terms-modal'))}
-                              className="hover:text-zen-accent underline transition-colors"
+                              className="hover:text-accent underline transition-colors"
                             >
                               服务条款 (Terms of Service)
                             </button>
                             <span>|</span>
                             <button 
-                              onClick={() => window.dispatchEvent(new CustomEvent('open-privacy-modal'))}
-                              className="hover:text-zen-accent underline transition-colors"
+                              onClick={() => window.dispatchEvent(new CustomEvent('open-privacy-policy'))}
+                              className="hover:text-accent underline transition-colors"
                             >
-                              隐私政策 (Privacy Policy)
+                              隐私说明 (Privacy Policy)
                             </button>
                             <span>|</span>
-                            <button onClick={() => window.dispatchEvent(new CustomEvent('open-ai-modal'))} className="hover:text-zen-accent underline transition-colors">
+                            <button onClick={() => window.dispatchEvent(new CustomEvent('open-ai-modal'))} className="hover:text-accent underline transition-colors">
                               AI使用说明 (AI Usage Policy)
                             </button>
                             <span>|</span>
-                            <button onClick={() => window.dispatchEvent(new CustomEvent('open-deletion-modal'))} className="hover:text-zen-accent underline transition-colors">
+                            <button onClick={() => window.dispatchEvent(new CustomEvent('open-deletion-modal'))} className="hover:text-accent underline transition-colors">
                               数据删除政策 (Data Deletion Policy)
                             </button>
                           </div>
-                          <p className="text-xs text-zen-accent/50 font-mono">
+                          <p className="text-xs text-ink-3 font-mono">
                             v2.5.0-opt (2026.11.12 · 极速轻量版)
                           </p>
                         </div>
@@ -4467,6 +4631,172 @@ export default function App() {
           />
         )}
       </React.Suspense>
+      <PrivacyPolicyView />
+      <CloudConsentSheet
+        isOpen={showCloudConsentSheet}
+        onConsentAccepted={() => {
+          setConsentState(consentService.getConsent());
+          setShowCloudConsentSheet(false);
+          toast.success('已开启云端同步');
+        }}
+        onOptOut={() => {
+          setConsentState(consentService.getConsent());
+          setShowCloudConsentSheet(false);
+          toast.info('已设为仅在本机使用，不会上传个人资料');
+        }}
+      />
+
+      {/* Withdraw Consent ConfirmSheet */}
+      <ConfirmSheet
+        isOpen={withdrawTarget !== null}
+        title={
+          withdrawTarget === 'mind'
+            ? '撤回「观心内容收集与加密」同意'
+            : '撤回「云端同步与跨境存储」同意'
+        }
+        description={
+          withdrawTarget === 'mind'
+            ? '撤回后你将无法新增观心或使用 AI 觉察，之前已保存的观心记录仍可查看与删除。'
+            : '撤回后应用将立刻停止上传或下载你的云端个人资料，你仍可继续在本机使用全部功能。'
+        }
+        confirmLabel="确认撤回"
+        destructive={withdrawDeleteData}
+        isLoading={isWithdrawingConsent}
+        onConfirm={async () => {
+          if (!withdrawTarget || isWithdrawingConsent) return;
+          setIsWithdrawingConsent(true);
+          try {
+            if (withdrawTarget === 'mind') {
+              await consentService.withdrawMindConsent(withdrawDeleteData);
+              toast.success(
+                withdrawDeleteData
+                  ? '已撤回观心同意，并删除全部观心记录'
+                  : '已撤回观心同意'
+              );
+            } else {
+              await consentService.withdrawCloudConsent(withdrawDeleteData);
+              toast.success(
+                withdrawDeleteData
+                  ? '已关闭云端同步，并删除云端个人资料'
+                  : '已关闭云端同步，仅在本机保留资料'
+              );
+            }
+            setConsentState(consentService.getConsent());
+            setWithdrawTarget(null);
+            setWithdrawDeleteData(false);
+          } catch (err: any) {
+            toast.error(err?.message || '操作未完成，请稍后重试');
+          } finally {
+            setIsWithdrawingConsent(false);
+          }
+        }}
+        onCancel={() => {
+          if (!isWithdrawingConsent) {
+            setWithdrawTarget(null);
+            setWithdrawDeleteData(false);
+          }
+        }}
+      >
+        <label className="flex items-start gap-3 p-3.5 rounded-2xl bg-surface-2 border border-line cursor-pointer">
+          <input
+            type="checkbox"
+            checked={withdrawDeleteData}
+            onChange={(e) => setWithdrawDeleteData(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-line-strong text-accent focus:ring-accent bg-surface shrink-0"
+          />
+          <span className="text-xs text-ink leading-relaxed">
+            {withdrawTarget === 'mind'
+              ? '同时删除全部观心记录（本机与云端记录一并清除，不可恢复）'
+              : '同时删除云端资料（将清除 Firestore 中你的所有资料，仅保留本机数据）'}
+          </span>
+        </label>
+      </ConfirmSheet>
+
+      {/* Account Deletion Step 1: Warning & Export Backup */}
+      <ConfirmSheet
+        isOpen={deleteAccountStep === 'warn'}
+        title="永久删除账号与云端资料？"
+        description="此操作将永久删除你的登录账号以及云端保存的个人资料、观心、善行、修行记录、发愿与隐私同意记录，无法恢复。建议先导出本机备份。"
+        confirmLabel="继续验证身份"
+        secondaryAction={{
+          label: '先导出备份',
+          onClick: handleExportBackup,
+        }}
+        destructive
+        onConfirm={() => {
+          setDeletePassword('');
+          setDeleteAccountStep('reauth');
+        }}
+        onCancel={() => setDeleteAccountStep('idle')}
+      />
+
+      {/* Account Deletion Step 2: Re-authenticate & Execute */}
+      <ConfirmSheet
+        isOpen={deleteAccountStep === 'reauth'}
+        title="最后确认：验证本人身份"
+        description={
+          detectUserAuthKind() === 'password'
+            ? '请输入当前登录密码以确认删除账号。验证通过后，将立即清除全部云端资料并注销账号。'
+            : '点击确认后将弹出 Google 登录验证窗口，验证通过后将立即清除全部云端资料并注销账号。'
+        }
+        confirmLabel="永久删除账号"
+        destructive
+        isLoading={isDeletingAccount}
+        confirmDisabled={detectUserAuthKind() === 'password' && !deletePassword}
+        onConfirm={async () => {
+          if (isDeletingAccount) return;
+          setIsDeletingAccount(true);
+          try {
+            await executeRealAccountDeletion(deletePassword);
+            setDeletePassword('');
+            toast.success('账号已删除');
+            window.dispatchEvent(new CustomEvent('auth_state_changed'));
+            setDeleteAccountStep('local_cleanup');
+          } catch (err: unknown) {
+            console.error('Account deletion error:', err);
+            toast.error(translateFirebaseAuthError(err));
+          } finally {
+            setIsDeletingAccount(false);
+          }
+        }}
+        onCancel={() => {
+          if (!isDeletingAccount) {
+            setDeletePassword('');
+            setDeleteAccountStep('idle');
+          }
+        }}
+      >
+        {detectUserAuthKind() === 'password' && (
+          <input
+            type="password"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            placeholder="请输入当前登录密码"
+            className="w-full px-4 py-3 bg-surface-2 border border-line rounded-2xl text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent"
+          />
+        )}
+      </ConfirmSheet>
+
+      {/* Account Deletion Step 3: Ask whether to clear local data */}
+      <ConfirmSheet
+        isOpen={deleteAccountStep === 'local_cleanup'}
+        title="账号已删除"
+        description="你的 Firebase 登录账号与全部云端资料已永久移除。是否同时清除本机设备中保留的修行记录与设定？"
+        confirmLabel="同时清除本机资料"
+        cancelLabel="保留本机记录"
+        destructive
+        onConfirm={() => {
+          clearAllDevicePracticeData();
+          setDeleteAccountStep('idle');
+          window.location.reload();
+        }}
+        onCancel={() => {
+          identityService.getUserId();
+          setDeleteAccountStep('idle');
+          window.dispatchEvent(new CustomEvent('auth_state_changed'));
+        }}
+      />
+
       <OfflineIndicator />
       <Toaster />
       </div>

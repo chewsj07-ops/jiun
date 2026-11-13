@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Lock,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
@@ -22,8 +23,12 @@ import { buildThoughtGuidanceSystemPrompt } from '../data/zenAssistantPrompt';
 import { cryptoService } from '../services/cryptoService';
 import { identityService } from '../services/identityService';
 import { auth, db } from '../firebase';
-import { writeBatch, doc } from 'firebase/firestore';
+import { writeBatch, doc, deleteDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
+import { consentService } from '../services/consentService';
+import { safeStorage } from '../utils/safeStorage';
+import { MindConsentSheet } from './ConsentModals';
+import { ConfirmSheet } from './ConfirmSheet';
 import {
   containsCrisisKeywords,
   matchOfflineGuidance,
@@ -260,6 +265,21 @@ export const ThoughtCollector = ({
   const [filterDay, setFilterDay] = useState<string>('all');
 
   const [showPlaque, setShowPlaque] = useState<Thought | null>(null);
+  const [hasMindConsent, setHasMindConsent] = useState<boolean>(() => consentService.hasMindConsent());
+  const [showMindConsent, setShowMindConsent] = useState<boolean>(false);
+  const [pendingDeleteThought, setPendingDeleteThought] = useState<Thought | null>(null);
+
+  useEffect(() => {
+    const syncConsent = () => setHasMindConsent(consentService.hasMindConsent());
+    window.addEventListener('zen_consent_updated', syncConsent);
+    return () => window.removeEventListener('zen_consent_updated', syncConsent);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMindConsent && thoughts.length > 0 && activeTab === 'record') {
+      setActiveTab('history');
+    }
+  }, [hasMindConsent, thoughts.length, activeTab]);
 
   const negativeEmotionGroups = EMOTION_GROUPS.filter((g) => !g.positive);
   const positiveEmotionGroups = EMOTION_GROUPS.filter((g) => Boolean(g.positive));
@@ -343,7 +363,7 @@ export const ThoughtCollector = ({
 
   useEffect(() => {
     const loadThoughts = async () => {
-      const saved = localStorage.getItem('zen_thoughts');
+      const saved = safeStorage.getItem('zen_thoughts');
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -359,8 +379,12 @@ export const ThoughtCollector = ({
 
   useEffect(() => {
     const loadThoughtsFromStorage = async () => {
-      const saved = localStorage.getItem('zen_thoughts');
-      if (!saved) return;
+      const saved = safeStorage.getItem('zen_thoughts');
+      if (!saved) {
+        isExternalSyncRef.current = true;
+        setThoughts([]);
+        return;
+      }
       try {
         const parsed = JSON.parse(saved);
         const decryptedThoughts = await decryptThoughtList(parsed);
@@ -431,7 +455,7 @@ export const ThoughtCollector = ({
         })
       );
 
-      localStorage.setItem('zen_thoughts', JSON.stringify(encryptedThoughts));
+      safeStorage.setItem('zen_thoughts', JSON.stringify(encryptedThoughts));
       window.dispatchEvent(new CustomEvent('zen_data_updated'));
       window.dispatchEvent(
         new CustomEvent('zen_thoughts_updated', {
@@ -439,9 +463,9 @@ export const ThoughtCollector = ({
         })
       );
 
-      // Strictly exclude any crisis / local-only records from Firestore sync
+      // Strictly exclude any crisis / local-only records from Firestore sync, and require Cloud Consent
       const syncableThoughts = encryptedThoughts.filter((t: any) => !t.isLocalOnly);
-      if (auth.currentUser && syncableThoughts.length > 0) {
+      if (auth.currentUser && consentService.hasCloudConsent() && syncableThoughts.length > 0) {
         try {
           const batch = writeBatch(db);
           syncableThoughts.forEach((t: any) => {
@@ -469,9 +493,22 @@ export const ThoughtCollector = ({
     saveThoughts();
   }, [thoughts]);
 
+  const openWithConsentCheck = () => {
+    if (consentService.hasMindConsent()) {
+      setIsOpen(true);
+      return;
+    }
+    if (consentService.hasLegacyThoughts()) {
+      setActiveTab('history');
+      setIsOpen(true);
+      return;
+    }
+    setShowMindConsent(true);
+  };
+
   useEffect(() => {
     if (embedded) return;
-    const handleOpen = () => setIsOpen(true);
+    const handleOpen = () => openWithConsentCheck();
     window.addEventListener('open-thought-collector', handleOpen);
     return () =>
       window.removeEventListener('open-thought-collector', handleOpen);
@@ -644,7 +681,36 @@ export const ThoughtCollector = ({
     setSafetyDismissedForSession(false);
   };
 
+  const handleDeleteThought = async (thought: Thought) => {
+    const remaining = thoughts.filter((item) => item.id !== thought.id);
+    if (remaining.length === 0) {
+      isExternalSyncRef.current = true;
+      setThoughts([]);
+      safeStorage.removeItem('zen_thoughts');
+      window.dispatchEvent(new CustomEvent('zen_data_updated'));
+      window.dispatchEvent(
+        new CustomEvent('zen_thoughts_updated', {
+          detail: { sourceId: instanceIdRef.current },
+        })
+      );
+    } else {
+      setThoughts(remaining);
+    }
+
+    if (auth.currentUser && consentService.hasCloudConsent()) {
+      await deleteDoc(
+        doc(db, 'users', auth.currentUser.uid, 'thoughts', thought.id.toString())
+      ).catch(() => {});
+    }
+    setPendingDeleteThought(null);
+    toast.success('已删除该条观心记录');
+  };
+
   const handleSave = async () => {
+    if (!consentService.hasMindConsent()) {
+      setShowMindConsent(true);
+      return;
+    }
     if (
       selectedEmotions.length === 0 &&
       !eventText.trim() &&
@@ -1133,16 +1199,38 @@ export const ThoughtCollector = ({
         <span>这里写下的只存在你的设备里，不会公开。</span>
       </div>
 
+      {!hasMindConsent && (
+        <div className="p-3.5 rounded-2xl bg-surface-2 border border-line flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <p className="text-xs text-ink-2 leading-relaxed">
+            你尚未同意《隐私说明》中关于观心记录的说明。目前可查看与删除过去的记录，同意后即可新增记录。
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowMindConsent(true)}
+            className="px-3.5 py-2 rounded-full bg-accent text-on-accent hover:bg-accent-hover text-xs font-medium shrink-0 self-start sm:self-auto transition-colors"
+          >
+            查看并同意
+          </button>
+        </div>
+      )}
+
       {/* Record / History switcher */}
       <div className="flex gap-2 shrink-0 bg-surface-2 p-1 rounded-xl border border-line">
         <button
           type="button"
-          onClick={() => setActiveTab('record')}
+          onClick={() => {
+            if (!hasMindConsent) {
+              setShowMindConsent(true);
+              return;
+            }
+            setActiveTab('record');
+          }}
           className={cn(
             'flex-1 py-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2',
             activeTab === 'record'
               ? 'bg-surface text-accent border border-line'
-              : 'text-ink-2 hover:text-ink'
+              : 'text-ink-2 hover:text-ink',
+            !hasMindConsent && 'opacity-60'
           )}
         >
           <MessageCircle className="w-4 h-4" strokeWidth={1.5} />
@@ -1164,7 +1252,20 @@ export const ThoughtCollector = ({
       </div>
 
       {activeTab === 'record' ? (
-        <AnimatePresence mode="wait">{renderStepWizard()}</AnimatePresence>
+        hasMindConsent ? (
+          <AnimatePresence mode="wait">{renderStepWizard()}</AnimatePresence>
+        ) : (
+          <div className="py-10 text-center space-y-3">
+            <p className="text-sm text-ink-2">请先阅读并同意观心隐私说明，再新增觉察记录。</p>
+            <button
+              type="button"
+              onClick={() => setShowMindConsent(true)}
+              className="px-5 py-2.5 rounded-full bg-accent text-on-accent hover:bg-accent-hover text-xs font-medium transition-colors"
+            >
+              查看并同意
+            </button>
+          </div>
+        )
       ) : (
         <div className="flex-1 flex flex-col min-h-0">
           {thoughts.length === 0 ? (
@@ -1390,13 +1491,23 @@ export const ThoughtCollector = ({
                             </button>
                           ) : null}
 
-                          <button
-                            type="button"
-                            onClick={() => setShowPlaque(thought)}
-                            className="w-full py-2 bg-surface border border-line rounded-xl text-xs font-medium text-ink-2 hover:text-accent hover:border-accent transition-colors"
-                          >
-                            {isLocalCrisis ? '查看陪伴资源' : '查看念头木牌'}
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowPlaque(thought)}
+                              className="flex-1 py-2 bg-surface border border-line rounded-xl text-xs font-medium text-ink-2 hover:text-accent hover:border-accent transition-colors"
+                            >
+                              {isLocalCrisis ? '查看陪伴资源' : '查看念头木牌'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDeleteThought(thought)}
+                              aria-label="删除观心记录"
+                              className="px-3 py-2 bg-surface border border-line rounded-xl text-xs text-ink-3 hover:text-red-500 hover:border-red-500/40 transition-colors flex items-center justify-center"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -1412,24 +1523,47 @@ export const ThoughtCollector = ({
 
   if (embedded) {
     return (
-      <div className="bg-surface rounded-2xl border border-line flex flex-col overflow-hidden">
-        <div className="flex justify-between items-center p-5 pb-3 border-b border-line">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-accent" strokeWidth={1.5} />
-            <h3 className="text-title text-ink">起心动念收集器</h3>
+      <>
+        <div className="bg-surface rounded-2xl border border-line flex flex-col overflow-hidden">
+          <div className="flex justify-between items-center p-5 pb-3 border-b border-line">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-accent" strokeWidth={1.5} />
+              <h3 className="text-title text-ink">起心动念收集器</h3>
+            </div>
+            <span className="text-caption">共 {thoughts.length} 条觉察</span>
           </div>
-          <span className="text-caption">共 {thoughts.length} 条觉察</span>
+
+          {collectorInnerBody}
+
+          {activeTab === 'record' && hasMindConsent && !showSafetyNet && (
+            <div className="p-5 pt-3 border-t border-line bg-surface">
+              {renderStepFooter()}
+            </div>
+          )}
+          {renderPlaque()}
         </div>
 
-        {collectorInnerBody}
-
-        {activeTab === 'record' && !showSafetyNet && (
-          <div className="p-5 pt-3 border-t border-line bg-surface">
-            {renderStepFooter()}
-          </div>
-        )}
-        {renderPlaque()}
-      </div>
+        <MindConsentSheet
+          isOpen={showMindConsent}
+          onConsentAccepted={() => {
+            setHasMindConsent(true);
+            setShowMindConsent(false);
+            setActiveTab('record');
+          }}
+          onCancel={() => setShowMindConsent(false)}
+        />
+        <ConfirmSheet
+          isOpen={Boolean(pendingDeleteThought)}
+          title="删除这条观心记录？"
+          description="删除后无法恢复。若已开启云端同步，云端记录也会一并移除。"
+          confirmLabel="确认删除"
+          destructive
+          onConfirm={() => {
+            if (pendingDeleteThought) handleDeleteThought(pendingDeleteThought);
+          }}
+          onCancel={() => setPendingDeleteThought(null)}
+        />
+      </>
     );
   }
 
@@ -1439,7 +1573,7 @@ export const ThoughtCollector = ({
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => setIsOpen(true)}
+          onClick={openWithConsentCheck}
           title="觉察记录"
           className={cn(
             'px-3 py-1.5 bg-accent text-on-accent hover:bg-accent-hover rounded-full shadow-float transition-all flex items-center justify-center gap-1.5 text-xs',
@@ -1510,7 +1644,7 @@ export const ThoughtCollector = ({
 
                 {collectorInnerBody}
 
-                {activeTab === 'record' && !showSafetyNet && (
+                {activeTab === 'record' && hasMindConsent && !showSafetyNet && (
                   <div className="p-5 pt-4 border-t border-line bg-surface shrink-0 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-5">
                     {renderStepFooter()}
                   </div>
@@ -1523,6 +1657,29 @@ export const ThoughtCollector = ({
       )}
 
       {renderPlaque()}
+
+      <MindConsentSheet
+        isOpen={showMindConsent}
+        onConsentAccepted={() => {
+          setHasMindConsent(true);
+          setShowMindConsent(false);
+          setActiveTab('record');
+          setIsOpen(true);
+        }}
+        onCancel={() => setShowMindConsent(false)}
+      />
+
+      <ConfirmSheet
+        isOpen={Boolean(pendingDeleteThought)}
+        title="删除这条观心记录？"
+        description="删除后无法恢复。若已开启云端同步，云端记录也会一并移除。"
+        confirmLabel="确认删除"
+        destructive
+        onConfirm={() => {
+          if (pendingDeleteThought) handleDeleteThought(pendingDeleteThought);
+        }}
+        onCancel={() => setPendingDeleteThought(null)}
+      />
     </>
   );
 };

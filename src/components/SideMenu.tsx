@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Sparkles, LogOut, BookOpen, Settings, Map, Users, History, Download } from 'lucide-react';
+import { X, Sparkles, BookOpen, Settings, Map, Users, History, Download, ShieldCheck } from 'lucide-react';
 
 export const SideMenu = ({ isOpen, onClose, onNavigate }: { isOpen: boolean; onClose: () => void; onNavigate: (tab: string) => void }) => {
   if (!isOpen) return null;
@@ -24,6 +24,7 @@ export const SideMenu = ({ isOpen, onClose, onNavigate }: { isOpen: boolean; onC
           <div className="my-6 border-t border-line pt-4 space-y-2">
             <MenuButton icon={<Download />} label="下载APP到手机" onClick={() => { window.dispatchEvent(new CustomEvent('open-install-modal')); onClose(); }} />
             <MenuButton icon={<Settings />} label="设置" onClick={() => { onNavigate('settings'); onClose(); }} />
+            <MenuButton icon={<ShieldCheck />} label="隐私说明" onClick={() => { window.dispatchEvent(new CustomEvent('open-privacy-policy')); onClose(); }} />
           </div>
         </nav>
       </div>

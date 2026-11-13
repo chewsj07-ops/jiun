@@ -10,6 +10,8 @@ import { ZenWisdom } from './vow/ZenWisdom';
 import { ZenAssistant } from './ZenAssistant';
 import { ThoughtCollector } from './ThoughtCollector';
 import { ThoughtCoach } from './vow/ThoughtCoach';
+import { consentService } from '../services/consentService';
+import { MindConsentSheet } from './ConsentModals';
 
 export type VowBookSegment = 'vow' | 'mind' | 'merit';
 export type VowFeatureSection = 'overview' | 'setup_vow' | 'good_deed' | 'eightfold' | 'wisdom';
@@ -69,6 +71,30 @@ export const VowBookView: React.FC<VowBookViewProps> = ({
     setSection('overview');
   };
 
+  const [showMindConsentSheet, setShowMindConsentSheet] = useState(false);
+
+  useEffect(() => {
+    if (
+      activeSegment === 'mind' &&
+      !consentService.hasMindConsent() &&
+      !consentService.hasLegacyThoughts()
+    ) {
+      setShowMindConsentSheet(true);
+    }
+  }, [activeSegment]);
+
+  const handleSegmentClick = (segId: VowBookSegment) => {
+    if (
+      segId === 'mind' &&
+      !consentService.hasMindConsent() &&
+      !consentService.hasLegacyThoughts()
+    ) {
+      setShowMindConsentSheet(true);
+      return;
+    }
+    onSegmentChange(segId);
+  };
+
   const segments: { id: VowBookSegment; label: string }[] = [
     { id: 'vow', label: '愿' },
     { id: 'mind', label: '观心' },
@@ -85,7 +111,7 @@ export const VowBookView: React.FC<VowBookViewProps> = ({
             <button
               key={seg.id}
               type="button"
-              onClick={() => onSegmentChange(seg.id)}
+              onClick={() => handleSegmentClick(seg.id)}
               className={cn(
                 'relative py-2.5 px-3 rounded-xl text-sm font-serif transition-colors min-h-[44px] flex items-center justify-center',
                 isActive ? 'text-accent font-semibold' : 'text-ink-2 hover:text-ink'
@@ -331,6 +357,20 @@ export const VowBookView: React.FC<VowBookViewProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <MindConsentSheet
+        isOpen={showMindConsentSheet}
+        onConsentAccepted={() => {
+          setShowMindConsentSheet(false);
+          onSegmentChange('mind');
+        }}
+        onCancel={() => {
+          setShowMindConsentSheet(false);
+          if (activeSegment === 'mind' && !consentService.hasLegacyThoughts()) {
+            onSegmentChange('vow');
+          }
+        }}
+      />
     </div>
   );
 };
