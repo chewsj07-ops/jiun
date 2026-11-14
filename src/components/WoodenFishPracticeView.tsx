@@ -243,8 +243,23 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
   const [ringFlashActive, setRingFlashActive] = useState<boolean>(false);
   const [showCompletionOverlay, setShowCompletionOverlay] = useState<boolean>(false);
   const [isEarlyFinish, setIsEarlyFinish] = useState<boolean>(false);
+  const [lastDedicatedInfo, setLastDedicatedInfo] = useState<{
+    count: number;
+    scriptureId: string;
+  } | null>(null);
   const lastProcessedSignalRef = useRef<number>(completionSignal);
   const earlyFinishTimerRef = useRef<number | null>(null);
+
+  // Clear "just dedicated" note as soon as user starts a new sitting or switches scripture
+  useEffect(() => {
+    if (sessionCount > 0) {
+      setLastDedicatedInfo(null);
+    }
+  }, [sessionCount]);
+
+  useEffect(() => {
+    setLastDedicatedInfo(null);
+  }, [activeScripture.id]);
 
   // Ritual state & settings (如法念诵仪轨)
   const [ritualSettings, setRitualSettings] = useState<RitualSettings>(() =>
@@ -1073,14 +1088,18 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
               className="text-counter text-ink tabular-nums leading-none"
               style={{ fontSize: 'clamp(44px, 8dvh, 56px)' }}
             >
-              {todayCount}
+              {sessionCount}
             </span>
             <span className="text-caption mt-1 tabular-nums">
-              {isTodayGoalReached
-                ? `已圆满 · 加念 +${extraTodayCount}${
-                    sessionCount > 0 ? ` · 本次 +${sessionCount} · ${formattedClock}` : ''
-                  }`
-                : `今日 ${todayCount} / ${goalLabel} · 本次 +${sessionCount} · ${formattedClock}`}
+              {sessionCount === 0 &&
+              lastDedicatedInfo &&
+              lastDedicatedInfo.scriptureId === activeScripture.id
+                ? isTodayGoalReached
+                  ? `刚刚已回向 ${lastDedicatedInfo.count} ${unit} · 今日已圆满（累计 ${todayCount} ${unit}）`
+                  : `刚刚已回向 ${lastDedicatedInfo.count} ${unit} · 今日累计 ${todayCount} / ${goalLabel}`
+                : isTodayGoalReached
+                ? `今日已圆满 · 累计 ${todayCount} ${unit} · ${formattedClock}`
+                : `今日累计 ${todayCount} / ${goalLabel} · ${formattedClock}`}
             </span>
           </div>
         )}
@@ -1849,10 +1868,17 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                   type="button"
                   disabled={closingHomageDone < closingHomageReps}
                   onClick={() => {
+                    const countToRecord = sessionCount > 0 ? sessionCount : todayCount;
                     setShowCompletionOverlay(false);
                     setIsEarlyFinish(false);
                     setRingFlashActive(false);
                     setMetronomeEnabled(false);
+                    if (countToRecord > 0) {
+                      setLastDedicatedInfo({
+                        count: countToRecord,
+                        scriptureId: activeScripture.id,
+                      });
+                    }
                     onRecordSession(fullClosingDedication, unit, false, {
                       ritualMode: dailyRitualState.runMode || 'direct',
                       dedicationTarget: dedicationTargetLabel || undefined,

@@ -1801,6 +1801,9 @@ export default function App() {
     const expGained = recordedCount + Math.floor(duration / 60) * 10;
     setUserExp(prev => prev + expGained);
     practiceService.logMerit('chanting');
+    const updatedPractice = practiceService.updateActivity('dedication', true);
+    practiceService.logMerit('dedication');
+    setTodayDailyPracticeSnapshot(updatedPractice);
     addHistoryItem(newSession);
 
     setIsSessionActive(false);
@@ -1809,7 +1812,7 @@ export default function App() {
     sessionCountRef.current = 0;
     setSessionTimeLeft(null);
     if (!silent) {
-      toast.success('已记入愿簿');
+      toast.success('已回向并记入愿簿');
     }
   };
 
