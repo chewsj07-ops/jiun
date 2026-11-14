@@ -41,6 +41,8 @@ interface Thought {
   uid?: string;
   type?: string;
   record_version?: number;
+  mode?: 'quick' | 'full';
+  reviewedInEvening?: boolean;
   emotions: string[];
   event: string;
   action: string;
@@ -240,6 +242,10 @@ export const ThoughtCollector = ({
   const isExternalSyncRef = useRef(false);
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'record' | 'history'>('record');
+
+  // Entry mode: 'quick' (30s quick capture) vs 'full' (5-step full reflection)
+  const [entryMode, setEntryMode] = useState<'quick' | 'full'>('quick');
+  const [editingThoughtId, setEditingThoughtId] = useState<number | null>(null);
 
   // Step 0 = 情绪觉察, Steps 1..5 = 5 question screens (top 5 progress dots)
   const [step, setStep] = useState<number>(0);
@@ -443,6 +449,14 @@ export const ThoughtCollector = ({
             iv,
           };
 
+          if (t.mode !== undefined) {
+            newThought.mode = t.mode;
+          }
+
+          if (t.reviewedInEvening !== undefined) {
+            newThought.reviewedInEvening = t.reviewedInEvening;
+          }
+
           if (isCrisisLocal) {
             newThought.isLocalOnly = true;
           }
@@ -493,7 +507,44 @@ export const ThoughtCollector = ({
     saveThoughts();
   }, [thoughts]);
 
-  const openWithConsentCheck = () => {
+  const hydrateEditThought = (target: Thought) => {
+    setEditingThoughtId(target.id);
+    setEntryMode('full');
+    setActiveTab('record');
+    setSelectedEmotions(Array.isArray(target.emotions) ? target.emotions : []);
+    setEventText(target.event || '');
+    setActionText(target.action || '');
+    setResultText(target.result || '');
+    setLearningText(target.learning || '');
+    setVowText(target.vow || '');
+    hasEditedVowRef.current = Boolean(target.vow && target.vow.trim());
+    setStep(target.event?.trim() ? 2 : 1);
+    setShowSafetyNet(false);
+    setSafetyDismissedForSession(false);
+  };
+
+  const openWithConsentCheck = async (detail?: {
+    mode?: 'quick' | 'full';
+    editThoughtId?: number;
+  }) => {
+    if (detail?.editThoughtId !== undefined) {
+      let target = thoughts.find((t) => t.id === detail.editThoughtId);
+      if (!target) {
+        const raw = safeStorage.getJSON<any[]>('zen_thoughts', []);
+        const decrypted = await decryptThoughtList(raw);
+        target = decrypted.find((t) => t.id === detail.editThoughtId);
+      }
+      if (target) {
+        hydrateEditThought(target);
+      } else {
+        setEntryMode('full');
+        setEditingThoughtId(null);
+      }
+    } else {
+      resetForm(detail?.mode || 'quick');
+      setActiveTab('record');
+    }
+
     if (consentService.hasMindConsent()) {
       setIsOpen(true);
       return;
@@ -508,11 +559,17 @@ export const ThoughtCollector = ({
 
   useEffect(() => {
     if (embedded) return;
-    const handleOpen = () => openWithConsentCheck();
+    const handleOpen = (e: Event) => {
+      const custom = e as CustomEvent<{
+        mode?: 'quick' | 'full';
+        editThoughtId?: number;
+      }>;
+      openWithConsentCheck(custom.detail);
+    };
     window.addEventListener('open-thought-collector', handleOpen);
     return () =>
       window.removeEventListener('open-thought-collector', handleOpen);
-  }, [embedded]);
+  }, [embedded, thoughts]);
 
   // Monitor live text inputs for crisis keywords
   const checkCrisisInDraft = (nextValues?: {
@@ -667,7 +724,9 @@ export const ThoughtCollector = ({
     );
   };
 
-  const resetForm = () => {
+  const resetForm = (nextMode: 'quick' | 'full' = 'quick') => {
+    setEditingThoughtId(null);
+    setEntryMode(nextMode);
     setSelectedEmotions([]);
     setEventText('');
     setActionText('');
@@ -706,6 +765,58 @@ export const ThoughtCollector = ({
     toast.success('已删除该条观心记录');
   };
 
+  const handleSaveQuick = async () => {
+    if (!consentService.hasMindConsent()) {
+      setShowMindConsent(true);
+      return;
+    }
+    if (selectedEmotions.length === 0 && !eventText.trim()) {
+      return;
+    }
+
+    const contentToCheck = `${eventText} ${selectedEmotions.join(' ')}`;
+    const hasCrisis = containsCrisisKeywords(contentToCheck);
+
+    if (!hasCrisis && containsBadWords(contentToCheck)) {
+      toast.error('您的内容包含不当词汇，请修改后再保存。');
+      return;
+    }
+
+    const quickThought: Thought = {
+      id: Date.now(),
+      uid: identityService.getUserId(),
+      type: 'thought_observation',
+      record_version: 1,
+      mode: 'quick',
+      emotions: selectedEmotions.length > 0 ? selectedEmotions : ['peaceful'],
+      event: eventText.trim(),
+      action: '',
+      result: '',
+      learning: '',
+      vow: '',
+      timestamp: new Date().toISOString(),
+      ...(hasCrisis ? { isLocalOnly: true } : {}),
+    };
+
+    setThoughts((prev) => [quickThought, ...prev]);
+    practiceService.updateActivity('observing_thoughts', 1);
+    window.dispatchEvent(new CustomEvent('addExp', { detail: 5 }));
+
+    resetForm('quick');
+
+    if (hasCrisis) {
+      setShowPlaque(quickThought);
+      return;
+    }
+
+    toast.success('一念已速记', {
+      description: '晚课「观照一问」时可回头深观并补全五步转念。',
+    });
+    if (!embedded) {
+      setIsOpen(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!consentService.hasMindConsent()) {
       setShowMindConsent(true);
@@ -730,11 +841,50 @@ export const ThoughtCollector = ({
       return;
     }
 
+    if (editingThoughtId !== null) {
+      const existing = thoughts.find((t) => t.id === editingThoughtId);
+      const updatedThought: Thought = {
+        id: editingThoughtId,
+        uid: existing?.uid || identityService.getUserId(),
+        type: existing?.type || 'thought_observation',
+        record_version: existing?.record_version || 1,
+        mode: 'full',
+        reviewedInEvening: true,
+        emotions:
+          selectedEmotions.length > 0
+            ? selectedEmotions
+            : existing?.emotions || ['peaceful'],
+        event: eventText,
+        action: actionText,
+        result: resultText,
+        learning: learningText,
+        vow: vowText,
+        timestamp: existing?.timestamp || new Date().toISOString(),
+        ...(hasCrisis ? { isLocalOnly: true } : {}),
+      };
+
+      setThoughts((prev) =>
+        prev.map((t) => (t.id === editingThoughtId ? updatedThought : t))
+      );
+
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+
+      resetForm('quick');
+      setShowPlaque(updatedThought);
+
+      if (!hasCrisis) {
+        await handleGetGuidance(updatedThought);
+      }
+      return;
+    }
+
     const newThought: Thought = {
       id: Date.now(),
       uid: identityService.getUserId(),
       type: 'thought_observation',
       record_version: 1,
+      mode: 'full',
       emotions: selectedEmotions.length > 0 ? selectedEmotions : ['peaceful'],
       event: eventText,
       action: actionText,
@@ -746,13 +896,14 @@ export const ThoughtCollector = ({
     };
 
     setThoughts((prev) => [newThought, ...prev]);
+    practiceService.updateActivity('observing_thoughts', 1);
 
     window.dispatchEvent(new CustomEvent('addExp', { detail: 5 }));
 
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
 
-    resetForm();
+    resetForm('quick');
     setShowPlaque(newThought);
 
     if (!hasCrisis) {
@@ -1130,8 +1281,166 @@ export const ThoughtCollector = ({
     );
   };
 
+  const canSaveQuick =
+    selectedEmotions.length > 0 || Boolean(eventText.trim());
+
+  const renderQuickCapture = () => {
+    if (showSafetyNet) {
+      return (
+        <div className="py-2">
+          <SafetyNetCard
+            onMeditate={handleOpenThreeMinMeditation}
+            onContinue={() => {
+              setSafetyDismissedForSession(true);
+              setShowSafetyNet(false);
+            }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <motion.div
+        key="collector-quick-mode"
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -6 }}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        className="space-y-4"
+      >
+        <div className="space-y-1">
+          <h4 className="text-title text-ink">先觉察此刻情绪，再写一句话</h4>
+          <p className="text-caption">
+            白天忙碌时 30 秒速记即可；晚课时再回头看见与深观
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {negativeEmotionGroups.map((group) => (
+            <div key={group.label} className="space-y-1.5">
+              <div className="text-[11px] font-medium text-ink-3">
+                {group.label}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {group.options.map((emo) => {
+                  const isSelected = selectedEmotions.includes(emo.id);
+                  return (
+                    <button
+                      key={emo.id}
+                      type="button"
+                      onClick={() => toggleEmotion(emo.id)}
+                      className={cn(
+                        'min-h-[36px] px-3.5 rounded-full border text-xs transition-colors',
+                        isSelected
+                          ? 'bg-accent-mist text-accent border-accent font-medium'
+                          : 'border-line text-ink-2 hover:border-line-strong hover:text-ink'
+                      )}
+                    >
+                      {emo.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          <div className="pt-1 border-t border-line">
+            <button
+              type="button"
+              onClick={() => setShowPositiveGroup((v) => !v)}
+              className="w-full flex items-center justify-between py-1.5 text-xs text-ink-2 hover:text-ink transition-colors"
+            >
+              <span>平和与喜悦感受</span>
+              <ChevronDown
+                size={14}
+                strokeWidth={1.5}
+                className={cn(
+                  'transition-transform duration-200',
+                  showPositiveGroup && 'rotate-180'
+                )}
+              />
+            </button>
+            <AnimatePresence initial={false}>
+              {showPositiveGroup && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-2 pb-1 flex flex-wrap gap-1.5">
+                    {positiveEmotionGroups.flatMap((g) => g.options).map((emo) => {
+                      const isSelected = selectedEmotions.includes(emo.id);
+                      return (
+                        <button
+                          key={emo.id}
+                          type="button"
+                          onClick={() => toggleEmotion(emo.id)}
+                          className={cn(
+                            'min-h-[36px] px-3.5 rounded-full border text-xs transition-colors',
+                            isSelected
+                              ? 'bg-accent-mist text-accent border-accent font-medium'
+                              : 'border-line text-ink-2 hover:border-line-strong hover:text-ink'
+                          )}
+                        >
+                          {emo.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 pt-1">
+          <label className="text-xs font-medium text-ink-2 block">
+            发生了什么，或心里升起了什么念头？
+          </label>
+          <textarea
+            value={eventText}
+            onChange={(e) => {
+              const val = e.target.value;
+              setEventText(val);
+              checkCrisisInDraft({ event: val });
+            }}
+            placeholder="例如：开会被打断时突然有点急躁；或看见窗外夕阳心里很安静…"
+            rows={3}
+            className="w-full bg-surface-2 rounded-2xl p-3.5 border border-line focus:outline-none focus:border-accent text-sm text-ink placeholder:text-ink-3 resize-none leading-relaxed"
+          />
+        </div>
+      </motion.div>
+    );
+  };
+
   const renderStepFooter = () => {
     if (activeTab !== 'record' || showSafetyNet) return null;
+
+    if (entryMode === 'quick' && editingThoughtId === null) {
+      return (
+        <div className="flex items-center gap-3">
+          {!embedded && (
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="h-11 px-5 rounded-full bg-surface-2 border border-line text-ink-2 hover:text-ink text-sm transition-colors"
+            >
+              取消
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleSaveQuick}
+            disabled={!canSaveQuick}
+            className="flex-1 h-11 px-5 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
+          >
+            记下这一念
+          </button>
+        </div>
+      );
+    }
 
     if (step === 0) {
       return (
@@ -1184,7 +1493,7 @@ export const ThoughtCollector = ({
             disabled={!canSaveThought}
             className="flex-1 h-11 px-5 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
           >
-            封存念头
+            {editingThoughtId !== null ? '完成五步与转念' : '封存念头'}
           </button>
         )}
       </div>
@@ -1253,7 +1562,58 @@ export const ThoughtCollector = ({
 
       {activeTab === 'record' ? (
         hasMindConsent ? (
-          <AnimatePresence mode="wait">{renderStepWizard()}</AnimatePresence>
+          <div className="space-y-4">
+            {editingThoughtId === null ? (
+              <div className="flex items-center gap-1 p-1 rounded-xl bg-surface-2 border border-line">
+                <button
+                  type="button"
+                  onClick={() => setEntryMode('quick')}
+                  className={cn(
+                    'flex-1 min-h-[36px] py-1.5 px-3 rounded-lg text-xs font-medium transition-colors whitespace-nowrap',
+                    entryMode === 'quick'
+                      ? 'bg-surface text-accent border border-line'
+                      : 'text-ink-2 hover:text-ink'
+                  )}
+                >
+                  一念速记 · 30秒
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEntryMode('full');
+                    if (eventText.trim() && step === 0) {
+                      setStep(2);
+                    }
+                  }}
+                  className={cn(
+                    'flex-1 min-h-[36px] py-1.5 px-3 rounded-lg text-xs font-medium transition-colors whitespace-nowrap',
+                    entryMode === 'full'
+                      ? 'bg-surface text-accent border border-line'
+                      : 'text-ink-2 hover:text-ink'
+                  )}
+                >
+                  完整觉察 · 5步
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-accent-mist/60 border border-line text-xs text-ink">
+                <span>正在补全先前的速记并生成转念陪伴</span>
+                <button
+                  type="button"
+                  onClick={() => resetForm('quick')}
+                  className="text-ink-3 hover:text-ink shrink-0"
+                >
+                  取消编辑
+                </button>
+              </div>
+            )}
+
+            <AnimatePresence mode="wait">
+              {entryMode === 'quick' && editingThoughtId === null
+                ? renderQuickCapture()
+                : renderStepWizard()}
+            </AnimatePresence>
+          </div>
         ) : (
           <div className="py-10 text-center space-y-3">
             <p className="text-sm text-ink-2">请先阅读并同意观心隐私说明，再新增觉察记录。</p>
@@ -1419,6 +1779,7 @@ export const ThoughtCollector = ({
                               {new Date(
                                 thought.timestamp || thought.id
                               ).toLocaleDateString()}
+                              {thought.mode === 'quick' ? ' · 速记' : ''}
                             </span>
                           </div>
 
@@ -1475,7 +1836,7 @@ export const ThoughtCollector = ({
                                 {thought.guidance}
                               </p>
                             </div>
-                          ) : !isLocalCrisis ? (
+                          ) : !isLocalCrisis && thought.mode !== 'quick' ? (
                             <button
                               type="button"
                               onClick={() => handleGetGuidance(thought)}
@@ -1492,6 +1853,15 @@ export const ThoughtCollector = ({
                           ) : null}
 
                           <div className="flex gap-2">
+                            {thought.mode === 'quick' && hasMindConsent && (
+                              <button
+                                type="button"
+                                onClick={() => hydrateEditThought(thought)}
+                                className="flex-1 py-2 bg-accent-mist border border-line rounded-xl text-xs font-medium text-accent hover:bg-accent hover:text-on-accent transition-colors"
+                              >
+                                补全五步与转念
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => setShowPlaque(thought)}
@@ -1573,7 +1943,7 @@ export const ThoughtCollector = ({
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={openWithConsentCheck}
+          onClick={() => openWithConsentCheck()}
           title="觉察记录"
           className={cn(
             'px-3 py-1.5 bg-accent text-on-accent hover:bg-accent-hover rounded-full shadow-float transition-all flex items-center justify-center gap-1.5 text-xs',

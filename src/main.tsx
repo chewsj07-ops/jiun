@@ -1,9 +1,27 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import './index.css';
 import { FirebaseProvider } from './contexts/FirebaseContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Register PWA Service Worker for installability & offline readiness
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  registerSW({
+    immediate: true,
+    onRegistered(registration) {
+      if (registration) {
+        setInterval(() => {
+          registration.update().catch(() => {});
+        }, 60 * 60 * 1000);
+      }
+    },
+    onRegisterError(error) {
+      console.warn('Service Worker registration error:', error);
+    },
+  });
+}
 
 // Global iOS and mobile Safari fallback protection
 if (typeof window !== 'undefined') {

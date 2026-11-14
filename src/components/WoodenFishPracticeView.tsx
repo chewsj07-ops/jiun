@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   Heart,
   Library,
+  Maximize2,
   Metronome,
   Moon,
   MoreHorizontal,
@@ -15,6 +16,7 @@ import {
   Target,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 import { Scripture } from '../constants';
 import {
@@ -23,10 +25,11 @@ import {
   RitualRunMode,
   formatSpecialDedicationLine,
 } from '../data/ritual';
-import { DailyPracticeItem } from '../types/practice';
+import { DailyPracticeItem, MEDITATION_PRACTICE_ID } from '../types/practice';
 import {
   getDefaultTargetForCategory,
   getDefaultUnitForCategory,
+  isMeditationPracticeItem,
 } from '../services/practiceService';
 import {
   DailyRitualState,
@@ -40,6 +43,7 @@ import {
   DailyPracticeSettingsSheet,
   ScripturePickerSheet,
 } from './WoodenFishSheets';
+import { ConfirmSheet } from './ConfirmSheet';
 import { cn } from '../lib/utils';
 import { safeStorage } from '../utils/safeStorage';
 import { playCompletionBell } from '../utils/zenAudio';
@@ -80,6 +84,7 @@ interface WoodenFishPracticeViewProps {
   allScriptures: Scripture[];
   dailyPractice: DailyPracticeItem[];
   dailyCounts: Record<string, number>;
+  celebratedScriptures?: string[];
   recentScriptureIds: string[];
   goalType: 'count' | 'time';
   goalValue: number;
@@ -98,11 +103,16 @@ interface WoodenFishPracticeViewProps {
   meritFloatText: string;
   dedicationText: string;
   personalVow?: string;
+  todayPracticeRitualDone?: string;
   autoOpenRitual?: boolean;
   onAutoOpenRitualConsumed?: () => void;
+  autoOpenPracticeSettings?: boolean;
+  onAutoOpenPracticeSettingsConsumed?: () => void;
   theme: 'zen' | 'lotus' | 'sky' | 'dark';
   completionSignal: number;
   onSelectScripture: (scripture: Scripture) => void;
+  onStartDailyMeditation?: (minutes: number) => void;
+  onOpenEveningReview?: () => void;
   onUpdateDailyPractice: (items: DailyPracticeItem[]) => void;
   onOpenLibrary: () => void;
   onOpenGoalModal?: () => void;
@@ -131,6 +141,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
   allScriptures,
   dailyPractice,
   dailyCounts,
+  celebratedScriptures = [],
   recentScriptureIds,
   goalType,
   goalValue,
@@ -149,11 +160,16 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
   meritFloatText,
   dedicationText,
   personalVow = '',
+  todayPracticeRitualDone,
   autoOpenRitual = false,
   onAutoOpenRitualConsumed,
+  autoOpenPracticeSettings = false,
+  onAutoOpenPracticeSettingsConsumed,
   theme,
   completionSignal,
   onSelectScripture,
+  onStartDailyMeditation,
+  onOpenEveningReview,
   onUpdateDailyPractice,
   onOpenLibrary,
   onHit,
@@ -184,10 +200,8 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
   // Metronome guide (off by default)
   const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(false);
   const [metronomeBpm, setMetronomeBpm] = useState<40 | 60 | 80>(60);
-  const [showMetronomePicker, setShowMetronomePicker] = useState<boolean>(false);
 
-  // Volume / Mute quick control
-  const [showVolumePicker, setShowVolumePicker] = useState<boolean>(false);
+  // Volume memory for unmute
   const lastNonZeroVolumeRef = useRef<number>(volume > 0 ? volume : 0.8);
   useEffect(() => {
     if (volume > 0) {
@@ -199,10 +213,27 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
   const [showScriptureSheet, setShowScriptureSheet] = useState<boolean>(false);
   const [showSheetPinyin, setShowSheetPinyin] = useState<boolean>(false);
   const [showMoreMenu, setShowMoreMenu] = useState<boolean>(false);
+  const [showSoundFocusSheet, setShowSoundFocusSheet] = useState<boolean>(false);
   const [showScripturePicker, setShowScripturePicker] = useState<boolean>(false);
   const [pickerMode, setPickerMode] = useState<'select' | 'add'>('select');
   const [showPracticeSettings, setShowPracticeSettings] = useState<boolean>(false);
   const [settingsFocusScriptureId, setSettingsFocusScriptureId] = useState<string | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
+
+  // Back prompt banner when sessionCount > 0 (auto-dismiss & leave after 3s)
+  const [showLeavePrompt, setShowLeavePrompt] = useState<boolean>(false);
+  const leaveTimerRef = useRef<number | null>(null);
+
+  const clearLeaveTimer = () => {
+    if (leaveTimerRef.current !== null) {
+      window.clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearLeaveTimer();
+  }, []);
 
   // Rhythm awareness caption
   const [showSlowHint, setShowSlowHint] = useState<boolean>(false);
@@ -234,8 +265,11 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     [dailyCounts]
   );
 
-  const needsPreRitualGate =
-    totalTodayChanting === 0 && !dailyRitualState.completedPreRitual;
+  const isRitualDoneToday = Boolean(
+    dailyRitualState.completedPreRitual || todayPracticeRitualDone
+  );
+
+  const needsPreRitualGate = totalTodayChanting === 0 && !isRitualDoneToday;
 
   useEffect(() => {
     const syncRitualSettings = () =>
@@ -262,6 +296,12 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
   }, [autoOpenRitual, needsPreRitualGate, onAutoOpenRitualConsumed]);
 
   useEffect(() => {
+    if (!autoOpenPracticeSettings) return;
+    setShowPracticeSettings(true);
+    onAutoOpenPracticeSettingsConsumed?.();
+  }, [autoOpenPracticeSettings, onAutoOpenPracticeSettingsConsumed]);
+
+  useEffect(() => {
     if (showCompletionOverlay) {
       setClosingHomageDone(0);
     }
@@ -286,6 +326,8 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
 
   const openEarlyDedication = () => {
     if (ringFlashActive) return;
+    clearLeaveTimer();
+    setShowLeavePrompt(false);
     setIsEarlyFinish(true);
     setRingFlashActive(true);
     playCompletionBell(volume <= 0 ? 0 : Math.max(0.55, volume));
@@ -297,6 +339,22 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
       setShowCompletionOverlay(true);
       earlyFinishTimerRef.current = null;
     }, 800);
+  };
+
+  const handleBackPress = () => {
+    if (sessionCount > 0 && !showLeavePrompt) {
+      setShowLeavePrompt(true);
+      clearLeaveTimer();
+      leaveTimerRef.current = window.setTimeout(() => {
+        setShowLeavePrompt(false);
+        leaveTimerRef.current = null;
+        onBack();
+      }, 3000);
+      return;
+    }
+    clearLeaveTimer();
+    setShowLeavePrompt(false);
+    onBack();
   };
 
   // Horizontal swipe state & inline scroll ref in focal phrase area
@@ -322,7 +380,9 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
       return;
     }
     const updateElapsed = () => {
-      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - sessionStartTime) / 1000)));
+      setElapsedSeconds(
+        Math.max(0, Math.floor((Date.now() - sessionStartTime) / 1000))
+      );
     };
     updateElapsed();
     const timer = window.setInterval(updateElapsed, 1000);
@@ -337,11 +397,11 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     showRitualFlow ||
     showScriptureSheet ||
     showMoreMenu ||
+    showSoundFocusSheet ||
     showScripturePicker ||
     showPracticeSettings ||
     showCompletionOverlay ||
-    showMetronomePicker ||
-    showVolumePicker;
+    showResetConfirm;
 
   const resetIdleTimer = () => {
     setIsIdle(false);
@@ -447,7 +507,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     }, 2500);
   };
 
-  // Formatted full text for inline scrollable reading (or short title for Buddha names)
+  // Formatted full text for inline scrollable reading
   const isLongScripture = activeScripture.category !== 'name';
   const inlineScriptureText = useMemo(() => {
     if (!isLongScripture) {
@@ -456,7 +516,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     return activeScripture.content.trim() || activeScripture.title;
   }, [activeScripture, isLongScripture]);
 
-  // Enabled daily practice list + active/next calculation
+  // Enabled daily practice list (including meditation items)
   const scriptureById = useMemo(() => {
     const map = new Map<string, Scripture>();
     allScriptures.forEach((s) => map.set(s.id, s));
@@ -465,16 +525,28 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
 
   const enabledDailyItems = useMemo(() => {
     return dailyPractice
-      .filter((item) => item.enabled && scriptureById.has(item.scriptureId))
+      .filter(
+        (item) =>
+          item.enabled &&
+          (isMeditationPracticeItem(item) || scriptureById.has(item.scriptureId))
+      )
       .sort((a, b) => a.order - b.order);
   }, [dailyPractice, scriptureById]);
 
+  const isDailyItemDone = (item: DailyPracticeItem) => {
+    if (isMeditationPracticeItem(item)) {
+      return celebratedScriptures.includes(MEDITATION_PRACTICE_ID);
+    }
+    return (
+      celebratedScriptures.includes(item.scriptureId) ||
+      (dailyCounts[item.scriptureId] || 0) >= item.target
+    );
+  };
+
   const allDailyCompleted = useMemo(() => {
     if (enabledDailyItems.length === 0) return false;
-    return enabledDailyItems.every(
-      (item) => (dailyCounts[item.scriptureId] || 0) >= item.target
-    );
-  }, [enabledDailyItems, dailyCounts]);
+    return enabledDailyItems.every(isDailyItemDone);
+  }, [enabledDailyItems, dailyCounts, celebratedScriptures]);
 
   const nextUnfinishedItem = useMemo(() => {
     if (enabledDailyItems.length === 0) return null;
@@ -491,18 +563,37 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
 
     const candidate = ordered.find(
       (item) =>
-        item.scriptureId !== activeScripture.id &&
-        (dailyCounts[item.scriptureId] || 0) < item.target
+        item.scriptureId !== activeScripture.id && !isDailyItemDone(item)
     );
     if (!candidate) return null;
+
+    if (isMeditationPracticeItem(candidate)) {
+      const mins = candidate.minutes || candidate.target || 15;
+      return {
+        item: candidate,
+        isMeditation: true as const,
+        meditationMinutes: mins,
+        scripture: undefined,
+        doneCount: 0,
+      };
+    }
+
     const sc = scriptureById.get(candidate.scriptureId);
     if (!sc) return null;
     return {
       item: candidate,
+      isMeditation: false as const,
+      meditationMinutes: 0,
       scripture: sc,
       doneCount: dailyCounts[candidate.scriptureId] || 0,
     };
-  }, [enabledDailyItems, activeScripture.id, dailyCounts, scriptureById]);
+  }, [
+    enabledDailyItems,
+    activeScripture.id,
+    dailyCounts,
+    celebratedScriptures,
+    scriptureById,
+  ]);
 
   const switchToDailyScripture = (scripture: Scripture) => {
     if (scripture.id === activeScripture.id) return;
@@ -511,40 +602,49 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
   };
 
   const handleSwipeDaily = (direction: 'prev' | 'next') => {
-    if (enabledDailyItems.length <= 1) return;
-    const currentIdx = enabledDailyItems.findIndex(
+    const chantOnly = enabledDailyItems.filter(
+      (item) => !isMeditationPracticeItem(item)
+    );
+    if (chantOnly.length <= 1) return;
+    const currentIdx = chantOnly.findIndex(
       (item) => item.scriptureId === activeScripture.id
     );
     let nextIdx = 0;
     if (currentIdx === -1) {
-      nextIdx = direction === 'next' ? 0 : enabledDailyItems.length - 1;
+      nextIdx = direction === 'next' ? 0 : chantOnly.length - 1;
     } else {
       nextIdx =
         direction === 'next'
-          ? (currentIdx + 1) % enabledDailyItems.length
-          : (currentIdx - 1 + enabledDailyItems.length) %
-            enabledDailyItems.length;
+          ? (currentIdx + 1) % chantOnly.length
+          : (currentIdx - 1 + chantOnly.length) % chantOnly.length;
     }
-    const targetItem = enabledDailyItems[nextIdx];
+    const targetItem = chantOnly[nextIdx];
     const targetScripture = scriptureById.get(targetItem.scriptureId);
     if (targetScripture) {
       switchToDailyScripture(targetScripture);
     }
   };
 
-  // Progress ratio [0..1] based strictly on current active round (resets cleanly after dedication/record)
+  // Progress ratio [0..1] based on todayCount vs goalValue (for count mode)
   const safeGoalValue = Math.max(1, goalValue || 108);
+  const isTodayGoalReached =
+    goalType === 'count' && todayCount >= safeGoalValue;
+  const extraTodayCount = Math.max(0, todayCount - safeGoalValue);
+
   const progressRatio = useMemo(() => {
     if (ringFlashActive || showCompletionOverlay) return 1;
     if (goalType === 'time') {
       const totalSeconds = safeGoalValue * 60;
       if (!isSessionActive) return 0;
       if (sessionTimeLeft !== null) {
-        return Math.min(1, Math.max(0, (totalSeconds - sessionTimeLeft) / totalSeconds));
+        return Math.min(
+          1,
+          Math.max(0, (totalSeconds - sessionTimeLeft) / totalSeconds)
+        );
       }
       return Math.min(1, elapsedSeconds / totalSeconds);
     }
-    return Math.min(1, sessionCount / safeGoalValue);
+    return Math.min(1, todayCount / safeGoalValue);
   }, [
     ringFlashActive,
     showCompletionOverlay,
@@ -553,7 +653,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     isSessionActive,
     sessionTimeLeft,
     elapsedSeconds,
-    sessionCount,
+    todayCount,
   ]);
 
   // Format mm:ss
@@ -566,14 +666,13 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     .toString()
     .padStart(2, '0')}:${(displayClockSeconds % 60).toString().padStart(2, '0')}`;
 
-  const goalLabel = goalType === 'time' ? `${safeGoalValue}分` : `${safeGoalValue} ${unit}`;
+  const goalLabel =
+    goalType === 'time' ? `${safeGoalValue} 分` : `${safeGoalValue} ${unit}`;
 
-  // SVG Ring geometry (compact 148px diameter so WoodenFish sits noticeably higher)
-  const ringSize = 148;
-  const strokeWidth = 3;
-  const radius = (ringSize - strokeWidth * 2) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - progressRatio);
+  // Normalized 200x200 SVG ring around instrument (strokeWidth=3 with non-scaling-stroke)
+  const svgRadius = 96;
+  const svgCircumference = 2 * Math.PI * svgRadius;
+  const svgDashOffset = svgCircumference * (1 - progressRatio);
 
   const dimClass = isIdle && !hasOpenOverlay ? 'opacity-30' : 'opacity-100';
 
@@ -615,6 +714,9 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     ? `${dedicationText}\n${specialDedicationLine}`
     : dedicationText;
 
+  const currentHour = new Date().getHours();
+  const isEveningWindow = currentHour >= 18 || currentHour < 4;
+
   return (
     <div
       className={cn(
@@ -630,11 +732,11 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
         className="pointer-events-none fixed inset-0"
         style={{
           background:
-            'radial-gradient(circle at 50% 56%, var(--theme-accent-mist) 0%, transparent 68%)',
+            'radial-gradient(circle at 50% 62%, var(--theme-accent-mist) 0%, transparent 68%)',
         }}
       />
 
-      {/* Zen Hall extra 10% (or deeper in dark) darkening veil */}
+      {/* Zen Hall extra darkening veil */}
       {zenHallMode && (
         <div
           aria-hidden="true"
@@ -645,27 +747,27 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
         />
       )}
 
-      {/* Top Toolbar */}
+      {/* Top Toolbar: strictly 3 controls — Left「返回」, Center「经名 ▾」, Right「⋯」 */}
       <header
         className={cn(
-          'relative z-20 h-12 sm:h-14 px-3 flex items-center justify-between shrink-0 transition-opacity duration-700',
+          'relative z-20 h-12 px-3 flex items-center justify-between shrink-0 transition-opacity duration-700',
           zenHallMode ? 'opacity-100' : dimClass
         )}
       >
-        {/* Left: Back Button (40px circle) */}
+        {/* 1. Left: Back Button */}
         <button
           type="button"
-          onClick={onBack}
+          onClick={handleBackPress}
           aria-label="返回"
           className={cn(
             'w-10 h-10 rounded-full flex items-center justify-center text-ink hover:bg-surface-2 transition-all',
-            zenHallMode ? 'opacity-30 hover:opacity-100' : 'opacity-100'
+            zenHallMode ? 'opacity-35 hover:opacity-100' : 'opacity-100'
           )}
         >
           <ChevronLeft size={22} strokeWidth={1.5} />
         </button>
 
-        {/* Center: Clickable Scripture Name + ChevronDown */}
+        {/* 2. Center: Clickable Scripture Name + ChevronDown */}
         {!zenHallMode ? (
           <button
             type="button"
@@ -673,7 +775,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
               setPickerMode('select');
               setShowScripturePicker(true);
             }}
-            className="inline-flex items-center justify-center gap-1 text-caption font-medium text-ink-2 hover:text-accent max-w-[46vw] px-3 py-1.5 rounded-full hover:bg-surface-2 transition-colors"
+            className="inline-flex items-center justify-center gap-1 text-caption font-medium text-ink-2 hover:text-accent max-w-[54vw] px-3 py-1.5 rounded-full hover:bg-surface-2 transition-colors"
             title="选择经文/佛号"
           >
             <AnimatePresence mode="wait">
@@ -691,400 +793,155 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
             <ChevronDown size={14} strokeWidth={1.5} className="shrink-0 text-ink-3" />
           </button>
         ) : (
-          <span />
+          <button
+            type="button"
+            onClick={() => setZenHallMode(false)}
+            className="px-3 py-1 rounded-full text-[11px] text-ink-3/60 hover:text-ink-2 transition-colors"
+          >
+            禅堂模式 · 轻点退出
+          </button>
         )}
 
-        {/* Right: 原文 + ⋯ + 节拍 + 禅堂模式 */}
-        <div className="flex items-center gap-1 relative">
-          {!zenHallMode && (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreMenu(false);
-                  setShowMetronomePicker(false);
-                  setShowVolumePicker(false);
-                  setShowScriptureSheet(true);
-                }}
-                aria-label="原文"
-                title="经文原文"
-                className="w-9 h-9 rounded-full flex items-center justify-center text-ink-2 hover:text-accent hover:bg-surface-2 transition-colors"
-              >
-                <BookOpen size={18} strokeWidth={1.5} />
-              </button>
+        {/* 3. Right: ⋯ Menu */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowMoreMenu((v) => !v)}
+            aria-label="更多操作"
+            title="声音、定课与更多"
+            className={cn(
+              'w-10 h-10 rounded-full flex items-center justify-center transition-colors',
+              showMoreMenu
+                ? 'bg-accent-mist text-accent'
+                : zenHallMode
+                ? 'text-ink-3 opacity-35 hover:opacity-100 hover:bg-surface-2'
+                : 'text-ink-2 hover:text-accent hover:bg-surface-2'
+            )}
+          >
+            <MoreHorizontal size={20} strokeWidth={1.5} />
+          </button>
 
-              {/* ⋯ Menu right next to 原文 */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMetronomePicker(false);
-                    setShowVolumePicker(false);
-                    setShowMoreMenu((v) => !v);
-                  }}
-                  aria-label="更多操作"
-                  title="定课设置与更多"
-                  className={cn(
-                    'w-9 h-9 rounded-full flex items-center justify-center transition-colors',
-                    showMoreMenu
-                      ? 'bg-accent-mist text-accent'
-                      : 'text-ink-2 hover:text-accent hover:bg-surface-2'
-                  )}
+          <AnimatePresence>
+            {showMoreMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setShowMoreMenu(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                  transition={{ duration: 0.16 }}
+                  className="absolute right-0 top-11 z-40 w-48 rounded-2xl bg-surface border border-line shadow-float py-1.5 overflow-hidden"
                 >
-                  <MoreHorizontal size={18} strokeWidth={1.5} />
-                </button>
-
-                <AnimatePresence>
-                  {showMoreMenu && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-30"
-                        onClick={() => setShowMoreMenu(false)}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                        transition={{ duration: 0.16 }}
-                        className="absolute right-0 top-11 z-40 w-44 rounded-2xl bg-surface border border-line shadow-float py-1.5 overflow-hidden"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowMoreMenu(false);
-                            setShowRitualFlow(true);
-                          }}
-                          className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
-                        >
-                          <Sparkles size={15} strokeWidth={1.5} className="text-accent" />
-                          <span>如法念诵仪轨</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowMoreMenu(false);
-                            setSettingsFocusScriptureId(null);
-                            setShowPracticeSettings(true);
-                          }}
-                          className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
-                        >
-                          <Target size={15} strokeWidth={1.5} className="text-accent" />
-                          <span>定课设定</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowMoreMenu(false);
-                            setPickerMode('select');
-                            setShowScripturePicker(true);
-                          }}
-                          className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
-                        >
-                          <BookOpen size={15} strokeWidth={1.5} className="text-accent" />
-                          <span>切换经文 / 佛号</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowMoreMenu(false);
-                            onOpenLibrary();
-                          }}
-                          className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
-                        >
-                          <Library size={15} strokeWidth={1.5} className="text-accent" />
-                          <span>前往经文库</span>
-                        </button>
-                        <div className="my-1 border-t border-line" />
-                        {sessionCount > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowMoreMenu(false);
-                              openEarlyDedication();
-                            }}
-                            className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-accent hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
-                          >
-                            <Heart size={15} strokeWidth={1.5} />
-                            <span>提前结束并回向</span>
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowMoreMenu(false);
-                            setMetronomeEnabled(false);
-                            setRingFlashActive(false);
-                            setShowCompletionOverlay(false);
-                            setIsEarlyFinish(false);
-                            onResetSession();
-                          }}
-                          className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink-2 hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
-                        >
-                          <RotateCcw size={15} strokeWidth={1.5} />
-                          <span>重置本次计数</span>
-                        </button>
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* 节拍引导 */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMoreMenu(false);
-                    setShowVolumePicker(false);
-                    if (!metronomeEnabled) {
-                      setMetronomeEnabled(true);
-                      setShowMetronomePicker(true);
-                    } else {
-                      setShowMetronomePicker((v) => !v);
-                    }
-                  }}
-                  aria-label="节拍引导"
-                  title="节拍引导"
-                  className={cn(
-                    'w-9 h-9 rounded-full flex items-center justify-center transition-colors',
-                    metronomeEnabled
-                      ? 'bg-accent-mist text-accent'
-                      : 'text-ink-2 hover:text-accent hover:bg-surface-2'
-                  )}
-                >
-                  {Metronome ? (
-                    <Metronome size={18} strokeWidth={1.5} />
-                  ) : (
-                    <Activity size={18} strokeWidth={1.5} />
-                  )}
-                </button>
-
-                <AnimatePresence>
-                  {showMetronomePicker && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-30"
-                        onClick={() => setShowMetronomePicker(false)}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                        transition={{ duration: 0.16 }}
-                        className="absolute right-0 top-11 z-40 w-48 rounded-2xl bg-surface border border-line shadow-float p-3 space-y-2.5"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-ink">节拍引导</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMetronomeEnabled((v) => !v);
-                              if (metronomeEnabled) setShowMetronomePicker(false);
-                            }}
-                            className={cn(
-                              'text-[11px] px-2.5 py-0.5 rounded-full font-medium transition-colors',
-                              metronomeEnabled
-                                ? 'bg-accent text-on-accent'
-                                : 'bg-surface-2 text-ink-2'
-                            )}
-                          >
-                            {metronomeEnabled ? '已开启' : '已关闭'}
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {BPM_OPTIONS.map((bpm) => (
-                            <button
-                              key={bpm}
-                              type="button"
-                              onClick={() => {
-                                setMetronomeBpm(bpm);
-                                setMetronomeEnabled(true);
-                                setShowMetronomePicker(false);
-                              }}
-                              className={cn(
-                                'py-1.5 rounded-xl text-xs font-medium border transition-colors',
-                                metronomeEnabled && metronomeBpm === bpm
-                                  ? 'bg-accent-mist text-accent border-accent'
-                                  : 'bg-surface-2 text-ink-2 border-line hover:text-ink'
-                              )}
-                            >
-                              {bpm} 声
-                            </button>
-                          ))}
-                        </div>
-                        <p className="text-[11px] text-ink-3 leading-snug">
-                          每分钟 {metronomeBpm} 声，随外圈柔光轻敲
-                        </p>
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
-              {/* 声音与静音控制 */}
-              {onChangeVolume && (
-                <div className="relative">
                   <button
                     type="button"
                     onClick={() => {
                       setShowMoreMenu(false);
-                      setShowMetronomePicker(false);
-                      setShowVolumePicker((v) => !v);
+                      setShowSoundFocusSheet(true);
                     }}
-                    aria-label={volume <= 0 ? '已静音（点击调音）' : '声音与静音'}
-                    title={volume <= 0 ? '已静音（点击调音）' : '声音与静音'}
-                    className={cn(
-                      'w-9 h-9 rounded-full flex items-center justify-center transition-colors',
-                      showVolumePicker
-                        ? 'bg-accent-mist text-accent'
-                        : volume <= 0
-                        ? 'bg-surface-2 text-ink-3 hover:text-ink'
-                        : 'text-ink-2 hover:text-accent hover:bg-surface-2'
-                    )}
+                    className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
                   >
                     {volume <= 0 ? (
-                      <VolumeX size={18} strokeWidth={1.5} />
+                      <VolumeX size={15} strokeWidth={1.5} className="text-ink-3" />
                     ) : (
-                      <Volume2 size={18} strokeWidth={1.5} />
+                      <Volume2 size={15} strokeWidth={1.5} className="text-accent" />
                     )}
+                    <span>声音与专注</span>
                   </button>
 
-                  <AnimatePresence>
-                    {showVolumePicker && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-30"
-                          onClick={() => setShowVolumePicker(false)}
-                        />
-                        <motion.div
-                          initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                          transition={{ duration: 0.16 }}
-                          className="absolute right-0 top-11 z-40 w-56 rounded-2xl bg-surface border border-line shadow-float p-3.5 space-y-3"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-medium text-ink">木鱼声音</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (volume <= 0) {
-                                  onChangeVolume(lastNonZeroVolumeRef.current || 0.8);
-                                } else {
-                                  onChangeVolume(0);
-                                }
-                              }}
-                              className={cn(
-                                'text-[11px] px-2.5 py-0.5 rounded-full font-medium transition-colors',
-                                volume <= 0
-                                  ? 'bg-surface-2 text-ink-2 border border-line'
-                                  : 'bg-accent-mist text-accent'
-                              )}
-                            >
-                              {volume <= 0 ? '已静音 · 点击开启' : '一键静音'}
-                            </button>
-                          </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      setShowRitualFlow(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
+                  >
+                    <Sparkles size={15} strokeWidth={1.5} className="text-accent" />
+                    <span>如法念诵仪轨</span>
+                  </button>
 
-                          <div className="flex items-center gap-2.5">
-                            <VolumeX size={14} className="text-ink-3 shrink-0" />
-                            <input
-                              type="range"
-                              min={0}
-                              max={1}
-                              step={0.02}
-                              value={volume}
-                              aria-label="木鱼音量"
-                              onChange={(e) => onChangeVolume(parseFloat(e.target.value))}
-                              className="w-full accent-[var(--theme-accent)] cursor-pointer"
-                            />
-                            <span className="text-[11px] text-ink-2 tabular-nums w-8 text-right shrink-0">
-                              {Math.round(volume * 100)}%
-                            </span>
-                          </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      setSettingsFocusScriptureId(null);
+                      setShowPracticeSettings(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
+                  >
+                    <Target size={15} strokeWidth={1.5} className="text-accent" />
+                    <span>定课设定</span>
+                  </button>
 
-                          {onChangeSoundType && (
-                            <div className="grid grid-cols-3 gap-1.5 pt-0.5">
-                              {[
-                                { id: 'standard' as const, label: '标准' },
-                                { id: 'crisp' as const, label: '清脆' },
-                                { id: 'deep' as const, label: '深沉' },
-                              ].map((opt) => (
-                                <button
-                                  key={opt.id}
-                                  type="button"
-                                  onClick={() => onChangeSoundType(opt.id)}
-                                  className={cn(
-                                    'py-1.5 rounded-xl text-xs font-medium border transition-colors',
-                                    soundType === opt.id
-                                      ? 'bg-accent-mist text-accent border-accent'
-                                      : 'bg-surface-2 text-ink-2 border-line hover:text-ink'
-                                  )}
-                                >
-                                  {opt.label}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </motion.div>
-                      </>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-            </>
-          )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      onOpenLibrary();
+                    }}
+                    className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
+                  >
+                    <Library size={15} strokeWidth={1.5} className="text-accent" />
+                    <span>前往经文库</span>
+                  </button>
 
-          {/* 禅堂模式 */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowMoreMenu(false);
-              setShowMetronomePicker(false);
-              setShowVolumePicker(false);
-              setZenHallMode((v) => !v);
-            }}
-            aria-label="禅堂模式"
-            title={zenHallMode ? '退出禅堂模式' : '禅堂模式'}
-            className={cn(
-              'w-9 h-9 rounded-full flex items-center justify-center transition-all',
-              zenHallMode
-                ? 'bg-accent-mist/80 text-accent opacity-60 hover:opacity-100'
-                : 'text-ink-2 hover:text-accent hover:bg-surface-2'
+                  <div className="my-1 border-t border-line" />
+
+                  {sessionCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        openEarlyDedication();
+                      }}
+                      className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-accent hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
+                    >
+                      <Heart size={15} strokeWidth={1.5} />
+                      <span>提前结束并回向</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      setShowResetConfirm(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink-2 hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
+                  >
+                    <RotateCcw size={15} strokeWidth={1.5} />
+                    <span>重置本次计数</span>
+                  </button>
+                </motion.div>
+              </>
             )}
-          >
-            <Moon size={18} strokeWidth={1.5} />
-          </button>
+          </AnimatePresence>
         </div>
       </header>
 
-      {/* Upper 1/3 + Middle: Ritual Entry, Swipeable Verse & Goal Progress Ring */}
-      <div className="relative z-10 flex flex-col items-center justify-center px-5 pt-1 shrink-0 pointer-events-none">
-        {!zenHallMode && (
+      {/* Upper Area: Optional Pre-Ritual Tag (hidden once done today) + Scripture Box + Dots + Counter */}
+      <div className="relative z-10 flex flex-col items-center justify-center px-4 sm:px-5 pt-0.5 shrink-0 pointer-events-none">
+        {!zenHallMode && !isRitualDoneToday && (
           <button
             type="button"
             onClick={() => {
               setShowMoreMenu(false);
-              setShowMetronomePicker(false);
-              setShowVolumePicker(false);
               setShowRitualFlow(true);
             }}
             className={cn(
-              'pointer-events-auto mb-1.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all duration-300',
-              dailyRitualState.completedPreRitual && dailyRitualState.runMode === 'full'
-                ? 'bg-accent-mist/80 text-accent border-accent/25 hover:bg-accent-mist'
-                : 'bg-surface/80 text-ink-2 border-line/80 hover:text-accent hover:border-accent/40',
+              'pointer-events-auto mb-1 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border bg-surface/80 text-ink-2 border-line/80 hover:text-accent hover:border-accent/40 transition-all duration-300',
               dimClass
             )}
-            title="开启或查看如法念诵仪轨"
           >
             <Sparkles size={13} strokeWidth={1.6} className="text-accent shrink-0" />
             <span>如法念诵仪轨</span>
-            {dailyRitualState.completedPreRitual && dailyRitualState.runMode === 'full' && (
-              <span className="text-[10px] text-accent/80">· 已行仪轨</span>
-            )}
           </button>
         )}
 
-        {/* Upper Area: Inline Scrollable Scripture Text or Buddha Name (swipeable left/right across 我的定课) */}
+        {/* Inline Scrollable Scripture Text + Bottom-Right「展开全文」 */}
         <div
           onPointerDown={(e) => {
             swipeStartXRef.current = e.clientX;
@@ -1101,15 +958,15 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
             }
           }}
           className={cn(
-            'w-full flex flex-col items-center justify-center mb-1.5 transition-opacity duration-700 touch-pan-y',
+            'w-full flex flex-col items-center justify-center transition-opacity duration-700 touch-pan-y',
             zenHallMode ? 'opacity-0 pointer-events-none' : cn('pointer-events-auto', dimClass)
           )}
         >
           {isLongScripture ? (
-            <div className="w-full max-w-md mx-auto">
+            <div className="relative w-full max-w-md mx-auto">
               <div
                 ref={inlineScriptureScrollRef}
-                className="max-h-[104px] sm:max-h-[126px] w-full overflow-y-auto overscroll-contain touch-pan-y px-4 py-2 rounded-2xl bg-surface/55 border border-line/60 select-text"
+                className="max-h-[clamp(72px,14dvh,140px)] w-full overflow-y-auto overscroll-contain touch-pan-y px-4 pt-2 pb-6 rounded-2xl bg-surface/60 border border-line/70 select-text"
               >
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -1118,20 +975,23 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="font-serif text-[15px] sm:text-[16px] leading-[1.85] text-ink text-center whitespace-pre-wrap break-words"
+                    className="font-serif text-[15px] sm:text-[16px] leading-[1.8] text-ink text-center whitespace-pre-wrap break-words"
                   >
                     {inlineScriptureText}
                   </motion.div>
                 </AnimatePresence>
               </div>
-              {inlineScriptureText.length > 48 && (
-                <p className="text-[11px] text-ink-3 text-center mt-1 pointer-events-none">
-                  可上下滑动经文 · 左右滑动切经
-                </p>
-              )}
+              <button
+                type="button"
+                onClick={() => setShowScriptureSheet(true)}
+                className="absolute right-2 bottom-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface/90 border border-line text-[11px] text-ink-2 hover:text-accent transition-colors"
+              >
+                <Maximize2 size={11} strokeWidth={1.5} />
+                <span>展开全文</span>
+              </button>
             </div>
           ) : (
-            <div className="min-h-[38px] flex items-center justify-center">
+            <div className="relative w-full max-w-md mx-auto min-h-[42px] flex items-center justify-center px-14">
               <AnimatePresence mode="wait">
                 <motion.p
                   key={activeScripture.id}
@@ -1144,25 +1004,43 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                   {inlineScriptureText}
                 </motion.p>
               </AnimatePresence>
+              <button
+                type="button"
+                onClick={() => setShowScriptureSheet(true)}
+                className="absolute right-1 bottom-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface/80 border border-line text-[11px] text-ink-3 hover:text-accent transition-colors"
+              >
+                <span>原文</span>
+              </button>
             </div>
           )}
 
           {/* Daily Practice Dots */}
           {enabledDailyItems.length > 0 && (
-            <div className="flex items-center justify-center gap-2 mt-1">
+            <div className="flex items-center justify-center gap-1.5 mt-1">
               {enabledDailyItems.map((item) => {
-                const sc = scriptureById.get(item.scriptureId);
-                if (!sc) return null;
-                const isCurrent = item.scriptureId === activeScripture.id;
-                const isDone = (dailyCounts[item.scriptureId] || 0) >= item.target;
+                const isMed = isMeditationPracticeItem(item);
+                const sc = isMed ? undefined : scriptureById.get(item.scriptureId);
+                if (!isMed && !sc) return null;
+
+                const isCurrent = !isMed && item.scriptureId === activeScripture.id;
+                const isDone = isDailyItemDone(item);
+                const label = isMed
+                  ? `静坐 ${item.minutes || item.target || 15} 分钟`
+                  : sc!.title;
 
                 return (
                   <button
                     key={item.scriptureId}
                     type="button"
-                    aria-label={`切换到${sc.title}`}
-                    title={sc.title}
-                    onClick={() => switchToDailyScripture(sc)}
+                    aria-label={`切换到${label}`}
+                    title={label}
+                    onClick={() => {
+                      if (isMed) {
+                        onStartDailyMeditation?.(item.minutes || item.target || 15);
+                      } else if (sc) {
+                        switchToDailyScripture(sc);
+                      }
+                    }}
                     className="p-1 flex items-center justify-center focus:outline-none"
                   >
                     <span
@@ -1183,92 +1061,38 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
           )}
         </div>
 
-        {/* Middle: 220px SVG Progress Ring + Count & Stats */}
-        <div
-          className={cn(
-            'relative flex items-center justify-center transition-opacity duration-700 pointer-events-none',
-            zenHallMode ? 'opacity-30' : dimClass
-          )}
-          style={{ width: ringSize, height: ringSize }}
-        >
-          {/* Completion Glow Flash (800ms) */}
-          <AnimatePresence>
-            {ringFlashActive && (
-              <motion.div
-                initial={{ opacity: 0.2, scale: 0.96 }}
-                animate={{ opacity: [0.2, 0.85, 0], scale: [0.96, 1.07, 1.12] }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                className="absolute inset-0 rounded-full border-4 border-accent-soft pointer-events-none"
-                style={{
-                  boxShadow: '0 0 36px var(--theme-accent-soft)',
-                }}
-              />
+        {/* Counter Block between Scripture Box and Wooden Fish (centered, tabular-nums) */}
+        {!zenHallMode && (
+          <div
+            className={cn(
+              'mt-1 sm:mt-1.5 flex flex-col items-center text-center transition-opacity duration-700',
+              dimClass
             )}
-          </AnimatePresence>
-
-          <svg
-            width={ringSize}
-            height={ringSize}
-            viewBox={`0 0 ${ringSize} ${ringSize}`}
-            className="-rotate-90"
           >
-            <defs>
-              <linearGradient id={ringGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="var(--theme-accent-soft)" />
-                <stop offset="55%" stopColor="var(--theme-accent)" />
-                <stop offset="100%" stopColor="var(--theme-accent-hover)" />
-              </linearGradient>
-            </defs>
-            <circle
-              cx={ringSize / 2}
-              cy={ringSize / 2}
-              r={radius}
-              fill="none"
-              stroke="var(--theme-line)"
-              strokeWidth={strokeWidth}
-            />
-            <circle
-              cx={ringSize / 2}
-              cy={ringSize / 2}
-              r={radius}
-              fill="none"
-              stroke={`url(#${ringGradientId})`}
-              strokeWidth={strokeWidth}
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={dashOffset}
-              style={{
-                transition: 'stroke-dashoffset 280ms cubic-bezier(.22, 1, .36, 1)',
-              }}
-            />
-          </svg>
-
-          {/* Center Counter & Sub-caption (hidden in Zen Hall mode) */}
-          {!zenHallMode && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center px-3 text-center">
-              <span className="text-counter !text-[40px] text-ink tabular-nums">{sessionCount}</span>
-              <span className="text-[12px] text-ink-2 mt-1.5 tabular-nums">
-                {sessionCount} / {goalLabel} · {formattedClock}
-              </span>
-              {todayCount > sessionCount && (
-                <span className="text-[10px] text-ink-3 mt-0.5 tabular-nums">
-                  今日已诵 {todayCount} {unit}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+            <span
+              className="text-counter text-ink tabular-nums leading-none"
+              style={{ fontSize: 'clamp(44px, 8dvh, 56px)' }}
+            >
+              {todayCount}
+            </span>
+            <span className="text-caption mt-1 tabular-nums">
+              {isTodayGoalReached
+                ? `已圆满 · 加念 +${extraTodayCount}${
+                    sessionCount > 0 ? ` · 本次 +${sessionCount} · ${formattedClock}` : ''
+                  }`
+                : `今日 ${todayCount} / ${goalLabel} · 本次 +${sessionCount} · ${formattedClock}`}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Lower Tap Zone: Lifted higher into comfortable center-lower thumb reach */}
+      {/* Lower Tap Zone: Instrument wrapped directly inside 3px Progress Ring + Metronome Halo */}
       <div
         role="button"
         tabIndex={0}
         aria-label={`轻触敲击${activeScripture.title}`}
         onPointerDown={handleLowerHalfPointerDown}
         onClick={(e) => {
-          // Pointer taps fire immediately on onPointerDown; keep detail === 0 for assistive/keyboard click
           if (e.detail === 0) {
             handleLowerHalfTap();
           }
@@ -1279,10 +1103,10 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
             handleLowerHalfTap();
           }
         }}
-        className="relative z-10 -mt-5 pt-2 flex-1 w-full flex flex-col items-center justify-start cursor-pointer touch-manipulation focus:outline-none pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+        className="relative z-10 flex-1 w-full flex flex-col items-center justify-center cursor-pointer touch-manipulation focus:outline-none pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
       >
         {/* Slow Pace Awareness Caption */}
-        <div className="h-4 mb-0.5 flex items-center justify-center pointer-events-none">
+        <div className="h-4 mb-1 flex items-center justify-center pointer-events-none">
           <AnimatePresence>
             {showSlowHint && (
               <motion.p
@@ -1298,29 +1122,121 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
           </AnimatePresence>
         </div>
 
-        {/* Generous transparent hit-target wrapper around Wooden Fish */}
+        {/* Instrument + Wrapping 3px Progress Ring (size = min(60vw, 34dvh), ring = size + 28px) */}
         <div
-          className="relative w-full max-w-[380px] min-w-[280px] px-10 py-3 sm:px-14 sm:py-5 rounded-full flex items-center justify-center touch-manipulation cursor-pointer"
+          className="relative flex items-center justify-center touch-manipulation cursor-pointer"
+          style={{
+            width: 'calc(min(60vw, 34dvh) + 28px)',
+            height: 'calc(min(60vw, 34dvh) + 28px)',
+          }}
         >
-          {/* Instrument stays at full opacity even when rest of UI dims */}
-          <WoodenFish
-            ref={fishRef}
-            onHit={onHit}
-            floatingText={meritFloatText}
-            showFloatingText={showMeritFloat && !zenHallMode}
-            volume={volume}
-            soundType={soundType}
-            appearance={appearance}
-            sizePx="min(46vw, 184px)"
-            metronomeBpm={metronomeEnabled ? metronomeBpm : null}
-            onSlowPaceWarning={handleSlowPaceWarning}
-          />
+          {/* Metronome pulse halo around outer ring */}
+          {metronomeEnabled && (
+            <motion.div
+              aria-hidden="true"
+              animate={{
+                scale: [1, 1.07, 1],
+                opacity: [0.22, 0.62, 0.22],
+              }}
+              transition={{
+                duration: 60 / metronomeBpm,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              className="absolute inset-0 rounded-full border-2 border-accent-soft pointer-events-none"
+            />
+          )}
+
+          {/* Completion Glow Flash (800ms) */}
+          <AnimatePresence>
+            {ringFlashActive && (
+              <motion.div
+                initial={{ opacity: 0.2, scale: 0.96 }}
+                animate={{ opacity: [0.2, 0.85, 0], scale: [0.96, 1.06, 1.1] }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0 rounded-full border-4 border-accent-soft pointer-events-none"
+                style={{
+                  boxShadow: '0 0 36px var(--theme-accent-soft)',
+                }}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* 3px SVG Progress Ring around the instrument */}
+          <svg
+            viewBox="0 0 200 200"
+            className={cn(
+              'absolute inset-0 w-full h-full -rotate-90 pointer-events-none transition-opacity duration-700',
+              zenHallMode ? 'opacity-30' : dimClass
+            )}
+          >
+            <defs>
+              <linearGradient
+                id={ringGradientId}
+                x1="0%"
+                y1="0%"
+                x2="100%"
+                y2="100%"
+              >
+                <stop offset="0%" stopColor="var(--theme-accent-soft)" />
+                <stop offset="55%" stopColor="var(--theme-accent)" />
+                <stop offset="100%" stopColor="var(--theme-accent-hover)" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx={100}
+              cy={100}
+              r={svgRadius}
+              fill="none"
+              stroke="var(--theme-line)"
+              strokeWidth={3}
+              vectorEffect="non-scaling-stroke"
+            />
+            <circle
+              cx={100}
+              cy={100}
+              r={svgRadius}
+              fill="none"
+              stroke={
+                isTodayGoalReached
+                  ? 'var(--theme-accent-soft)'
+                  : `url(#${ringGradientId})`
+              }
+              strokeWidth={3}
+              vectorEffect="non-scaling-stroke"
+              strokeLinecap="round"
+              strokeDasharray={svgCircumference}
+              strokeDashoffset={svgDashOffset}
+              style={{
+                transition:
+                  'stroke-dashoffset 280ms cubic-bezier(.22, 1, .36, 1)',
+              }}
+            />
+          </svg>
+
+          {/* Instrument stays full opacity */}
+          <div className="relative z-10 flex items-center justify-center">
+            <WoodenFish
+              ref={fishRef}
+              onHit={onHit}
+              floatingText={meritFloatText}
+              showFloatingText={showMeritFloat && !zenHallMode}
+              volume={volume}
+              soundType={soundType}
+              appearance={appearance}
+              sizePx="min(60vw, 34dvh)"
+              metronomeBpm={null}
+              onSlowPaceWarning={handleSlowPaceWarning}
+            />
+          </div>
         </div>
 
+        {/* Pre-Ritual inline prompt or subtle tap hint (NO early-finish button inside tap zone!) */}
         {!zenHallMode && needsPreRitualGate && (
           <div
             onPointerDown={(e) => e.stopPropagation()}
-            className="mt-1 flex items-center justify-center gap-3"
+            className="mt-2 flex items-center justify-center gap-3"
           >
             <button
               type="button"
@@ -1330,7 +1246,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
               }}
               className="h-10 px-6 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium shadow-float transition-colors"
             >
-              开始
+              开始仪轨
             </button>
             <button
               type="button"
@@ -1348,34 +1264,266 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
         {!zenHallMode && !needsPreRitualGate && sessionCount === 0 && (
           <p
             className={cn(
-              'text-caption mt-1 transition-opacity duration-700 pointer-events-none',
+              'text-caption mt-2 transition-opacity duration-700 pointer-events-none',
               dimClass
             )}
           >
             轻触木鱼及周围区域即可敲击
           </p>
         )}
-
-        {!zenHallMode && sessionCount > 0 && (
-          <button
-            type="button"
-            disabled={ringFlashActive}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              openEarlyDedication();
-            }}
-            className={cn(
-              'mt-1 px-4 py-1.5 rounded-full text-xs text-ink-2 hover:text-accent bg-surface/75 hover:bg-surface-2 border border-line/80 transition-all duration-300 disabled:opacity-60',
-              dimClass
-            )}
-          >
-            提前结束 · 回向
-          </button>
-        )}
       </div>
 
-      {/* Scripture Original Text Bottom Sheet (原文) */}
+      {/* Bottom-left 36px quick speaker shortcut (outside tap propagation) */}
+      {!zenHallMode && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowSoundFocusSheet(true);
+          }}
+          aria-label={volume <= 0 ? '声音与专注（当前已静音）' : '声音与专注'}
+          title="声音与专注"
+          className={cn(
+            'fixed left-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 w-9 h-9 rounded-full bg-surface/85 border border-line flex items-center justify-center transition-all hover:border-accent/40',
+            volume <= 0 ? 'text-ink-3' : 'text-ink-2 hover:text-accent',
+            dimClass
+          )}
+        >
+          {volume <= 0 ? (
+            <VolumeX size={16} strokeWidth={1.5} />
+          ) : (
+            <Volume2 size={16} strokeWidth={1.5} />
+          )}
+        </button>
+      )}
+
+      {/* 3s Back Confirmation Bar when sessionCount > 0 */}
+      <AnimatePresence>
+        {showLeavePrompt && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.2 }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] max-w-sm rounded-2xl bg-surface border border-line-strong shadow-float px-4 py-3 flex items-center justify-between gap-2"
+          >
+            <span className="text-xs text-ink font-medium truncate">
+              要回向后再离开吗？
+            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => openEarlyDedication()}
+                className="px-3 h-8 rounded-full bg-accent text-on-accent text-xs font-medium hover:bg-accent-hover transition-colors"
+              >
+                回向
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearLeaveTimer();
+                  setShowLeavePrompt(false);
+                  onBack();
+                }}
+                className="px-3 h-8 rounded-full bg-surface-2 text-ink-2 text-xs hover:text-ink transition-colors"
+              >
+                直接离开
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 「声音与专注」Bottom Sheet */}
+      <AnimatePresence>
+        {showSoundFocusSheet && (
+          <div className="fixed inset-0 z-[75] flex items-end justify-center">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSoundFocusSheet(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              className="relative z-10 w-full max-w-xl rounded-t-3xl bg-surface border-t border-line shadow-float p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-5"
+            >
+              <div className="w-10 h-1 rounded-full bg-line-strong mx-auto -mt-1" />
+
+              <div className="flex items-center justify-between">
+                <h3 className="text-title text-ink">声音与专注</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowSoundFocusSheet(false)}
+                  aria-label="关闭"
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2"
+                >
+                  <X size={18} strokeWidth={1.5} />
+                </button>
+              </div>
+
+              {/* 音量与静音 */}
+              {onChangeVolume && (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-ink">敲击音量</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (volume <= 0) {
+                          onChangeVolume(lastNonZeroVolumeRef.current || 0.8);
+                        } else {
+                          onChangeVolume(0);
+                        }
+                      }}
+                      className={cn(
+                        'text-xs px-3 py-1 rounded-full font-medium transition-colors',
+                        volume <= 0
+                          ? 'bg-surface-2 text-ink-2 border border-line'
+                          : 'bg-accent-mist text-accent'
+                      )}
+                    >
+                      {volume <= 0 ? '已静音 · 点击开启' : '一键静音'}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <VolumeX size={16} className="text-ink-3 shrink-0" />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.02}
+                      value={volume}
+                      aria-label="木鱼音量"
+                      onChange={(e) => onChangeVolume(parseFloat(e.target.value))}
+                      className="w-full accent-[var(--theme-accent)] cursor-pointer"
+                    />
+                    <span className="text-xs text-ink-2 tabular-nums w-9 text-right shrink-0">
+                      {Math.round(volume * 100)}%
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* 音色 */}
+              {onChangeSoundType && (
+                <div className="space-y-2">
+                  <span className="text-sm font-medium text-ink block">木鱼音色</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'standard' as const, label: '标准' },
+                      { id: 'crisp' as const, label: '清脆' },
+                      { id: 'deep' as const, label: '深沉' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => onChangeSoundType(opt.id)}
+                        className={cn(
+                          'h-10 rounded-xl text-xs font-medium border transition-colors',
+                          soundType === opt.id
+                            ? 'bg-accent-mist text-accent border-accent'
+                            : 'bg-surface-2 text-ink-2 border-line hover:text-ink'
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 节拍引导 */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-ink flex items-center gap-2">
+                    {Metronome ? (
+                      <Metronome size={16} strokeWidth={1.5} className="text-accent" />
+                    ) : (
+                      <Activity size={16} strokeWidth={1.5} className="text-accent" />
+                    )}
+                    <span>节拍引导</span>
+                  </span>
+                  <span className="text-caption">
+                    {metronomeEnabled
+                      ? `每分钟 ${metronomeBpm} 声，外圈柔光随节拍脉动`
+                      : '关闭中'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMetronomeEnabled(false)}
+                    className={cn(
+                      'h-10 rounded-xl text-xs font-medium border transition-colors',
+                      !metronomeEnabled
+                        ? 'bg-accent-mist text-accent border-accent'
+                        : 'bg-surface-2 text-ink-2 border-line hover:text-ink'
+                    )}
+                  >
+                    关闭
+                  </button>
+                  {BPM_OPTIONS.map((bpm) => (
+                    <button
+                      key={bpm}
+                      type="button"
+                      onClick={() => {
+                        setMetronomeBpm(bpm);
+                        setMetronomeEnabled(true);
+                      }}
+                      className={cn(
+                        'h-10 rounded-xl text-xs font-medium border transition-colors',
+                        metronomeEnabled && metronomeBpm === bpm
+                          ? 'bg-accent-mist text-accent border-accent'
+                          : 'bg-surface-2 text-ink-2 border-line hover:text-ink'
+                      )}
+                    >
+                      {bpm} 声
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 禅堂模式 */}
+              <button
+                type="button"
+                onClick={() => setZenHallMode((v) => !v)}
+                className="w-full p-3.5 rounded-2xl bg-surface-2 border border-line flex items-center justify-between gap-3 text-left"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Moon size={18} strokeWidth={1.5} className="text-accent shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-ink">禅堂专注模式</p>
+                    <p className="text-caption">隐去经文与数字，仅留木鱼静心</p>
+                  </div>
+                </div>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'w-11 h-6 rounded-full transition-colors relative shrink-0 block',
+                    zenHallMode ? 'bg-accent' : 'bg-line-strong'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'block w-5 h-5 mt-0.5 rounded-full bg-surface shadow-sm transition-transform duration-200',
+                      zenHallMode ? 'translate-x-[22px]' : 'translate-x-[2px]'
+                    )}
+                  />
+                </span>
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Scripture Original Text Bottom Sheet (原文全文) */}
       <AnimatePresence>
         {showScriptureSheet && (
           <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -1393,13 +1541,13 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
               className="relative z-10 w-full max-w-2xl rounded-t-3xl bg-surface border-t border-line shadow-float flex flex-col max-h-[80dvh] pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
             >
-              {/* Drag Handle */}
               <div className="w-10 h-1 rounded-full bg-line-strong mx-auto mt-3 mb-2 shrink-0" />
 
-              {/* Sheet Header */}
               <div className="px-6 py-3 border-b border-line flex items-center justify-between gap-3 shrink-0">
                 <div className="min-w-0">
-                  <h3 className="text-title text-ink truncate">{activeScripture.title}</h3>
+                  <h3 className="text-title text-ink truncate">
+                    {activeScripture.title}
+                  </h3>
                   {activeScripture.source && (
                     <p className="text-caption truncate">{activeScripture.source}</p>
                   )}
@@ -1429,7 +1577,6 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                 </div>
               </div>
 
-              {/* Scrollable Scripture Body */}
               <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
                 <p className="text-reading text-ink whitespace-pre-wrap text-center">
                   {activeScripture.content}
@@ -1460,7 +1607,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Scripture Picker Bottom Sheet (选择经文 / 加入定课) */}
+      {/* Scripture Picker Bottom Sheet */}
       <ScripturePickerSheet
         isOpen={showScripturePicker}
         mode={pickerMode}
@@ -1468,12 +1615,17 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
         allScriptures={allScriptures}
         dailyPractice={dailyPractice}
         dailyCounts={dailyCounts}
+        celebratedScriptures={celebratedScriptures}
         recentIds={recentScriptureIds}
         onClose={() => {
           setShowScripturePicker(false);
           if (pickerMode === 'add') {
             setShowPracticeSettings(true);
           }
+        }}
+        onSelectMeditation={(mins) => {
+          setShowScripturePicker(false);
+          onStartDailyMeditation?.(mins);
         }}
         onSelect={(scripture) => {
           if (pickerMode === 'add') {
@@ -1507,7 +1659,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
         }}
       />
 
-      {/* Daily Practice Settings Bottom Sheet (定课设定) */}
+      {/* Daily Practice Settings Bottom Sheet */}
       <DailyPracticeSettingsSheet
         isOpen={showPracticeSettings}
         focusScriptureId={settingsFocusScriptureId}
@@ -1525,7 +1677,24 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
         }}
       />
 
-      {/* Goal Completion Overlay: Next Unfinished / Final Dedication & Homage Closing */}
+      {/* Reset Current Session ConfirmSheet */}
+      <ConfirmSheet
+        isOpen={showResetConfirm}
+        title="重置本次计数？"
+        description={`将把本次计数（+${sessionCount}）与计时归零。你今日已累计的 ${todayCount} ${unit} 不会被清除。`}
+        confirmLabel="重置本次计数"
+        onConfirm={() => {
+          setShowResetConfirm(false);
+          setMetronomeEnabled(false);
+          setRingFlashActive(false);
+          setShowCompletionOverlay(false);
+          setIsEarlyFinish(false);
+          onResetSession();
+        }}
+        onCancel={() => setShowResetConfirm(false)}
+      />
+
+      {/* Goal Completion Overlay: Next Unfinished (including Meditation) / Final Dedication */}
       <AnimatePresence>
         {showCompletionOverlay && (
           <motion.div
@@ -1548,7 +1717,9 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
               <p className="text-caption text-ink-3">
                 {todayCount > sessionCount && sessionCount > 0
                   ? `${activeScripture.title} · 本次 ${sessionCount} ${unit}（今日累计 ${todayCount} / ${goalLabel}） · ${formattedClock}`
-                  : `${activeScripture.title} · 本次 ${sessionCount > 0 ? sessionCount : todayCount} ${unit} · ${formattedClock}`}
+                  : `${activeScripture.title} · 本次 ${
+                      sessionCount > 0 ? sessionCount : todayCount
+                    } ${unit} · ${formattedClock}`}
               </p>
             </div>
 
@@ -1650,12 +1821,19 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                     setIsEarlyFinish(false);
                     setRingFlashActive(false);
                     setMetronomeEnabled(false);
-                    onSelectScripture(nextUnfinishedItem.scripture);
+                    if (nextUnfinishedItem.isMeditation) {
+                      onStartDailyMeditation?.(
+                        nextUnfinishedItem.meditationMinutes
+                      );
+                    } else if (nextUnfinishedItem.scripture) {
+                      onSelectScripture(nextUnfinishedItem.scripture);
+                    }
                   }}
                   className="w-full h-12 px-4 rounded-full bg-accent text-on-accent font-medium hover:bg-accent-hover transition-colors shadow-float truncate"
                 >
-                  下一部：{nextUnfinishedItem.scripture.title}{' '}
-                  {nextUnfinishedItem.doneCount} / {nextUnfinishedItem.item.target}
+                  {nextUnfinishedItem.isMeditation
+                    ? `下一项：静坐 ${nextUnfinishedItem.meditationMinutes} 分钟`
+                    : `下一部：${nextUnfinishedItem.scripture?.title} ${nextUnfinishedItem.doneCount} / ${nextUnfinishedItem.item.target}`}
                 </button>
                 <button
                   type="button"
@@ -1694,6 +1872,29 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                     : '请先轻点上方完成结束礼佛'}
                 </button>
 
+                {allDailyCompleted && isEveningWindow && onOpenEveningReview && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sessionCount > 0) {
+                        onRecordSession(fullClosingDedication, unit, true, {
+                          ritualMode: dailyRitualState.runMode || 'direct',
+                          dedicationTarget: dedicationTargetLabel || undefined,
+                        });
+                      }
+                      setShowCompletionOverlay(false);
+                      setIsEarlyFinish(false);
+                      setRingFlashActive(false);
+                      setMetronomeEnabled(false);
+                      onOpenEveningReview();
+                    }}
+                    className="w-full h-12 rounded-full border border-accent/40 bg-accent-mist text-accent font-medium hover:bg-accent hover:text-on-accent transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Moon size={16} strokeWidth={1.5} />
+                    <span>接着做晚课</span>
+                  </button>
+                )}
+
                 {isEarlyFinish && !allDailyCompleted && nextUnfinishedItem && (
                   <button
                     type="button"
@@ -1708,11 +1909,19 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                       setIsEarlyFinish(false);
                       setRingFlashActive(false);
                       setMetronomeEnabled(false);
-                      onSelectScripture(nextUnfinishedItem.scripture);
+                      if (nextUnfinishedItem.isMeditation) {
+                        onStartDailyMeditation?.(
+                          nextUnfinishedItem.meditationMinutes
+                        );
+                      } else if (nextUnfinishedItem.scripture) {
+                        onSelectScripture(nextUnfinishedItem.scripture);
+                      }
                     }}
                     className="text-caption text-ink-2 hover:text-accent py-1 px-4 transition-colors truncate max-w-full"
                   >
-                    或 切换下一部：{nextUnfinishedItem.scripture.title}
+                    {nextUnfinishedItem.isMeditation
+                      ? `或 下一项：静坐 ${nextUnfinishedItem.meditationMinutes} 分钟`
+                      : `或 切换下一部：${nextUnfinishedItem.scripture?.title}`}
                   </button>
                 )}
 

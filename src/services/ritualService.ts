@@ -7,6 +7,7 @@ import {
 } from '../data/ritual';
 import { cryptoService } from './cryptoService';
 import { identityService } from './identityService';
+import { getPracticeDateKey } from './practiceService';
 import { safeStorage } from '../utils/safeStorage';
 
 const STORAGE_KEY_RITUAL_SETTINGS = 'zen_ritual_settings';
@@ -29,13 +30,7 @@ export interface DailyRitualState {
   dedicationCustomName: string;
 }
 
-const getTodayDateKey = (): string => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+const getTodayDateKey = (): string => getPracticeDateKey();
 
 const defaultRitualSettings: RitualSettings = {
   hasCompletedFirstRitual: false,

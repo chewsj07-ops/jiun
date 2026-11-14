@@ -16,14 +16,19 @@ import { MindConsentSheet } from './ConsentModals';
 export type VowBookSegment = 'vow' | 'mind' | 'merit';
 export type VowFeatureSection = 'overview' | 'setup_vow' | 'good_deed' | 'eightfold' | 'wisdom';
 
+export type MeritSubTab = 'mine' | 'community';
+
 interface VowBookViewProps {
   activeSegment: VowBookSegment;
   onSegmentChange: (segment: VowBookSegment) => void;
   vowSubSection?: VowFeatureSection;
   onVowSubSectionChange?: (section: VowFeatureSection) => void;
+  meritSubTab?: MeritSubTab;
+  onMeritSubTabChange?: (tab: MeritSubTab) => void;
   user: any;
   onLevelUp: (msg: string) => void;
   historyContent: React.ReactNode;
+  communityContent?: React.ReactNode;
 }
 
 export const VowBookView: React.FC<VowBookViewProps> = ({
@@ -31,20 +36,33 @@ export const VowBookView: React.FC<VowBookViewProps> = ({
   onSegmentChange,
   vowSubSection = 'overview',
   onVowSubSectionChange,
+  meritSubTab = 'mine',
+  onMeritSubTabChange,
   user,
   onLevelUp,
   historyContent,
+  communityContent,
 }) => {
   const { t } = useTranslation();
   const [innerSection, setInnerSection] = useState<VowFeatureSection>(vowSubSection);
+  const [innerMeritSubTab, setInnerMeritSubTab] = useState<MeritSubTab>(meritSubTab);
 
   useEffect(() => {
     setInnerSection(vowSubSection);
   }, [vowSubSection]);
 
+  useEffect(() => {
+    setInnerMeritSubTab(meritSubTab);
+  }, [meritSubTab]);
+
   const setSection = (sec: VowFeatureSection) => {
     setInnerSection(sec);
     onVowSubSectionChange?.(sec);
+  };
+
+  const setMeritTab = (tab: MeritSubTab) => {
+    setInnerMeritSubTab(tab);
+    onMeritSubTabChange?.(tab);
   };
 
   const [personalVow, setPersonalVow] = useState<string>(() => safeStorage.getItem('personal_vow') || '');
@@ -351,9 +369,37 @@ export const VowBookView: React.FC<VowBookViewProps> = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full"
+            className="w-full space-y-4"
           >
-            {historyContent}
+            {communityContent && (
+              <div className="inline-flex bg-surface-2 p-1 rounded-xl border border-line gap-1">
+                {([
+                  { id: 'mine' as const, label: '我的功德' },
+                  { id: 'community' as const, label: '大家共修' },
+                ]).map((tab) => {
+                  const isActive = innerMeritSubTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setMeritTab(tab.id)}
+                      className={cn(
+                        'px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors min-h-[36px]',
+                        isActive
+                          ? 'bg-surface text-accent font-semibold border border-line'
+                          : 'text-ink-2 hover:text-ink'
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {innerMeritSubTab === 'community' && communityContent
+              ? communityContent
+              : historyContent}
           </motion.div>
         )}
       </AnimatePresence>

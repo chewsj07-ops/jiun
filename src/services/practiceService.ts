@@ -1,4 +1,13 @@
-import { DailyPractice, DailyPracticeItem, PRACTICE_LEVELS, PRACTICE_WEIGHTS, PracticeActivityType, MERIT_ENERGY_POINTS, PracticeSettings } from '../types/practice';
+import {
+  DailyPractice,
+  DailyPracticeItem,
+  MEDITATION_PRACTICE_ID,
+  MERIT_ENERGY_POINTS,
+  PRACTICE_LEVELS,
+  PRACTICE_WEIGHTS,
+  PracticeActivityType,
+  PracticeSettings,
+} from '../types/practice';
 import { io, Socket } from 'socket.io-client';
 import { safeStorage } from '../utils/safeStorage';
 
@@ -8,6 +17,7 @@ const STORAGE_KEY_MERIT_HISTORY = 'zen_merit_history';
 const STORAGE_KEY_REJOICE_HISTORY = 'zen_rejoice_history';
 const STORAGE_KEY_SETTINGS = 'zen_practice_settings';
 const STORAGE_KEY_RECENT_SCRIPTURES = 'zen_recent_scriptures';
+export const STORAGE_KEY_TOMORROW_INTENTION = 'zen_tomorrow_intention';
 
 let socket: Socket | null = null;
 let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -137,12 +147,43 @@ if (typeof window !== 'undefined') {
   });
 }
 
-const getTodayDate = () => {
-  const now = new Date();
+export const PRACTICE_DAY_CUTOFF_HOUR = 4;
+
+export const getTodayDateKey = (now: Date = new Date()): string => {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+export const getPracticeDate = (now: Date = new Date()): Date => {
+  if (now.getHours() < PRACTICE_DAY_CUTOFF_HOUR) {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  }
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+};
+
+export const getPracticeDateKey = (now: Date = new Date()): string => {
+  return getTodayDateKey(getPracticeDate(now));
+};
+
+export const isSamePracticeDay = (
+  input: string | number | Date | undefined | null,
+  now: Date = new Date()
+): boolean => {
+  if (input === undefined || input === null || input === '') return false;
+  const parsed = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return getPracticeDateKey(parsed) === getPracticeDateKey(now);
+};
+
+const getTodayDate = () => getPracticeDateKey();
+
+export const isMeditationPracticeItem = (
+  item?: Pick<DailyPracticeItem, 'scriptureId' | 'kind'> | null
+): boolean => {
+  if (!item) return false;
+  return item.kind === 'meditation' || item.scriptureId === MEDITATION_PRACTICE_ID;
 };
 
 export const getDefaultUnitForCategory = (category?: string): '遍' | '声' => {
@@ -218,16 +259,33 @@ export const practiceService = {
   },
 
   saveDailyPracticeList: (items: DailyPracticeItem[], updatedAtOverride?: number) => {
-    const normalized = items.map((item, idx) => ({
-      ...item,
-      target: Math.min(100000, Math.max(1, Math.round(item.target || 1))),
-      unit: item.unit === '遍' ? ('遍' as const) : ('声' as const),
-      order: idx,
-    }));
+    const normalized: DailyPracticeItem[] = items.map((item, idx) => {
+      if (isMeditationPracticeItem(item)) {
+        const mins = Math.min(180, Math.max(1, Math.round(item.minutes ?? item.target ?? 15)));
+        return {
+          scriptureId: MEDITATION_PRACTICE_ID,
+          kind: 'meditation',
+          minutes: mins,
+          target: mins,
+          order: idx,
+          enabled: Boolean(item.enabled),
+        };
+      }
+      return {
+        scriptureId: item.scriptureId,
+        target: Math.min(100000, Math.max(1, Math.round(item.target || 1))),
+        unit: item.unit === '遍' ? ('遍' as const) : ('声' as const),
+        order: idx,
+        enabled: Boolean(item.enabled),
+        ...(item.kind ? { kind: item.kind } : {}),
+      };
+    });
     const current = practiceService.getSettings();
     const nextGoals = { ...(current.scriptureGoals || {}) };
     normalized.forEach((item) => {
-      nextGoals[item.scriptureId] = item.target;
+      if (!isMeditationPracticeItem(item)) {
+        nextGoals[item.scriptureId] = item.target;
+      }
     });
     const nextUpdatedAt =
       typeof updatedAtOverride === 'number' ? updatedAtOverride : Date.now();
@@ -245,24 +303,129 @@ export const practiceService = {
   },
 
   recordRecentScriptureId: (scriptureId: string): string[] => {
-    if (!scriptureId) return practiceService.getRecentScriptureIds();
+    if (!scriptureId || scriptureId === MEDITATION_PRACTICE_ID) {
+      return practiceService.getRecentScriptureIds();
+    }
     const current = practiceService.getRecentScriptureIds();
     const next = [scriptureId, ...current.filter((id) => id !== scriptureId)].slice(0, 5);
     safeStorage.setJSON(STORAGE_KEY_RECENT_SCRIPTURES, next);
     return next;
   },
 
-  getDailyPractice: (): DailyPractice => {
-    const today = getTodayDate();
+  getTomorrowIntention: (): string => {
+    const raw = safeStorage.getItem(STORAGE_KEY_TOMORROW_INTENTION);
+    if (!raw) return '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.text === 'string') {
+        return parsed.text.trim();
+      }
+    } catch {
+      return raw.trim();
+    }
+    return '';
+  },
+
+  saveTomorrowIntention: (text: string, now: Date = new Date()): void => {
+    const trimmed = text.trim().slice(0, 200);
+    if (!trimmed) {
+      safeStorage.removeItem(STORAGE_KEY_TOMORROW_INTENTION);
+      return;
+    }
+    safeStorage.setJSON(STORAGE_KEY_TOMORROW_INTENTION, {
+      text: trimmed,
+      savedDate: getPracticeDateKey(now),
+      savedCalendarDate: getTodayDateKey(now),
+      savedHour: now.getHours(),
+    });
+  },
+
+  getDailyPractice: (now: Date = new Date()): DailyPractice => {
+    const today = getPracticeDateKey(now);
     const parsed = safeStorage.getJSON<DailyPractice | null>(STORAGE_KEY_PRACTICE, null);
-    if (parsed) {
-      if (parsed.date === today) {
-        if (!parsed.scriptureCounts) parsed.scriptureCounts = {};
-        if (!Array.isArray(parsed.celebratedScriptures)) parsed.celebratedScriptures = [];
-        return parsed;
+    let base: DailyPractice;
+    let shouldPersist = false;
+
+    if (parsed && parsed.date === today) {
+      base = {
+        ...parsed,
+        scriptureCounts: parsed.scriptureCounts || {},
+        celebratedScriptures: Array.isArray(parsed.celebratedScriptures)
+          ? parsed.celebratedScriptures
+          : [],
+      };
+    } else {
+      base = {
+        ...defaultDailyPractice,
+        date: today,
+        scriptureCounts: {},
+        celebratedScriptures: [],
+      };
+    }
+
+    // Carry over zen_tomorrow_intention once the practice day advances (04:00 AM rollover)
+    const rawTomorrow = safeStorage.getItem(STORAGE_KEY_TOMORROW_INTENTION);
+    if (rawTomorrow) {
+      let carriedText = '';
+      let shouldConsume = false;
+      try {
+        const parsedTomorrow = JSON.parse(rawTomorrow);
+        if (parsedTomorrow && typeof parsedTomorrow.text === 'string') {
+          carriedText = parsedTomorrow.text.trim().slice(0, 200);
+          const savedPracticeKey = parsedTomorrow.savedDate;
+          const savedHour = typeof parsedTomorrow.savedHour === 'number' ? parsedTomorrow.savedHour : 20;
+          // Backward compatibility: older entries stored calendar YYYY-MM-DD + savedHour
+          const normalizedSavedPracticeKey = parsedTomorrow.savedCalendarDate
+            ? savedPracticeKey
+            : savedHour < PRACTICE_DAY_CUTOFF_HOUR && typeof savedPracticeKey === 'string'
+            ? (() => {
+                const [y, m, d] = savedPracticeKey.split('-').map(Number);
+                return y && m && d ? getTodayDateKey(new Date(y, m - 1, d - 1)) : savedPracticeKey;
+              })()
+            : savedPracticeKey;
+
+          shouldConsume = Boolean(normalizedSavedPracticeKey && normalizedSavedPracticeKey !== today);
+        }
+      } catch {
+        carriedText = rawTomorrow.trim().slice(0, 200);
+        shouldConsume = Boolean(carriedText);
+      }
+
+      if (shouldConsume && carriedText) {
+        if (!base.todayIntention || !base.todayIntention.trim()) {
+          base = { ...base, todayIntention: carriedText };
+          shouldPersist = true;
+        }
+        safeStorage.removeItem(STORAGE_KEY_TOMORROW_INTENTION);
       }
     }
-    return { ...defaultDailyPractice, date: today, celebratedScriptures: [] };
+
+    if (shouldPersist) {
+      safeStorage.setJSON(STORAGE_KEY_PRACTICE, base);
+    }
+
+    return base;
+  },
+
+  saveTodayIntention: (text: string): DailyPractice => {
+    const trimmed = text.trim().slice(0, 200);
+    const practice = practiceService.getDailyPractice();
+    const next: DailyPractice = {
+      ...practice,
+      todayIntention: trimmed,
+    };
+    practiceService.saveDailyPractice(next);
+    return next;
+  },
+
+  setRitualDone: (mode: 'full' | 'brief' | 'skip'): DailyPractice => {
+    const practice = practiceService.getDailyPractice();
+    const next: DailyPractice = {
+      ...practice,
+      ritual_done: mode,
+    };
+    practiceService.saveDailyPractice(next);
+    return next;
   },
 
   markScriptureCelebrated: (scriptureId: string): DailyPractice => {
@@ -277,6 +440,9 @@ export const practiceService = {
 
   saveDailyPractice: (practice: DailyPractice) => {
     safeStorage.setJSON(STORAGE_KEY_PRACTICE, practice);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('zen_daily_practice_updated'));
+    }
   },
 
   getTotalPoints: (): number => {

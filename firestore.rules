@@ -68,13 +68,15 @@ service cloud.firestore {
     
     function isValidDailyPracticeItem(item) {
       return item is map &&
-             item.keys().hasAll(['scriptureId', 'target', 'unit', 'order', 'enabled']) &&
-             item.keys().hasOnly(['scriptureId', 'target', 'unit', 'order', 'enabled']) &&
+             item.keys().hasAll(['scriptureId', 'target', 'order', 'enabled']) &&
+             item.keys().hasOnly(['scriptureId', 'target', 'unit', 'order', 'enabled', 'kind', 'minutes']) &&
              item.scriptureId is string && item.scriptureId.size() <= 128 &&
              item.target is int && item.target >= 1 && item.target <= 100000 &&
-             item.unit in ['遍', '声'] &&
+             (!('unit' in item) || (item.unit in ['遍', '声'])) &&
              item.order is int &&
-             item.enabled is bool;
+             item.enabled is bool &&
+             (!('kind' in item) || (item.kind in ['chant', 'meditation'])) &&
+             (!('minutes' in item) || (item.minutes is int && item.minutes >= 1 && item.minutes <= 180));
     }
 
     function isValidDailyPracticeSlice(items, start) {
@@ -112,7 +114,9 @@ service cloud.firestore {
              (!('createdAt' in data) || data.createdAt is string) &&
              (!('updatedAt' in data) || data.updatedAt is string) &&
              (!('dailyPracticeUpdatedAt' in data) || data.dailyPracticeUpdatedAt is number) &&
-             (!('dailyPractice' in data) || isValidDailyPracticeList(data.dailyPractice));
+             (!('dailyPractice' in data) || isValidDailyPracticeList(data.dailyPractice)) &&
+             (!('todayIntention' in data) || (data.todayIntention is string && data.todayIntention.size() <= 200)) &&
+             (!('todayIntentionDate' in data) || (data.todayIntentionDate is string && data.todayIntentionDate.size() <= 20));
     }
     
     function isValidThought() {
@@ -123,13 +127,17 @@ service cloud.firestore {
              (!('content_encrypted' in data) || (data.content_encrypted is string && data.content_encrypted.size() <= 10000)) &&
              (!('iv' in data) || (data.iv is string && data.iv.size() <= 100)) &&
              (!('isEncrypted' in data) || data.isEncrypted is bool) &&
-             (!('guidance' in data) || (data.guidance is string && data.guidance.size() <= 5000));
+             (!('guidance' in data) || (data.guidance is string && data.guidance.size() <= 5000)) &&
+             (!('mode' in data) || (data.mode in ['quick', 'full'])) &&
+             (!('reviewedInEvening' in data) || data.reviewedInEvening is bool);
     }
     
     function isValidDeed() {
       let data = request.resource.data;
       return data.keys().hasAll(['type']) &&
              data.type is string && data.type.size() <= 50 &&
+             (!('subType' in data) || (data.subType in ['self', 'rejoice', 'repentance'])) &&
+             (!('recipient' in data) || (data.recipient is string && data.recipient.size() <= 100)) &&
              (!('timestamp' in data) || data.timestamp is number || data.timestamp is string) &&
              (!('date' in data) || (data.date is string && data.date.size() <= 50)) &&
              (!('content' in data) || (data.content is string && data.content.size() <= 5000)) &&

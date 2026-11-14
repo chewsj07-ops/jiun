@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { Toaster, toast } from 'sonner';
-import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Music, Wind, Plus, Trash2, Check, ChevronDown, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Download, ShieldCheck, Upload, UserRound, Minimize2 } from 'lucide-react';
+import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Music, Wind, Plus, Trash2, Check, ChevronDown, ChevronLeft, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Download, ShieldCheck, Upload, UserRound, Minimize2 } from 'lucide-react';
 import { aiGenerate } from './services/geminiClient';
 import { POST_SESSION_REFLECTION_SYSTEM_PROMPT } from './data/zenAssistantPrompt';
 import { useFirebaseSync } from './hooks/useFirebaseSync';
@@ -13,6 +13,7 @@ import { handleFirestoreError, OperationType } from './utils/firebaseErrors';
 import { translateFirebaseAuthError } from './utils/firebaseAuthErrors';
 import { containsBadWords } from './utils/badWords';
 import { Dashboard } from './components/Dashboard';
+import { EveningReview } from './components/EveningReview';
 import {
   WoodenFishPracticeView,
   FISH_DEDICATION_PRESETS,
@@ -24,12 +25,20 @@ import {
   practiceService,
   getDefaultTargetForCategory,
   getDefaultUnitForCategory,
+  getPracticeDateKey,
+  isMeditationPracticeItem,
+  isSamePracticeDay,
   connectRealtime,
   disconnectRealtime,
   subscribeRealtimeStatus,
   isRealtimeOffline,
 } from './services/practiceService';
-import { DailyPracticeItem } from './types/practice';
+import {
+  DailyPathNextAction,
+  getDailyPath,
+  isDailyPracticeItemDone,
+} from './services/dailyPath';
+import { DailyPracticeItem, MEDITATION_PRACTICE_ID } from './types/practice';
 import { RitualRunMode } from './data/ritual';
 import { RitualSettings, ritualService } from './services/ritualService';
 import { getScriptures, Scripture } from './constants';
@@ -40,7 +49,7 @@ import { ChantingProvider } from './features/chanting/ChantingContext';
 import { ZenOnboarding } from './components/ZenOnboarding';
 import { identityService } from './services/identityService';
 import { Country, City } from './utils/locationData';
-import type { VowBookSegment, VowFeatureSection } from './components/VowBookView';
+import type { VowBookSegment, VowFeatureSection, MeritSubTab } from './components/VowBookView';
 
 // Lazy-loaded components for optimal mobile Safari startup performance
 const Meditation = React.lazy(() => import('./components/Meditation').then(m => ({ default: m.Meditation })));
@@ -144,10 +153,14 @@ export default function App() {
   
   const [vowBookSegment, setVowBookSegment] = useState<VowBookSegment>('vow');
   const [vowFeatureSection, setVowFeatureSection] = useState<VowFeatureSection>('overview');
+  const [meritSubTab, setMeritSubTab] = useState<MeritSubTab>('mine');
   const [immersive, setImmersive] = useState<boolean>(false);
   const [isMeSheetOpen, setIsMeSheetOpen] = useState<boolean>(false);
   const [meditationPresetDuration, setMeditationPresetDuration] = useState<number | null>(null);
+  const [meditationFromDailyPractice, setMeditationFromDailyPractice] = useState<boolean>(false);
   const [openRitualOnFishEnter, setOpenRitualOnFishEnter] = useState<boolean>(false);
+  const [autoOpenPracticeSettings, setAutoOpenPracticeSettings] = useState<boolean>(false);
+  const [showEveningReview, setShowEveningReview] = useState<boolean>(false);
   const [ritualSettings, setRitualSettings] = useState<RitualSettings>(() => ritualService.getSettings());
 
   const [rejoiceId, setRejoiceId] = useState<string | null>(null);
@@ -180,17 +193,76 @@ export default function App() {
   }, [activeTab]);
 
   const navigateTo = (target: string) => {
+    if (target === 'ritual') {
+      const enabledPractice = dailyPractice
+        .filter((item) => item.enabled)
+        .sort((a, b) => a.order - b.order);
+      const latestPractice = practiceService.getDailyPractice();
+      const firstUnfinishedChant = enabledPractice.find(
+        (item) => !isMeditationPracticeItem(item) && !isDailyPracticeItemDone(item, latestPractice)
+      );
+      if (firstUnfinishedChant) {
+        const matched = allScriptures.find((s) => s.id === firstUnfinishedChant.scriptureId);
+        if (matched) {
+          setActiveScriptureId(matched.id);
+          setSelectedChant(matched.title);
+          setRecentScriptureIds(practiceService.recordRecentScriptureId(matched.id));
+        }
+      }
+      setOpenRitualOnFishEnter(true);
+      setActiveTab('fish');
+      return;
+    }
+
+    if (target === 'daily-practice-settings') {
+      setAutoOpenPracticeSettings(true);
+      setActiveTab('fish');
+      return;
+    }
+
+    if (target === 'evening-review') {
+      setShowEveningReview(true);
+      setImmersive(true);
+      return;
+    }
+
+    if (target === 'thought-collector') {
+      window.dispatchEvent(new CustomEvent('open-thought-collector'));
+      return;
+    }
+
+    if (target === 'good-deed-collector') {
+      window.dispatchEvent(new CustomEvent('open-good-deed-collector'));
+      return;
+    }
+
     if (target === 'daily-practice') {
       const enabledPractice = dailyPractice
         .filter((item) => item.enabled)
         .sort((a, b) => a.order - b.order);
 
       if (enabledPractice.length > 0) {
-        const latestCounts = practiceService.getDailyPractice().scriptureCounts || {};
+        const latestPractice = practiceService.getDailyPractice();
         const firstUnfinished = enabledPractice.find(
-          (item) => (latestCounts[item.scriptureId] || 0) < item.target
+          (item) => !isDailyPracticeItemDone(item, latestPractice)
         );
         if (!firstUnfinished) {
+          const hour = new Date().getHours();
+          if (hour >= 18 || hour < 4) {
+            setShowEveningReview(true);
+            setImmersive(true);
+          } else {
+            setMeditationPresetDuration(null);
+            setMeditationFromDailyPractice(false);
+            setActiveTab('meditation');
+            setImmersive(false);
+          }
+          return;
+        }
+        if (isMeditationPracticeItem(firstUnfinished)) {
+          const mins = firstUnfinished.minutes || firstUnfinished.target || 15;
+          setMeditationPresetDuration(mins);
+          setMeditationFromDailyPractice(true);
           setActiveTab('meditation');
           setImmersive(false);
           return;
@@ -200,11 +272,10 @@ export default function App() {
           setActiveScriptureId(matched.id);
           setSelectedChant(matched.title);
           setRecentScriptureIds(practiceService.recordRecentScriptureId(matched.id));
-          setActiveTab(matched.category === 'meditation' ? 'meditation' : 'fish');
-          if (matched.category !== 'meditation') {
+          if (!latestPractice.ritual_done) {
             setOpenRitualOnFishEnter(true);
           }
-          setImmersive(false);
+          setActiveTab('fish');
           return;
         }
       }
@@ -221,24 +292,32 @@ export default function App() {
           setActiveScriptureId(matched.id);
           setSelectedChant(matched.title);
           setActiveTab(matched.category === 'meditation' ? 'meditation' : 'fish');
-          if (matched.category !== 'meditation') {
+          if (matched.category !== 'meditation' && !practiceService.getDailyPractice().ritual_done) {
             setOpenRitualOnFishEnter(true);
           }
         } else {
-          setOpenRitualOnFishEnter(true);
+          setAutoOpenPracticeSettings(true);
           setActiveTab('fish');
         }
       } else {
-        setOpenRitualOnFishEnter(true);
+        setAutoOpenPracticeSettings(true);
         setActiveTab('fish');
       }
-      setImmersive(false);
       return;
     }
 
     if (target === 'history') {
       setVowBookSegment('merit');
+      setMeritSubTab('mine');
       setActiveTab('vow');
+    } else if (target === 'community') {
+      setVowBookSegment('merit');
+      setMeritSubTab('community');
+      setActiveTab('vow');
+    } else if (target === 'merit') {
+      setVowBookSegment('merit');
+      setMeritSubTab('community');
+      setActiveTab('merit');
     } else if (target === 'assistant' || target === 'vow-coach') {
       setVowBookSegment('mind');
       setActiveTab('vow');
@@ -259,6 +338,46 @@ export default function App() {
     }
     if (target !== 'fish' && target !== 'meditation' && target !== 'scripture') {
       setImmersive(false);
+    }
+  };
+
+  const handleDailyPathNextAction = (next: DailyPathNextAction) => {
+    if (next.target === 'ritual') {
+      navigateTo('ritual');
+      return;
+    }
+    if (next.target === 'daily-practice-settings') {
+      navigateTo('daily-practice-settings');
+      return;
+    }
+    if (next.target === 'fish') {
+      if (next.scriptureId) {
+        const matched = allScriptures.find((s) => s.id === next.scriptureId);
+        if (matched) {
+          resetFishSession();
+          setActiveScriptureId(matched.id);
+          setSelectedChant(matched.title);
+          setRecentScriptureIds(practiceService.recordRecentScriptureId(matched.id));
+        }
+      }
+      setActiveTab('fish');
+      return;
+    }
+    if (next.target === 'meditation') {
+      setMeditationPresetDuration(next.meditationMinutes ?? null);
+      setMeditationFromDailyPractice(next.kind === 'practice-meditation');
+      setActiveTab('meditation');
+      setImmersive(false);
+      return;
+    }
+    if (next.target === 'thought-collector') {
+      window.dispatchEvent(new CustomEvent('open-thought-collector'));
+      return;
+    }
+    if (next.target === 'evening-review') {
+      setShowEveningReview(true);
+      setImmersive(true);
+      return;
     }
   };
   const [selectedScripture, setSelectedScripture] = useState<Scripture>(getScriptures('zh-CN')[0]);
@@ -289,8 +408,24 @@ export default function App() {
     return saved === undefined ? true : saved;
   });
 
+  const [middayReminderEnabled, setMiddayReminderEnabled] = useState<boolean>(() => {
+    return Boolean(practiceService.getSettings().middayReminderEnabled);
+  });
+
+  const [todayDailyPracticeSnapshot, setTodayDailyPracticeSnapshot] = useState(() =>
+    practiceService.getDailyPractice()
+  );
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>(() => {
-    return practiceService.getDailyPractice().scriptureCounts || {};
+    return todayDailyPracticeSnapshot.scriptureCounts || {};
+  });
+  const [celebratedScriptures, setCelebratedScriptures] = useState<string[]>(() => {
+    return todayDailyPracticeSnapshot.celebratedScriptures || [];
+  });
+  const [todayIntention, setTodayIntention] = useState<string>(() => {
+    return todayDailyPracticeSnapshot.todayIntention || '';
+  });
+  const [todayPracticeRitualDone, setTodayPracticeRitualDone] = useState<'brief' | 'full' | 'skip' | undefined>(() => {
+    return todayDailyPracticeSnapshot.ritual_done;
   });
 
   const [dailyPractice, setDailyPractice] = useState<DailyPracticeItem[]>(() => {
@@ -304,6 +439,34 @@ export default function App() {
   const [recentScriptureIds, setRecentScriptureIds] = useState<string[]>(() => {
     return practiceService.getRecentScriptureIds();
   });
+
+  useEffect(() => {
+    const syncDailyPractice = () => {
+      const latest = practiceService.getDailyPractice();
+      setTodayDailyPracticeSnapshot(latest);
+      setDailyCounts(latest.scriptureCounts || {});
+      setCelebratedScriptures(latest.celebratedScriptures || []);
+      setTodayIntention(latest.todayIntention || '');
+      setTodayPracticeRitualDone(latest.ritual_done);
+    };
+    window.addEventListener('zen_daily_practice_updated', syncDailyPractice);
+    window.addEventListener('zen_daily_ritual_updated', syncDailyPractice);
+    window.addEventListener('focus', syncDailyPractice);
+    return () => {
+      window.removeEventListener('zen_daily_practice_updated', syncDailyPractice);
+      window.removeEventListener('zen_daily_ritual_updated', syncDailyPractice);
+      window.removeEventListener('focus', syncDailyPractice);
+    };
+  }, []);
+
+  const fabHiddenForDaytime = React.useMemo(() => {
+    const path = getDailyPath({
+      practice: todayDailyPracticeSnapshot,
+      dailyPracticeList: dailyPractice,
+      ritualCompletedPreRitual: ritualService.getDailyState().completedPreRitual,
+    });
+    return path.next.kind === 'daytime';
+  }, [todayDailyPracticeSnapshot, dailyPractice]);
 
   const handleUpdateDailyPractice = (items: DailyPracticeItem[]) => {
     const saved = practiceService.saveDailyPracticeList(items);
@@ -609,6 +772,74 @@ export default function App() {
     }).catch(err => console.warn('Record vault startup recovery:', err));
   }, []);
 
+  // Gentle once-a-day midday awareness reminder (opt-in, off by default)
+  useEffect(() => {
+    if (!middayReminderEnabled) return;
+
+    const checkMiddayReminder = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      if (hour < 12 || hour >= 15) return;
+
+      const todayKey = getPracticeDateKey(now);
+      if (safeStorage.getItem('zen_midday_reminded_date') === todayKey) return;
+
+      const practice = practiceService.getDailyPractice(now);
+      const thoughts = safeStorage.getJSON<any[]>('zen_thoughts', []);
+      const hasThoughtToday =
+        (practice.observing_thoughts || 0) > 0 ||
+        (Array.isArray(thoughts) &&
+          thoughts.some((t: any) => isSamePracticeDay(t.timestamp || t.id, now)));
+
+      const deeds = safeStorage.getJSON<any[]>('good_deed_history', []);
+      const hasDeedToday =
+        (practice.good_deeds || 0) > 0 ||
+        (Array.isArray(deeds) &&
+          deeds.some((d: any) => {
+            const isChanting =
+              d.content && (d.content.includes('念诵') || d.content.includes('禅修'));
+            return !isChanting && isSamePracticeDay(d.date || d.timestamp, now);
+          }));
+
+      if (hasThoughtToday || hasDeedToday) return;
+
+      safeStorage.setItem('zen_midday_reminded_date', todayKey);
+
+      toast('午间一念', {
+        description: '忙碌中先停半分钟，看见此刻心里升起了什么，或记一件小善。',
+        action: {
+          label: '观一念',
+          onClick: () =>
+            window.dispatchEvent(
+              new CustomEvent('open-thought-collector', { detail: { mode: 'quick' } })
+            ),
+        },
+      });
+
+      if (
+        typeof window !== 'undefined' &&
+        'Notification' in window &&
+        Notification.permission === 'granted'
+      ) {
+        try {
+          new Notification('愿禅助手 · 午间一念', {
+            body: '忙碌中停一息，记下此刻的一个念头或微小的善行。',
+          });
+        } catch {
+          // ignore notification error in constrained webviews
+        }
+      }
+    };
+
+    checkMiddayReminder();
+    const timer = window.setInterval(checkMiddayReminder, 60000);
+    window.addEventListener('focus', checkMiddayReminder);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', checkMiddayReminder);
+    };
+  }, [middayReminderEnabled]);
+
   const { user: fbUser, isAuthReady } = useFirebase();
 
   const shareMerit = async (meritData: any, isCommunity: boolean = false) => {
@@ -904,6 +1135,7 @@ export default function App() {
     customScriptures, setCustomScriptures,
     dailyPractice, setDailyPractice,
     dailyPracticeUpdatedAt, setDailyPracticeUpdatedAt,
+    todayIntention, setTodayIntention,
     cloudSyncEnabled
   );
 
@@ -917,12 +1149,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'community' || activeTab === 'merit') {
+    const isViewingCommunity =
+      (activeTab === 'vow' && vowBookSegment === 'merit' && meritSubTab === 'community') ||
+      activeTab === 'merit' ||
+      activeTab === 'community';
+    if (isViewingCommunity) {
       connectRealtime();
     } else {
       disconnectRealtime(30000);
     }
-  }, [activeTab]);
+  }, [activeTab, vowBookSegment, meritSubTab]);
 
   const isCommunityOffline =
     realtimeOffline ||
@@ -1261,9 +1497,12 @@ export default function App() {
     }
   }, [history]);
 
+  const navigateToRef = useRef(navigateTo);
+  navigateToRef.current = navigateTo;
+
   useEffect(() => {
     const handleSwitchTab = (e: any) => {
-      navigateTo(e.detail);
+      navigateToRef.current(e.detail);
     };
     const handleAddExp = (e: any) => {
       setUserExp(prev => prev + e.detail);
@@ -1341,7 +1580,7 @@ export default function App() {
       sessionCountRef.current = nextSessionCount;
     }
 
-    const practice = practiceService.updateActivity('chanting', increment, activeScriptureId);
+    let practice = practiceService.updateActivity('chanting', increment, activeScriptureId);
     practiceService.logMerit('chanting');
     if (practice.scriptureCounts) {
       setDailyCounts(practice.scriptureCounts);
@@ -1349,19 +1588,17 @@ export default function App() {
 
     const updatedTodayCount = practice.scriptureCounts?.[activeScriptureId] || 0;
     const alreadyCelebrated = (practice.celebratedScriptures || []).includes(activeScriptureId);
-    const hitNewRoundTarget =
-      alreadyCelebrated && nextSessionCount > 0 && nextSessionCount % goalValue === 0;
 
-    if (goalType === 'count' && ((updatedTodayCount >= goalValue && !alreadyCelebrated) || hitNewRoundTarget)) {
-      if (!alreadyCelebrated) {
-        practiceService.markScriptureCelebrated(activeScriptureId);
-      }
+    if (goalType === 'count' && updatedTodayCount >= goalValue && !alreadyCelebrated) {
+      practice = practiceService.markScriptureCelebrated(activeScriptureId);
+      setCelebratedScriptures(practice.celebratedScriptures || []);
       if (window.Notification && Notification.permission === "granted") {
         new Notification("修行圆满", { body: `${activeScripture.title} 次数已达标` });
       }
       setFishCompletionSignal(c => c + 1);
     }
 
+    setTodayDailyPracticeSnapshot(practice);
     setRecentScriptureIds(practiceService.recordRecentScriptureId(activeScriptureId));
   };
 
@@ -2064,56 +2301,15 @@ export default function App() {
                   "text-xs text-accent w-full cursor-pointer transition-all",
                   isVowExpanded ? "whitespace-normal break-words" : "truncate"
                 )}
-                title={isVowExpanded ? "点击收起" : "点击展开愿力"}
+                title={isVowExpanded ? "点击收起" : "点击展开今日一念或愿力"}
                 onClick={() => setIsVowExpanded(!isVowExpanded)}
               >
-                {personalVow || t('default_vow_text')}
+                {todayIntention.trim() || personalVow || t('default_vow_text')}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 rounded-full border border-line-strong text-gold" title="连续修持天数">
-              <span className="text-xs">🔥</span>
-              <span className="text-sm font-serif font-bold leading-none">
-                {(() => {
-                  if (history.length === 0) return "0 天";
-                  const dates = history.map(h => {
-                    const ts = h.startTime || h.endTime || h.timestamp || h.id;
-                    return ts ? new Date(ts).toDateString() : null;
-                  }).filter(Boolean) as string[];
-                  const uniqueDates = [...new Set(dates)].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-
-                  let streak = 0;
-                  let lastDate = new Date();
-
-                  if (uniqueDates[0] === lastDate.toDateString()) {
-                    streak = 1;
-                    lastDate.setDate(lastDate.getDate() - 1);
-                  } else {
-                    const yesterday = new Date();
-                    yesterday.setDate(yesterday.getDate() - 1);
-                    if (uniqueDates[0] === yesterday.toDateString()) {
-                      streak = 1;
-                      lastDate = yesterday;
-                      lastDate.setDate(lastDate.getDate() - 1);
-                    } else {
-                      return "0 天";
-                    }
-                  }
-
-                  for (let i = 1; i < uniqueDates.length; i++) {
-                    if (new Date(uniqueDates[i]).toDateString() === lastDate.toDateString()) {
-                      streak++;
-                      lastDate.setDate(lastDate.getDate() - 1);
-                    } else {
-                      break;
-                    }
-                  }
-                  return `${streak} 天`;
-                })()}
-              </span>
-            </div>
 
             <div className="flex items-center gap-2">
               <React.Suspense fallback={null}>
@@ -2181,7 +2377,7 @@ export default function App() {
                       {userProfile.name || (isGuest ? '随喜访客' : '修行者')}
                     </p>
                     <p className="text-xs text-ink-2 truncate">
-                      {personalVow || t('default_vow_text')}
+                      {todayIntention.trim() || personalVow || t('default_vow_text')}
                     </p>
                   </div>
                 </div>
@@ -2215,28 +2411,6 @@ export default function App() {
                 >
                   <ShieldCheck size={20} strokeWidth={1.5} className="text-accent shrink-0" />
                   <span className="font-medium text-sm">隐私说明</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    navigateTo('community');
-                    setIsMeSheetOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-ink hover:bg-surface-2 transition-colors text-left"
-                >
-                  <Sparkles size={20} strokeWidth={1.5} className="text-accent shrink-0" />
-                  <span className="font-medium text-sm">共修动态</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    navigateTo('merit');
-                    setIsMeSheetOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-ink hover:bg-surface-2 transition-colors text-left"
-                >
-                  <Globe size={20} strokeWidth={1.5} className="text-accent shrink-0" />
-                  <span className="font-medium text-sm">功德地图</span>
                 </button>
 
                 <button
@@ -2381,32 +2555,25 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Records & Community */}
+                {/* Records */}
                 <div className="px-3">
-                  <p className="text-[10px] sm:text-xs font-bold text-ink-3 uppercase tracking-wider mb-1.5 px-4">记录与共修</p>
+                  <p className="text-[10px] sm:text-xs font-bold text-ink-3 uppercase tracking-wider mb-1.5 px-4">记录</p>
                   <div className="space-y-0.5">
-                    {[
-                      { id: 'history', icon: History, label: '功德簿' },
-                      { id: 'community', icon: Sparkles, label: '共修动态' },
-                      { id: 'merit', icon: Globe, label: '功德地图' },
-                    ].map(item => (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          navigateTo(item.id);
-                          setIsSideMenuOpen(false);
-                        }}
-                        className={cn(
-                          "w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all",
-                          (item.id === 'history' ? (activeTab === 'vow' && vowBookSegment === 'merit') : activeTab === item.id)
-                            ? "bg-accent-mist text-accent font-bold"
-                            : "text-ink-2 hover:bg-surface-2 hover:text-accent"
-                        )}
-                      >
-                        <item.icon className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                        <span className="font-medium text-sm sm:text-base truncate">{item.label}</span>
-                      </button>
-                    ))}
+                    <button
+                      onClick={() => {
+                        navigateTo('history');
+                        setIsSideMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all",
+                        activeTab === 'vow' && vowBookSegment === 'merit'
+                          ? "bg-accent-mist text-accent font-bold"
+                          : "text-ink-2 hover:bg-surface-2 hover:text-accent"
+                      )}
+                    >
+                      <History className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                      <span className="font-medium text-sm sm:text-base truncate">功德簿</span>
+                    </button>
                   </div>
                 </div>
 
@@ -2502,7 +2669,17 @@ export default function App() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 pb-24 pt-4 sm:pt-6 relative z-10 overflow-x-hidden">
         {/* Content Area */}
         <AnimatePresence mode="wait">
-          {activeTab === 'dashboard' && <Dashboard onNavigate={navigateTo} personalVow={personalVow} />}
+          {activeTab === 'dashboard' && (
+            <Dashboard
+              key="dashboard"
+              onNavigate={navigateTo}
+              onNextAction={handleDailyPathNextAction}
+              personalVow={personalVow}
+              scriptures={allScriptures}
+              dailyPracticeList={dailyPractice}
+              dailyPractice={todayDailyPracticeSnapshot}
+            />
+          )}
           {activeTab === 'fish' && (() => {
             const activePracticeItem = dailyPractice.find(
               (item) => item.scriptureId === activeScriptureId
@@ -2525,6 +2702,7 @@ export default function App() {
                 allScriptures={allScriptures}
                 dailyPractice={dailyPractice}
                 dailyCounts={dailyCounts}
+                celebratedScriptures={celebratedScriptures}
                 recentScriptureIds={recentScriptureIds}
                 goalType={activeGoalType}
                 goalValue={activeGoalValue}
@@ -2543,8 +2721,11 @@ export default function App() {
                 meritFloatText={activeScripture.category === 'name' ? activeScripture.title : t('merit_plus_one')}
                 dedicationText={resolveFishDedicationText(fishDedicationChoice, fishCustomDedication)}
                 personalVow={personalVow}
+                todayPracticeRitualDone={todayPracticeRitualDone}
                 autoOpenRitual={openRitualOnFishEnter}
                 onAutoOpenRitualConsumed={() => setOpenRitualOnFishEnter(false)}
+                autoOpenPracticeSettings={autoOpenPracticeSettings}
+                onAutoOpenPracticeSettingsConsumed={() => setAutoOpenPracticeSettings(false)}
                 theme={theme}
                 completionSignal={fishCompletionSignal}
                 onSelectScripture={(scripture) => {
@@ -2552,6 +2733,16 @@ export default function App() {
                   setActiveScriptureId(scripture.id);
                   setSelectedChant(scripture.title);
                   setRecentScriptureIds(practiceService.recordRecentScriptureId(scripture.id));
+                }}
+                onStartDailyMeditation={(minutes) => {
+                  setMeditationPresetDuration(minutes);
+                  setMeditationFromDailyPractice(true);
+                  setActiveTab('meditation');
+                  setImmersive(false);
+                }}
+                onOpenEveningReview={() => {
+                  setShowEveningReview(true);
+                  setImmersive(true);
                 }}
                 onUpdateDailyPractice={handleUpdateDailyPractice}
                 onOpenLibrary={() => setActiveTab('scripture')}
@@ -2596,6 +2787,42 @@ export default function App() {
                       source: '禅修',
                     };
                     addHistoryItem(newSession);
+
+                    if (meditationFromDailyPractice) {
+                      const updatedPractice = practiceService.markScriptureCelebrated(MEDITATION_PRACTICE_ID);
+                      setCelebratedScriptures(updatedPractice.celebratedScriptures || []);
+                      setTodayDailyPracticeSnapshot(updatedPractice);
+                      setMeditationFromDailyPractice(false);
+
+                      const enabledSorted = [...dailyPractice]
+                        .filter((item) => item.enabled)
+                        .sort((a, b) => a.order - b.order);
+                      const nextUnfinished = enabledSorted.find(
+                        (item) => !isDailyPracticeItemDone(item, updatedPractice)
+                      );
+
+                      if (nextUnfinished) {
+                        if (isMeditationPracticeItem(nextUnfinished)) {
+                          const mins = nextUnfinished.minutes || nextUnfinished.target || 15;
+                          setMeditationPresetDuration(mins);
+                          setMeditationFromDailyPractice(true);
+                          toast.success('已记入定课，继续下一项静坐');
+                        } else {
+                          const matched = allScriptures.find((s) => s.id === nextUnfinished.scriptureId);
+                          if (matched) {
+                            resetFishSession();
+                            setActiveScriptureId(matched.id);
+                            setSelectedChant(matched.title);
+                            setRecentScriptureIds(practiceService.recordRecentScriptureId(matched.id));
+                            setActiveTab('fish');
+                            toast.success(`已记入定课，接下来：${matched.title}`);
+                          }
+                        }
+                      } else {
+                        toast.success('今日定课全部圆满');
+                        navigateTo('dashboard');
+                      }
+                    }
                   }}
                 />
               </React.Suspense>
@@ -2616,6 +2843,8 @@ export default function App() {
                   onSegmentChange={setVowBookSegment}
                   vowSubSection={vowFeatureSection}
                   onVowSubSectionChange={setVowFeatureSection}
+                  meritSubTab={meritSubTab}
+                  onMeritSubTabChange={setMeritSubTab}
                   user={user}
                   onLevelUp={triggerLevelUpAnimation}
                   historyContent={
@@ -2993,6 +3222,247 @@ export default function App() {
                 )}
               </div>
                   }
+                  communityContent={
+                    <div className="space-y-4">
+                      {/* Merit Map Entry Card */}
+                      <div className="bg-surface rounded-2xl p-4 border border-line flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-accent-mist text-accent flex items-center justify-center shrink-0">
+                            <Globe className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-serif font-semibold text-ink">功德地图</p>
+                            <p className="text-xs text-ink-2 truncate">看看全球同修此时此刻的微光与回向</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => navigateTo('merit')}
+                          className="px-3.5 py-2 rounded-xl bg-accent-mist text-accent hover:bg-accent hover:text-on-accent text-xs font-medium transition-colors shrink-0 min-h-[36px]"
+                        >
+                          查看功德地图
+                        </button>
+                      </div>
+
+                      <div className="bg-accent-mist rounded-2xl p-3 border border-line flex gap-2 items-center">
+                        <div className="p-1.5 bg-surface rounded-lg text-accent shrink-0 border border-line">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <p className="text-[10px] text-ink-2 leading-relaxed">
+                          随喜赞叹，是修心最快的法门之一。因为当你真心为别人的善而欢喜，你的心已经离开嫉妒，走向慈悲。随喜，是与善同行。赞叹，是让善在世间继续发光。
+                        </p>
+                      </div>
+
+                      <div className="bg-surface rounded-2xl p-4 border border-line flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Heart className="w-4 h-4 text-accent" />
+                          <span className="font-bold text-sm text-ink">随喜赞叹</span>
+                        </div>
+                        <div className="flex gap-4 text-center">
+                          <div>
+                            <p className="text-[10px] text-ink-3 uppercase tracking-widest font-bold">今日</p>
+                            <p className="text-sm font-serif font-semibold">{rejoiceStats.today}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-ink-3 uppercase tracking-widest font-bold">本周</p>
+                            <p className="text-sm font-serif font-semibold">{rejoiceStats.week}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-ink-3 uppercase tracking-widest font-bold">总计</p>
+                            <p className="text-sm font-serif font-semibold">{rejoiceStats.total}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between px-2">
+                        <h3 className="font-bold text-lg flex items-center gap-2">
+                          <Sparkles className="w-5 h-5 text-accent" />
+                          {t('community_feed')}
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={communityPeriod}
+                            onChange={(e) => setCommunityPeriod(e.target.value as any)}
+                            className="bg-surface-2 border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent hover:bg-surface transition-colors cursor-pointer"
+                          >
+                            <option value="daily">按日</option>
+                            <option value="monthly">按月</option>
+                            <option value="yearly">按年</option>
+                            <option value="all">全部</option>
+                          </select>
+                          
+                          {communityPeriod !== 'all' && (
+                            <div className="relative">
+                              <button 
+                                onClick={() => setShowCommunityCalendarModal(!showCommunityCalendarModal)}
+                                className="bg-surface-2 border border-line rounded-xl px-4 py-2 text-sm text-ink focus:outline-none focus:border-accent flex items-center gap-2 hover:bg-surface transition-colors"
+                              >
+                                {communityPeriod === 'daily' ? communitySelectedDate : communityPeriod === 'monthly' ? communitySelectedDate.substring(0, 7) : communitySelectedDate.substring(0, 4)}
+                              </button>
+                              
+                              <AnimatePresence>
+                                {showCommunityCalendarModal && (
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 10 }}
+                                    className="absolute right-0 top-full mt-2 z-50"
+                                  >
+                                    <React.Suspense fallback={<div className="p-4 bg-surface rounded-2xl border border-line shadow-float text-xs text-ink-2 text-center">日历载入中...</div>}>
+                                      <CustomCalendar 
+                                        selectedDate={parseISO(communitySelectedDate)} 
+                                        onSelectDate={(date: any) => {
+                                          setCommunitySelectedDate(format(date, 'yyyy-MM-dd'));
+                                          setShowCommunityCalendarModal(false);
+                                        }}
+                                        recordDates={[]}
+                                      />
+                                    </React.Suspense>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {isCommunityOffline && (
+                        <p className="text-caption px-2">目前离线，恢复网络后会自动更新</p>
+                      )}
+                      {filteredCommunityPosts.length === 0 ? (
+                        <div className="text-center py-20 text-ink-3 italic">
+                          该时间段暂无共修记录。
+                        </div>
+                      ) : (
+                        filteredCommunityPosts.map((post) => (
+                          <div key={post.id} className="bg-surface rounded-2xl p-6 border border-line">
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-zen-bg flex items-center justify-center text-zen-accent font-bold text-sm">
+                                {post.userName[0]}
+                              </div>
+                              <div>
+                                <p className="font-bold text-sm text-zen-ink">{post.userName}</p>
+                                <p className="text-[10px] text-zen-accent/50">
+                                  {new Date(post.timestamp).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="bg-zen-accent/5 px-3 py-1 rounded-full text-xs font-bold text-zen-accent">
+                              {post.chant} · {post.count}{t('times')}
+                            </div>
+                          </div>
+                          
+                          <div className="bg-zen-bg/30 p-4 rounded-xl mb-4">
+                            <p className="text-xs text-zen-accent/40 uppercase tracking-widest font-bold mb-1">{t('dedication')}</p>
+                            <p className="text-sm text-zen-ink/80 font-serif leading-relaxed">
+                              {post.dedication}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 sm:gap-4 border-t border-zen-accent/5 pt-4 mt-4">
+                            <div className="flex items-center gap-3 sm:gap-6">
+                              <button
+                                onClick={() => shareMerit(post)}
+                                disabled={isSharing}
+                                className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold text-zen-accent/40 hover:text-zen-accent transition-colors disabled:opacity-50"
+                              >
+                                <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                <span>分享</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const scripture = allScriptures.find(s => s.title === post.chant);
+                                  if (scripture) {
+                                    setActiveScriptureId(scripture.id);
+                                    if (scripture.category === 'meditation') {
+                                      setActiveTab('meditation');
+                                    } else {
+                                      setActiveTab('fish');
+                                    }
+                                  } else {
+                                    setActiveTab('fish');
+                                  }
+                                }}
+                                className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold text-zen-accent/40 hover:text-zen-accent transition-colors"
+                              >
+                                <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                <span>我也要修行</span>
+                              </button>
+                            </div>
+                            <button 
+                              onClick={async () => {
+                                setCommunityPosts(prev => prev.map(p => 
+                                  p.id === post.id ? { ...p, likes: p.likes + 1 } : p
+                                ));
+                                
+                                try {
+                                  const postRef = doc(db, 'shared_merits', post.id.toString());
+                                  await setDoc(postRef, { rejoiceCount: post.likes + 1 }, { merge: true });
+                                } catch (err) {
+                                  console.error('Failed to update rejoice count in Firestore:', err);
+                                }
+                                
+                                practiceService.logRejoice();
+                                setRejoiceStats(practiceService.getRejoiceStats());
+                                
+                                const deedsHistory = safeStorage.getJSON<any[]>('good_deed_history', []);
+                                const now = new Date();
+                                const offset = now.getTimezoneOffset() * 60000;
+                                const localDate = new Date(now.getTime() - offset).toISOString().slice(0, 16);
+                                
+                                const newEntry = {
+                                  id: Date.now().toString(),
+                                  date: localDate,
+                                  type: 'good',
+                                  content: `随喜赞叹同修功德`,
+                                  result: {
+                                    ledger_entry: {
+                                      deed: `随喜赞叹同修功德`,
+                                      liufan_category: "正",
+                                      mindset_applied: "随喜"
+                                    },
+                                    merit_calculation: {
+                                      base: 1,
+                                      multiplier: 1.0,
+                                      total_this_time: 1,
+                                      progress_to_3000: ""
+                                    },
+                                    fate_insight: {
+                                      current_trend: "平稳向善",
+                                      wisdom_quote: "随喜功德，无量无边。",
+                                      daily_habit_task: "继续保持随喜赞叹的心"
+                                    },
+                                    visual_cue: "GOLDEN_FLARE"
+                                  }
+                                };
+                                
+                                const newHistory = [newEntry, ...deedsHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+                                safeStorage.setJSON('good_deed_history', newHistory);
+                                
+                                if (fbUser && consentService.hasCloudConsent()) {
+                                  try {
+                                    const cleanEntry = Object.fromEntries(Object.entries(newEntry).filter(([_, v]) => v !== undefined));
+                                    await setDoc(doc(db, `users/${fbUser.uid}/goodDeeds`, newEntry.id), cleanEntry);
+                                  } catch (error) {
+                                    handleFirestoreError(error, OperationType.WRITE, `users/${fbUser.uid}/goodDeeds`);
+                                  }
+                                }
+                                
+                                window.dispatchEvent(new CustomEvent('zen_data_updated'));
+                              }}
+                              className={cn(
+                                "flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold transition-colors",
+                                "text-zen-accent/40 hover:text-zen-accent"
+                              )}
+                            >
+                              <ThumbsUp className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4")} />
+                              <span>{t('like_dedication')} {post.likes > 0 && post.likes}</span>
+                            </button>
+                          </div>
+                        </div>
+                        ))
+                      )}
+                    </div>
+                  }
                 />
               </React.Suspense>
             </motion.div>
@@ -3005,8 +3475,18 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
-              className="h-full"
+              className="h-full space-y-4"
             >
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => navigateTo('community')}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-2 hover:text-accent transition-colors py-1"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>返回大家共修</span>
+                </button>
+              </div>
               <React.Suspense fallback={<div className="flex items-center justify-center min-h-[300px] text-accent">正在加载功德地图...</div>}>
                 <MeritMap theme={theme} />
               </React.Suspense>
@@ -3023,6 +3503,24 @@ export default function App() {
             >
               {/* Community Feed */}
               <div className="space-y-4">
+                <div className="bg-surface rounded-2xl p-4 border border-line flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-accent-mist text-accent flex items-center justify-center shrink-0">
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-serif font-semibold text-ink">功德地图</p>
+                      <p className="text-xs text-ink-2 truncate">看看全球同修此时此刻的微光与回向</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigateTo('merit')}
+                    className="px-3.5 py-2 rounded-xl bg-accent-mist text-accent hover:bg-accent hover:text-on-accent text-xs font-medium transition-colors shrink-0 min-h-[36px]"
+                  >
+                    查看功德地图
+                  </button>
+                </div>
                 <div className="bg-accent-mist rounded-2xl p-3 border border-line flex gap-2 items-center">
                   <div className="p-1.5 bg-surface rounded-lg text-accent shrink-0 border border-line">
                     <Sparkles className="w-4 h-4" />
@@ -3466,12 +3964,55 @@ export default function App() {
                                     )}
                                   >
                                     {s.label}
-                                  </button>
-                                ))}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Midday Thought Gentle Reminder Toggle (default OFF) */}
+                              <div className="flex items-center justify-between gap-4 p-3.5 rounded-2xl bg-surface-2 border border-line">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold text-ink">午间一念提醒</p>
+                                  <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">
+                                    每天中午 12:00 轻轻提醒一次观一念或记一善，不连发打扰（默认关闭）
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={middayReminderEnabled}
+                                  onClick={() => {
+                                    const nextVal = !middayReminderEnabled;
+                                    setMiddayReminderEnabled(nextVal);
+                                    practiceService.saveSettings({
+                                      middayReminderEnabled: nextVal,
+                                    });
+                                    if (
+                                      nextVal &&
+                                      typeof window !== 'undefined' &&
+                                      'Notification' in window &&
+                                      Notification.permission === 'default'
+                                    ) {
+                                      Notification.requestPermission().catch(() => {});
+                                    }
+                                    toast.success(
+                                      nextVal
+                                        ? '已开启午间一念轻提醒'
+                                        : '已关闭午间一念提醒'
+                                    );
+                                  }}
+                                  className={cn(
+                                    'w-12 h-7 rounded-full p-1 transition-colors shrink-0 flex items-center',
+                                    middayReminderEnabled
+                                      ? 'bg-accent justify-end'
+                                      : 'bg-line-strong justify-start'
+                                  )}
+                                >
+                                  <span className="w-5 h-5 rounded-full bg-surface shadow-sm block" />
+                                </button>
                               </div>
                             </div>
-                          </div>
-                        </motion.div>
+                          </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
@@ -4281,6 +4822,23 @@ export default function App() {
                       className="overflow-hidden"
                     >
                       <div className="space-y-8 pt-6">
+                        {/* Install App */}
+                        <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-surface-2 border border-line">
+                          <div>
+                            <p className="text-sm font-bold text-ink">安装「愿禅助手」到手机 / 桌面</p>
+                            <p className="text-xs text-ink-2 mt-0.5">
+                              添加到主屏幕后支持全屏显示与离线木鱼、静坐修行
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowInstallModal(true)}
+                            className="px-4 py-2 rounded-full bg-accent text-on-accent hover:bg-accent-hover text-xs font-bold transition-colors shrink-0"
+                          >
+                            安装 / 下载
+                          </button>
+                        </div>
+
                         {/* Data Sync */}
                         <div>
                           <h3 className="text-sm font-bold text-zen-accent/70 mb-3 flex items-center gap-2">
@@ -4461,8 +5019,42 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* 「观一念」Floating Action Button (Only on 今日/dashboard) */}
-      <ObserveThoughtFab visible={activeTab === 'dashboard' && !immersive} />
+      {/* 「观一念」Floating Action Button (Only on 今日/dashboard when daytime step is not current) */}
+      <ObserveThoughtFab
+        visible={
+          activeTab === 'dashboard' &&
+          !immersive &&
+          !showEveningReview &&
+          !fabHiddenForDaytime
+        }
+      />
+
+      {/* W5: Evening Review Full-Screen Overlay */}
+      <EveningReview
+        isOpen={showEveningReview}
+        allScriptures={allScriptures}
+        dailyPractice={todayDailyPracticeSnapshot}
+        dailyPracticeList={dailyPractice}
+        history={history}
+        personalVow={personalVow}
+        dedicationText={resolveFishDedicationText(fishDedicationChoice, fishCustomDedication)}
+        volume={volume}
+        onMeditate={() => {
+          setShowEveningReview(false);
+          setImmersive(false);
+          setMeditationPresetDuration(null);
+          setActiveTab('meditation');
+        }}
+        onRecordEvening={(item) => {
+          addHistoryItem(item);
+          setUserExp((prev) => prev + 20);
+          window.dispatchEvent(new CustomEvent('zen_data_updated'));
+        }}
+        onClose={() => {
+          setShowEveningReview(false);
+          setImmersive(false);
+        }}
+      />
 
       {/* Fixed Bottom Navigation (5 items) */}
       <nav
@@ -4620,7 +5212,7 @@ export default function App() {
           <RejoiceModal 
             shareId={rejoiceId} 
             onClose={() => setRejoiceId(null)} 
-            onViewCommunity={() => setActiveTab('community')}
+            onViewCommunity={() => navigateTo('community')}
             onPractice={(chantTitle: any) => {
               if (chantTitle) {
                 const scripture = allScriptures.find(s => s.title === chantTitle || chantTitle.includes(s.title));

@@ -12,10 +12,17 @@ import {
   RitualStepId,
 } from '../data/ritual';
 import { RitualSettings, ritualService } from '../services/ritualService';
+import { practiceService } from '../services/practiceService';
 import { alignParagraphToRuby } from '../utils/rubyPinyin';
 import { safeStorage } from '../utils/safeStorage';
 import { playBreathChime, playCompletionBell } from '../utils/zenAudio';
 import { cn } from '../lib/utils';
+
+const TODAY_INTENTION_SUGGESTIONS = [
+  '对家人多一分耐心',
+  '今天少说一句抱怨',
+  '把功德回向给需要的人',
+];
 
 interface RitualFlowProps {
   isOpen: boolean;
@@ -67,7 +74,10 @@ export const RitualFlow: React.FC<RitualFlowProps> = ({
   const [confessionText, setConfessionText] = useState('');
   const savedConfessionRef = useRef<string>('');
 
-  // Step 5: Dedication target ("这一座为谁而念")
+  // Step 5: Today intention ("今日一念") + Dedication target ("这一座为谁而念")
+  const [todayIntentionText, setTodayIntentionText] = useState<string>(() => {
+    return practiceService.getDailyPractice().todayIntention || '';
+  });
   const [targetType, setTargetType] = useState<DedicationTargetType | null>(() => {
     return ritualService.getDailyState().dedicationTargetType;
   });
@@ -115,6 +125,7 @@ export const RitualFlow: React.FC<RitualFlowProps> = ({
     setPureMouthDoneCount(0);
     setConfessionText('');
     savedConfessionRef.current = '';
+    setTodayIntentionText(practiceService.getDailyPractice().todayIntention || '');
     const daily = ritualService.getDailyState();
     setTargetType(daily.dedicationTargetType);
     setCustomPersonName(daily.dedicationCustomName || '');
@@ -218,6 +229,7 @@ export const RitualFlow: React.FC<RitualFlowProps> = ({
         dedicationTargetType: targetType,
         dedicationCustomName: customPersonName,
       });
+      practiceService.saveTodayIntention(todayIntentionText);
     }
   };
 
@@ -235,6 +247,7 @@ export const RitualFlow: React.FC<RitualFlowProps> = ({
       dedicationTargetType: targetType,
       dedicationCustomName: customPersonName,
     });
+    practiceService.setRitualDone(effectiveMode);
     ritualService.markFirstRitualCompleted();
     onComplete({
       runMode: effectiveMode,
@@ -377,6 +390,7 @@ export const RitualFlow: React.FC<RitualFlowProps> = ({
             type="button"
             onClick={() => {
               clearAutoAdvance();
+              practiceService.setRitualDone('skip');
               onDirectStart();
             }}
             className="px-2.5 min-h-[36px] rounded-full text-xs text-ink-3 hover:text-accent transition-colors whitespace-nowrap"
@@ -593,7 +607,7 @@ export const RitualFlow: React.FC<RitualFlowProps> = ({
               </div>
             )}
 
-            {/* Step 5: 发愿 (四弘誓愿 + 我的愿 + 这一座为谁而念) */}
+            {/* Step 5: 发愿 (四弘誓愿 + 我的愿 + 今日一念 + 这一座为谁而念) */}
             {currentStep.id === 'vow' && (
               <div className="w-full space-y-4">
                 {renderVerseWithRuby(currentStep.verse, currentStep.pinyin)}
@@ -605,6 +619,45 @@ export const RitualFlow: React.FC<RitualFlowProps> = ({
                     </p>
                   </div>
                 )}
+
+                {/* 今日一念（可留空，来自昨晚的明日一愿会自动带出） */}
+                <div className="w-full text-left space-y-2 pt-1">
+                  <label className="block text-xs font-medium text-ink-2 text-center">
+                    今日一念（可留空）
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={200}
+                    value={todayIntentionText}
+                    onChange={(e) => setTodayIntentionText(e.target.value)}
+                    placeholder="今天想带着哪一念出发？"
+                    className="w-full h-11 rounded-xl bg-surface border border-line px-3.5 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent"
+                  />
+                  <div className="flex flex-wrap gap-1.5 justify-center">
+                    {TODAY_INTENTION_SUGGESTIONS.map((suggestion) => {
+                      const active = todayIntentionText.trim() === suggestion;
+                      return (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() =>
+                            setTodayIntentionText((prev) =>
+                              prev.trim() === suggestion ? '' : suggestion
+                            )
+                          }
+                          className={cn(
+                            'px-3 py-1.5 rounded-full text-xs border transition-colors',
+                            active
+                              ? 'bg-accent-mist text-accent border-accent/40 font-medium'
+                              : 'bg-surface text-ink-2 border-line hover:text-ink'
+                          )}
+                        >
+                          {suggestion}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <div className="w-full text-left space-y-2.5 pt-1">
                   <p className="text-xs font-medium text-ink-2 text-center">

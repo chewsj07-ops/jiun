@@ -10,10 +10,11 @@ import {
   X,
 } from 'lucide-react';
 import { Scripture } from '../constants';
-import { DailyPracticeItem } from '../types/practice';
+import { DailyPracticeItem, MEDITATION_PRACTICE_ID } from '../types/practice';
 import {
   getDefaultTargetForCategory,
   getDefaultUnitForCategory,
+  isMeditationPracticeItem,
 } from '../services/practiceService';
 import { matchesScriptureQuery } from '../utils/pinyinSearch';
 import { cn } from '../lib/utils';
@@ -27,6 +28,8 @@ const CATEGORY_TABS: { id: CategoryTab; label: string }[] = [
   { id: 'custom', label: '自定义' },
 ];
 
+const MEDITATION_PRESET_MINUTES = [5, 10, 15, 20, 30];
+
 interface ScripturePickerSheetProps {
   isOpen: boolean;
   mode?: 'select' | 'add';
@@ -34,9 +37,11 @@ interface ScripturePickerSheetProps {
   allScriptures: Scripture[];
   dailyPractice: DailyPracticeItem[];
   dailyCounts: Record<string, number>;
+  celebratedScriptures?: string[];
   recentIds: string[];
   onClose: () => void;
   onSelect: (scripture: Scripture) => void;
+  onSelectMeditation?: (minutes: number) => void;
   onLongPressScripture?: (scripture: Scripture) => void;
 }
 
@@ -47,9 +52,11 @@ export const ScripturePickerSheet: React.FC<ScripturePickerSheetProps> = ({
   allScriptures,
   dailyPractice,
   dailyCounts,
+  celebratedScriptures = [],
   recentIds,
   onClose,
   onSelect,
+  onSelectMeditation,
   onLongPressScripture,
 }) => {
   const [query, setQuery] = useState('');
@@ -78,7 +85,11 @@ export const ScripturePickerSheet: React.FC<ScripturePickerSheetProps> = ({
 
   const enabledDailyItems = useMemo(() => {
     return dailyPractice
-      .filter((item) => item.enabled && scriptureById.has(item.scriptureId))
+      .filter(
+        (item) =>
+          item.enabled &&
+          (isMeditationPracticeItem(item) || scriptureById.has(item.scriptureId))
+      )
       .sort((a, b) => a.order - b.order);
   }, [dailyPractice, scriptureById]);
 
@@ -268,10 +279,47 @@ export const ScripturePickerSheet: React.FC<ScripturePickerSheetProps> = ({
                       </div>
                       <div className="space-y-1">
                         {enabledDailyItems.map((item) => {
+                          if (isMeditationPracticeItem(item)) {
+                            const mins = item.minutes || item.target || 15;
+                            const isCompleted = celebratedScriptures.includes(
+                              MEDITATION_PRACTICE_ID
+                            );
+                            return (
+                              <button
+                                key={`daily-${item.scriptureId}`}
+                                type="button"
+                                onClick={() => {
+                                  onSelectMeditation?.(mins);
+                                  onClose();
+                                }}
+                                className="w-full px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-left transition-colors select-none hover:bg-surface-2 text-ink"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm truncate">静坐 {mins} 分钟</p>
+                                  <p className="text-xs text-ink-3 truncate mt-0.5">
+                                    调息安住 · 定课静坐
+                                  </p>
+                                </div>
+                                {isCompleted ? (
+                                  <span className="inline-flex items-center gap-1 text-xs font-medium text-accent shrink-0">
+                                    <Check size={14} strokeWidth={2} />
+                                    <span>圆满</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-caption tabular-nums shrink-0">
+                                    未完成
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          }
+
                           const scripture = scriptureById.get(item.scriptureId);
                           if (!scripture) return null;
                           const doneCount = dailyCounts[item.scriptureId] || 0;
-                          const isCompleted = doneCount >= item.target;
+                          const isCompleted =
+                            doneCount >= item.target ||
+                            celebratedScriptures.includes(item.scriptureId);
 
                           return renderScriptureRow(
                             scripture,
@@ -282,7 +330,7 @@ export const ScripturePickerSheet: React.FC<ScripturePickerSheetProps> = ({
                               </span>
                             ) : (
                               <span className="text-caption tabular-nums shrink-0">
-                                {doneCount} / {item.target} {item.unit}
+                                {doneCount} / {item.target} {item.unit || '声'}
                               </span>
                             ),
                             'daily'
@@ -372,7 +420,7 @@ export const ScripturePickerSheet: React.FC<ScripturePickerSheetProps> = ({
 
 interface DraggablePracticeRowProps {
   item: DailyPracticeItem;
-  scripture: Scripture;
+  scripture?: Scripture;
   isEditing: boolean;
   onToggleEdit: () => void;
   onToggleEnabled: () => void;
@@ -390,13 +438,28 @@ const DraggablePracticeRow: React.FC<DraggablePracticeRowProps> = ({
   onRemove,
 }) => {
   const dragControls = useDragControls();
-  const quickPresets =
-    scripture.category === 'sutra' ? [1, 3, 7, 21] : [21, 49, 108, 1080];
+  const isMeditation = isMeditationPracticeItem(item);
+  const displayTitle = isMeditation ? '静坐' : scripture?.title || item.scriptureId;
+  const currentMins = item.minutes || item.target || 15;
+  const quickPresets = isMeditation
+    ? MEDITATION_PRESET_MINUTES
+    : scripture?.category === 'sutra'
+    ? [1, 3, 7, 21]
+    : [21, 49, 108, 1080];
 
   const handleNumberChange = (raw: string) => {
     const parsed = parseInt(raw, 10);
     if (!Number.isFinite(parsed)) {
-      onUpdateItem({ target: 1 });
+      if (isMeditation) {
+        onUpdateItem({ minutes: 1, target: 1 });
+      } else {
+        onUpdateItem({ target: 1 });
+      }
+      return;
+    }
+    if (isMeditation) {
+      const clamped = Math.min(180, Math.max(1, parsed));
+      onUpdateItem({ minutes: clamped, target: clamped });
       return;
     }
     onUpdateItem({ target: Math.min(100000, Math.max(1, parsed)) });
@@ -425,10 +488,12 @@ const DraggablePracticeRow: React.FC<DraggablePracticeRowProps> = ({
           className="flex-1 min-w-0 text-left py-0.5"
         >
           <div className="text-title !text-[17px] text-ink truncate">
-            {scripture.title}
+            {isMeditation ? `静坐 ${currentMins} 分钟` : displayTitle}
           </div>
           <div className="text-caption mt-0.5">
-            目标 {item.target} {item.unit} · 轻点修改
+            {isMeditation
+              ? `目标 ${currentMins} 分钟 · 轻点修改`
+              : `目标 ${item.target} ${item.unit || '声'} · 轻点修改`}
           </div>
         </button>
 
@@ -436,7 +501,7 @@ const DraggablePracticeRow: React.FC<DraggablePracticeRowProps> = ({
           type="button"
           role="switch"
           aria-checked={item.enabled}
-          aria-label={`启用${scripture.title}定课`}
+          aria-label={`启用${displayTitle}定课`}
           onClick={onToggleEnabled}
           className={cn(
             'w-11 h-6 rounded-full transition-colors relative shrink-0',
@@ -465,12 +530,18 @@ const DraggablePracticeRow: React.FC<DraggablePracticeRowProps> = ({
               {/* Quick presets */}
               <div className="flex flex-wrap gap-2">
                 {quickPresets.map((preset) => {
-                  const isSelected = item.target === preset;
+                  const isSelected = isMeditation
+                    ? currentMins === preset
+                    : item.target === preset;
                   return (
                     <button
                       key={preset}
                       type="button"
-                      onClick={() => onUpdateItem({ target: preset })}
+                      onClick={() =>
+                        isMeditation
+                          ? onUpdateItem({ minutes: preset, target: preset })
+                          : onUpdateItem({ target: preset })
+                      }
                       className={cn(
                         'h-9 px-3.5 rounded-full text-sm border transition-colors tabular-nums',
                         isSelected
@@ -478,7 +549,7 @@ const DraggablePracticeRow: React.FC<DraggablePracticeRowProps> = ({
                           : 'border-line text-ink-2 hover:text-ink'
                       )}
                     >
-                      {preset} {item.unit}
+                      {isMeditation ? `${preset} 分钟` : `${preset} ${item.unit || '声'}`}
                     </button>
                   );
                 })}
@@ -491,7 +562,12 @@ const DraggablePracticeRow: React.FC<DraggablePracticeRowProps> = ({
                     type="button"
                     aria-label="减少"
                     onClick={() =>
-                      onUpdateItem({ target: Math.max(1, item.target - 1) })
+                      isMeditation
+                        ? onUpdateItem({
+                            minutes: Math.max(1, currentMins - 1),
+                            target: Math.max(1, currentMins - 1),
+                          })
+                        : onUpdateItem({ target: Math.max(1, item.target - 1) })
                     }
                     className="w-9 h-9 rounded-full bg-surface-2 border border-line flex items-center justify-center text-ink-2 hover:text-ink"
                   >
@@ -500,8 +576,8 @@ const DraggablePracticeRow: React.FC<DraggablePracticeRowProps> = ({
                   <input
                     type="number"
                     min={1}
-                    max={100000}
-                    value={item.target}
+                    max={isMeditation ? 180 : 100000}
+                    value={isMeditation ? currentMins : item.target}
                     onChange={(e) => handleNumberChange(e.target.value)}
                     className="w-24 h-9 text-center rounded-xl bg-surface-2 border border-line text-sm font-medium text-ink tabular-nums focus:outline-none focus:border-accent"
                   />
@@ -509,32 +585,42 @@ const DraggablePracticeRow: React.FC<DraggablePracticeRowProps> = ({
                     type="button"
                     aria-label="增加"
                     onClick={() =>
-                      onUpdateItem({ target: Math.min(100000, item.target + 1) })
+                      isMeditation
+                        ? onUpdateItem({
+                            minutes: Math.min(180, currentMins + 1),
+                            target: Math.min(180, currentMins + 1),
+                          })
+                        : onUpdateItem({ target: Math.min(100000, item.target + 1) })
                     }
                     className="w-9 h-9 rounded-full bg-surface-2 border border-line flex items-center justify-center text-ink-2 hover:text-ink"
                   >
                     <Plus size={15} strokeWidth={1.5} />
                   </button>
+                  {isMeditation && (
+                    <span className="text-caption text-ink-2">分钟</span>
+                  )}
                 </div>
 
-                {/* Unit toggle: 遍 / 声 */}
-                <div className="flex items-center gap-1 bg-surface-2 p-1 rounded-full border border-line">
-                  {(['遍', '声'] as const).map((unitOpt) => (
-                    <button
-                      key={unitOpt}
-                      type="button"
-                      onClick={() => onUpdateItem({ unit: unitOpt })}
-                      className={cn(
-                        'px-3 py-1 rounded-full text-xs transition-colors',
-                        item.unit === unitOpt
-                          ? 'bg-surface text-accent font-medium shadow-sm'
-                          : 'text-ink-2 hover:text-ink'
-                      )}
-                    >
-                      {unitOpt}
-                    </button>
-                  ))}
-                </div>
+                {/* Unit toggle: 遍 / 声 (only for chant items) */}
+                {!isMeditation && (
+                  <div className="flex items-center gap-1 bg-surface-2 p-1 rounded-full border border-line">
+                    {(['遍', '声'] as const).map((unitOpt) => (
+                      <button
+                        key={unitOpt}
+                        type="button"
+                        onClick={() => onUpdateItem({ unit: unitOpt })}
+                        className={cn(
+                          'px-3 py-1 rounded-full text-xs transition-colors',
+                          (item.unit || '声') === unitOpt
+                            ? 'bg-surface text-accent font-medium shadow-sm'
+                            : 'text-ink-2 hover:text-ink'
+                        )}
+                      >
+                        {unitOpt}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between pt-1">
@@ -683,7 +769,7 @@ export const DailyPracticeSettingsSheet: React.FC<
                 <div className="py-12 text-center space-y-2">
                   <p className="text-sm text-ink-2">还没有设定我的定课</p>
                   <p className="text-caption">
-                    点击下方按钮，将常诵的经文或佛号加入每日定课
+                    点击下方按钮，将常诵的经文、佛号或静坐加入每日定课
                   </p>
                 </div>
               ) : (
@@ -694,8 +780,9 @@ export const DailyPracticeSettingsSheet: React.FC<
                   className="space-y-2.5"
                 >
                   {dailyPractice.map((item) => {
-                    const scripture = scriptureById.get(item.scriptureId);
-                    if (!scripture) return null;
+                    const isMed = isMeditationPracticeItem(item);
+                    const scripture = isMed ? undefined : scriptureById.get(item.scriptureId);
+                    if (!isMed && !scripture) return null;
                     return (
                       <DraggablePracticeRow
                         key={item.scriptureId}
@@ -723,13 +810,41 @@ export const DailyPracticeSettingsSheet: React.FC<
               )}
             </div>
 
-            <div className="px-5 pt-3 border-t border-line bg-surface shrink-0">
+            <div className="px-5 pt-3 border-t border-line bg-surface shrink-0 flex items-center gap-2.5">
               <button
                 type="button"
                 onClick={onOpenAddPicker}
-                className="w-full h-12 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium transition-colors"
+                className="flex-1 h-12 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium transition-colors"
               >
                 ＋ 加入定课
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const existing = dailyPractice.find((item) =>
+                    isMeditationPracticeItem(item)
+                  );
+                  if (existing) {
+                    if (!existing.enabled) {
+                      updateItem(MEDITATION_PRACTICE_ID, { enabled: true });
+                    }
+                    setEditingId(MEDITATION_PRACTICE_ID);
+                  } else {
+                    const newMedItem: DailyPracticeItem = {
+                      scriptureId: MEDITATION_PRACTICE_ID,
+                      kind: 'meditation',
+                      minutes: 15,
+                      target: 15,
+                      order: dailyPractice.length,
+                      enabled: true,
+                    };
+                    onChangeDailyPractice([...dailyPractice, newMedItem]);
+                    setEditingId(MEDITATION_PRACTICE_ID);
+                  }
+                }}
+                className="h-12 px-4 rounded-full bg-surface-2 border border-line text-ink hover:text-accent hover:border-accent/40 text-sm font-medium transition-colors whitespace-nowrap shrink-0"
+              >
+                ＋ 加入静坐
               </button>
             </div>
           </motion.div>

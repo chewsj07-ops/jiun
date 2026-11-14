@@ -10,29 +10,50 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['assets/aistudio/logo_f2d0c65b.png', 'manifest.json'],
+      includeAssets: [
+        'apple-touch-icon.png',
+        'pwa-192x192.png',
+        'pwa-512x512.png',
+        'pwa-maskable-512x512.png',
+        'manifest.json',
+      ],
       manifest: {
         id: '/',
         name: '愿禅助手 (Vowzen)',
         short_name: '愿禅助手',
         description: '您的随身个人正念修行、电子木鱼、发愿与禅修冥想助手',
-        theme_color: '#5A5A40',
-        background_color: '#f5f5f0',
+        theme_color: '#4A755A',
+        background_color: '#f9f8f3',
         display: 'standalone',
+        orientation: 'portrait',
         start_url: '/',
         scope: '/',
         icons: [
           {
-            src: '/assets/aistudio/logo_f2d0c65b.png',
-            sizes: '1630x1683',
+            src: '/pwa-192x192.png',
+            sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable'
-          }
-        ]
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
       },
       workbox: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff,woff2}'],
+        globIgnores: ['**/assets/aistudio/logo_f2d0c65b.png'],
+        navigateFallbackDenylist: [/^\/api\//, /^\/auth\//, /^\/socket\.io\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/actions\.google\.com\/sounds\/.*/i,

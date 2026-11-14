@@ -4,8 +4,8 @@ import { doc, getDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/f
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firebaseErrors';
 import { recordVault } from '../services/recordVault';
-import { practiceService } from '../services/practiceService';
-import { DailyPracticeItem } from '../types/practice';
+import { getTodayDateKey, isMeditationPracticeItem, practiceService } from '../services/practiceService';
+import { DailyPracticeItem, MEDITATION_PRACTICE_ID } from '../types/practice';
 
 import { safeStorage } from '../utils/safeStorage';
 
@@ -24,6 +24,7 @@ export function useFirebaseSync(
   customScriptures: any[], setCustomScriptures: (data: any[]) => void,
   dailyPractice: DailyPracticeItem[], setDailyPractice: (data: DailyPracticeItem[]) => void,
   dailyPracticeUpdatedAt: number, setDailyPracticeUpdatedAt: (ts: number) => void,
+  todayIntention: string = '', setTodayIntention?: (text: string) => void,
   cloudSyncEnabled: boolean = false
 ) {
   const { user, isAuthReady } = useFirebase();
@@ -82,13 +83,28 @@ export function useFirebaseSync(
               const remoteList: DailyPracticeItem[] = [...data.dailyPractice]
                 .filter((item: any) => item && typeof item.scriptureId === 'string')
                 .sort((a: any, b: any) => Number(a.order ?? 0) - Number(b.order ?? 0))
-                .map((item: any, idx: number) => ({
-                  scriptureId: String(item.scriptureId),
-                  target: Math.min(100000, Math.max(1, Math.round(Number(item.target) || 1))),
-                  unit: item.unit === '遍' ? ('遍' as const) : ('声' as const),
-                  order: Number.isInteger(item.order) ? item.order : idx,
-                  enabled: Boolean(item.enabled),
-                }));
+                .map((item: any, idx: number) => {
+                  const isMed = item.kind === 'meditation' || item.scriptureId === MEDITATION_PRACTICE_ID;
+                  if (isMed) {
+                    const mins = Math.min(180, Math.max(1, Math.round(Number(item.minutes ?? item.target) || 15)));
+                    return {
+                      scriptureId: MEDITATION_PRACTICE_ID,
+                      kind: 'meditation' as const,
+                      minutes: mins,
+                      target: mins,
+                      order: Number.isInteger(item.order) ? item.order : idx,
+                      enabled: Boolean(item.enabled),
+                    };
+                  }
+                  return {
+                    scriptureId: String(item.scriptureId),
+                    target: Math.min(100000, Math.max(1, Math.round(Number(item.target) || 1))),
+                    unit: item.unit === '遍' ? ('遍' as const) : ('声' as const),
+                    order: Number.isInteger(item.order) ? item.order : idx,
+                    enabled: Boolean(item.enabled),
+                    ...(item.kind === 'chant' ? { kind: 'chant' as const } : {}),
+                  };
+                });
 
               const savedList = practiceService.saveDailyPracticeList(
                 remoteList,
@@ -97,6 +113,20 @@ export function useFirebaseSync(
               setDailyPractice(savedList);
               setDailyPracticeUpdatedAt(data.dailyPracticeUpdatedAt);
               setScriptureGoals(practiceService.getSettings().scriptureGoals || {});
+            }
+
+            // Sync todayIntention if remote has today's intention and local today's intention is empty
+            const todayKey = getTodayDateKey();
+            if (
+              typeof data.todayIntention === 'string' &&
+              data.todayIntention.trim() &&
+              data.todayIntentionDate === todayKey
+            ) {
+              const localToday = practiceService.getDailyPractice().todayIntention || '';
+              if (!localToday.trim()) {
+                const updated = practiceService.saveTodayIntention(data.todayIntention);
+                setTodayIntention?.(updated.todayIntention || '');
+              }
             }
           }
 
@@ -217,14 +247,30 @@ export function useFirebaseSync(
             : latestSettings.dailyPracticeUpdatedAt;
 
         const sanitizedDailyPractice = Array.isArray(dailyPractice)
-          ? dailyPractice.slice(0, 50).map((item, idx) => ({
-              scriptureId: String(item.scriptureId),
-              target: Math.min(100000, Math.max(1, Math.round(Number(item.target) || 1))),
-              unit: item.unit === '遍' ? ('遍' as const) : ('声' as const),
-              order: Number.isInteger(item.order) ? item.order : idx,
-              enabled: Boolean(item.enabled),
-            }))
+          ? dailyPractice.slice(0, 50).map((item, idx) => {
+              if (isMeditationPracticeItem(item)) {
+                const mins = Math.min(180, Math.max(1, Math.round(Number(item.minutes ?? item.target) || 15)));
+                return {
+                  scriptureId: MEDITATION_PRACTICE_ID,
+                  kind: 'meditation' as const,
+                  minutes: mins,
+                  target: mins,
+                  order: Number.isInteger(item.order) ? item.order : idx,
+                  enabled: Boolean(item.enabled),
+                };
+              }
+              return {
+                scriptureId: String(item.scriptureId),
+                target: Math.min(100000, Math.max(1, Math.round(Number(item.target) || 1))),
+                unit: item.unit === '遍' ? ('遍' as const) : ('声' as const),
+                order: Number.isInteger(item.order) ? item.order : idx,
+                enabled: Boolean(item.enabled),
+                ...(item.kind === 'chant' ? { kind: 'chant' as const } : {}),
+              };
+            })
           : undefined;
+
+        const cleanTodayIntention = (todayIntention || '').trim().slice(0, 200);
 
         await setDoc(doc(db, 'users', user.uid), {
           name: userProfile.name || '',
@@ -248,6 +294,8 @@ export function useFirebaseSync(
           ...(typeof effectiveUpdatedAt === 'number'
             ? { dailyPracticeUpdatedAt: effectiveUpdatedAt }
             : {}),
+          todayIntention: cleanTodayIntention,
+          todayIntentionDate: getTodayDateKey(),
           updatedAt: new Date().toISOString()
         }, { merge: true });
       } catch (error) {
@@ -260,6 +308,6 @@ export function useFirebaseSync(
   }, [
     cloudSyncEnabled, user, isInitialSyncDone, userProfile, personalVow, count, userExp, selectedChant, 
     volume, soundType, woodenFishAppearance, scriptureGoals, customScriptures,
-    dailyPractice, dailyPracticeUpdatedAt
+    dailyPractice, dailyPracticeUpdatedAt, todayIntention
   ]);
 }

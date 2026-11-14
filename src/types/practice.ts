@@ -8,12 +8,16 @@ export type PracticeActivityType =
   | 'full_dedication'
   | 'evening_class';
 
+export const MEDITATION_PRACTICE_ID = '__meditation__';
+
 export interface DailyPracticeItem {
   scriptureId: string;
   target: number;
-  unit: '遍' | '声';
+  unit?: '遍' | '声';
   order: number;
   enabled: boolean;
+  kind?: 'chant' | 'meditation';
+  minutes?: number;
 }
 
 export interface DailyPractice {
@@ -21,6 +25,8 @@ export interface DailyPractice {
   chanting: number; // Count
   scriptureCounts: Record<string, number>; // Count per scripture
   celebratedScriptures?: string[]; // Scripture IDs whose completion celebration already fired today
+  ritual_done?: 'full' | 'brief' | 'skip'; // W1/W2 morning ritual completion mode
+  todayIntention?: string; // W2 today's single mindful intention
   meditation: number; // Minutes
   observing_thoughts: number; // Count
   rejoicing: number; // Count
@@ -37,6 +43,7 @@ export interface PracticeSettings {
   dailyPracticeUpdatedAt?: number;
   aiEnabled?: boolean;
   aiApiKey?: string;
+  middayReminderEnabled?: boolean;
 }
 
 export interface PracticeLevelInfo {

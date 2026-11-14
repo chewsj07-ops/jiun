@@ -127,12 +127,12 @@ export const WoodenFish = forwardRef<WoodenFishHandle, WoodenFishProps>(
           className
         )}
       >
-        {/* Metronome Guide Halo (when enabled) */}
+        {/* Metronome Guide Halo (when enabled via WoodenFish directly) */}
         {metronomeBpm && (
           <motion.div
             key={`metronome-${metronomeBpm}`}
             aria-hidden="true"
-            animate={{ scale: [1, 1.08, 1], opacity: [0.22, 0.52, 0.22] }}
+            animate={{ scale: [1, 1.06, 1], opacity: [0.18, 0.44, 0.18] }}
             transition={{
               duration: 60 / metronomeBpm,
               repeat: Infinity,
