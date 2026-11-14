@@ -1349,9 +1349,13 @@ export default function App() {
 
     const updatedTodayCount = practice.scriptureCounts?.[activeScriptureId] || 0;
     const alreadyCelebrated = (practice.celebratedScriptures || []).includes(activeScriptureId);
+    const hitNewRoundTarget =
+      alreadyCelebrated && nextSessionCount > 0 && nextSessionCount % goalValue === 0;
 
-    if (goalType === 'count' && updatedTodayCount >= goalValue && !alreadyCelebrated) {
-      practiceService.markScriptureCelebrated(activeScriptureId);
+    if (goalType === 'count' && ((updatedTodayCount >= goalValue && !alreadyCelebrated) || hitNewRoundTarget)) {
+      if (!alreadyCelebrated) {
+        practiceService.markScriptureCelebrated(activeScriptureId);
+      }
       if (window.Notification && Notification.permission === "granted") {
         new Notification("修行圆满", { body: `${activeScripture.title} 次数已达标` });
       }
@@ -1609,6 +1613,10 @@ export default function App() {
     addHistoryItem(newSession);
     setLastSession(newSession);
     setIsSessionActive(false);
+    setSessionStartTime(null);
+    setSessionCount(0);
+    sessionCountRef.current = 0;
+    setSessionTimeLeft(null);
     setSessionFlowStep('dedication');
     setShowSummary(true);
 

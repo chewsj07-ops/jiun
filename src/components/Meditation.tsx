@@ -738,6 +738,11 @@ export const Meditation: React.FC<MeditationProps> = ({
     });
 
     toast.success('已记入愿簿');
+    sessionStartRef.current = null;
+    endTimeRef.current = null;
+    lastMilestoneRef.current = 0;
+    setIsPaused(false);
+    setSelectedMood(undefined);
     setPhase('idle');
     setTimeLeft(selectedDuration * 60);
   };
@@ -1441,6 +1446,11 @@ export const Meditation: React.FC<MeditationProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  sessionStartRef.current = null;
+                  endTimeRef.current = null;
+                  lastMilestoneRef.current = 0;
+                  setIsPaused(false);
+                  setSelectedMood(undefined);
                   setPhase('idle');
                   setTimeLeft(selectedDuration * 60);
                 }}

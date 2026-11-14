@@ -310,12 +310,15 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     }
   }, [activeScripture.id]);
 
-  // Live elapsed clock (updates every second during active session)
+  // Live elapsed clock (updates every second during active session, pauses on completion overlay)
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
   useEffect(() => {
     if (!isSessionActive || !sessionStartTime) {
       setElapsedSeconds(0);
+      return;
+    }
+    if (showCompletionOverlay) {
       return;
     }
     const updateElapsed = () => {
@@ -324,7 +327,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     updateElapsed();
     const timer = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(timer);
-  }, [isSessionActive, sessionStartTime]);
+  }, [isSessionActive, sessionStartTime, showCompletionOverlay]);
 
   // 5s inactivity auto-dimming (everything except instrument fades to opacity 0.3)
   const [isIdle, setIsIdle] = useState<boolean>(false);
@@ -529,26 +532,28 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     }
   };
 
-  // Progress ratio [0..1] based strictly on current scripture's today progress
+  // Progress ratio [0..1] based strictly on current active round (resets cleanly after dedication/record)
   const safeGoalValue = Math.max(1, goalValue || 108);
   const progressRatio = useMemo(() => {
     if (ringFlashActive || showCompletionOverlay) return 1;
     if (goalType === 'time') {
       const totalSeconds = safeGoalValue * 60;
+      if (!isSessionActive) return 0;
       if (sessionTimeLeft !== null) {
         return Math.min(1, Math.max(0, (totalSeconds - sessionTimeLeft) / totalSeconds));
       }
       return Math.min(1, elapsedSeconds / totalSeconds);
     }
-    return Math.min(1, todayCount / safeGoalValue);
+    return Math.min(1, sessionCount / safeGoalValue);
   }, [
     ringFlashActive,
     showCompletionOverlay,
     goalType,
     safeGoalValue,
+    isSessionActive,
     sessionTimeLeft,
     elapsedSeconds,
-    todayCount,
+    sessionCount,
   ]);
 
   // Format mm:ss
@@ -573,7 +578,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
   const dimClass = isIdle && !hasOpenOverlay ? 'opacity-30' : 'opacity-100';
 
   const handleLowerHalfTap = () => {
-    if (hasOpenOverlay) return;
+    if (hasOpenOverlay || ringFlashActive) return;
     if (needsPreRitualGate) {
       setShowRitualFlow(true);
       return;
@@ -807,6 +812,10 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                           type="button"
                           onClick={() => {
                             setShowMoreMenu(false);
+                            setMetronomeEnabled(false);
+                            setRingFlashActive(false);
+                            setShowCompletionOverlay(false);
+                            setIsEarlyFinish(false);
                             onResetSession();
                           }}
                           className="w-full px-3.5 py-2.5 text-left text-xs font-medium text-ink-2 hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
@@ -1238,10 +1247,15 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
           {/* Center Counter & Sub-caption (hidden in Zen Hall mode) */}
           {!zenHallMode && (
             <div className="absolute inset-0 flex flex-col items-center justify-center px-3 text-center">
-              <span className="text-counter !text-[40px] text-ink tabular-nums">{todayCount}</span>
+              <span className="text-counter !text-[40px] text-ink tabular-nums">{sessionCount}</span>
               <span className="text-[12px] text-ink-2 mt-1.5 tabular-nums">
-                {todayCount} / {goalLabel} · {formattedClock}
+                {sessionCount} / {goalLabel} · {formattedClock}
               </span>
+              {todayCount > sessionCount && (
+                <span className="text-[10px] text-ink-3 mt-0.5 tabular-nums">
+                  今日已诵 {todayCount} {unit}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -1532,9 +1546,9 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                 </h2>
               )}
               <p className="text-caption text-ink-3">
-                {isEarlyFinish && !allDailyCompleted
-                  ? `${activeScripture.title} · 本次 ${sessionCount > 0 ? sessionCount : todayCount} ${unit}（今日 ${todayCount} / ${goalLabel}） · ${formattedClock}`
-                  : `${activeScripture.title} · ${todayCount} ${unit} · ${formattedClock}`}
+                {todayCount > sessionCount && sessionCount > 0
+                  ? `${activeScripture.title} · 本次 ${sessionCount} ${unit}（今日累计 ${todayCount} / ${goalLabel}） · ${formattedClock}`
+                  : `${activeScripture.title} · 本次 ${sessionCount > 0 ? sessionCount : todayCount} ${unit} · ${formattedClock}`}
               </p>
             </div>
 
@@ -1633,6 +1647,9 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                       });
                     }
                     setShowCompletionOverlay(false);
+                    setIsEarlyFinish(false);
+                    setRingFlashActive(false);
+                    setMetronomeEnabled(false);
                     onSelectScripture(nextUnfinishedItem.scripture);
                   }}
                   className="w-full h-12 px-4 rounded-full bg-accent text-on-accent font-medium hover:bg-accent-hover transition-colors shadow-float truncate"
@@ -1655,6 +1672,9 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                   disabled={closingHomageDone < closingHomageReps}
                   onClick={() => {
                     setShowCompletionOverlay(false);
+                    setIsEarlyFinish(false);
+                    setRingFlashActive(false);
+                    setMetronomeEnabled(false);
                     onRecordSession(fullClosingDedication, unit, false, {
                       ritualMode: dailyRitualState.runMode || 'direct',
                       dedicationTarget: dedicationTargetLabel || undefined,
@@ -1685,6 +1705,9 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                         });
                       }
                       setShowCompletionOverlay(false);
+                      setIsEarlyFinish(false);
+                      setRingFlashActive(false);
+                      setMetronomeEnabled(false);
                       onSelectScripture(nextUnfinishedItem.scripture);
                     }}
                     className="text-caption text-ink-2 hover:text-accent py-1 px-4 transition-colors truncate max-w-full"

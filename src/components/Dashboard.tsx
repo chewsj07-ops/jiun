@@ -187,7 +187,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, personalVow: p
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="max-w-xl mx-auto w-full px-5 space-y-6 pb-28"
+      className="max-w-xl mx-auto w-full px-0 sm:px-2 pt-1 sm:pt-2 space-y-5 sm:space-y-6 pb-28"
     >
       {/* 0. 今日愿景卡片 */}
       <section aria-label="今日愿景">
@@ -195,56 +195,57 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, personalVow: p
           type="button"
           onClick={() => onNavigate?.(hasPersonalVow ? 'vow' : 'vow-setup')}
           className={cn(
-            'group w-full min-h-[56px] rounded-2xl px-4 py-3.5 text-left transition-all duration-200 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 cursor-pointer flex items-center justify-between gap-4',
+            'group w-full min-h-[68px] rounded-2xl px-4 py-3.5 sm:px-5 sm:py-4 text-left transition-all duration-200 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 cursor-pointer flex flex-col gap-2',
             hasPersonalVow
               ? 'bg-gradient-to-br from-accent-mist/45 via-surface to-surface border border-line-strong hover:border-accent/50'
               : 'bg-surface-2/65 border border-dashed border-line-strong hover:border-accent/50 hover:bg-surface'
           )}
         >
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 text-caption">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 text-caption min-w-0">
               {hasPersonalVow ? (
                 <Leaf className="w-3.5 h-3.5 text-accent shrink-0" strokeWidth={1.75} />
               ) : (
                 <Feather className="w-3.5 h-3.5 text-gold shrink-0" strokeWidth={1.75} />
               )}
-              <span className={cn('font-medium', hasPersonalVow ? 'text-accent' : 'text-ink-2')}>
+              <span className={cn('font-medium whitespace-nowrap', hasPersonalVow ? 'text-accent' : 'text-ink-2')}>
                 今日愿景
               </span>
               <span className="text-ink-3" aria-hidden="true">·</span>
-              <span className="text-ink-3">
+              <span className="text-ink-3 whitespace-nowrap">
                 {hasPersonalVow ? '已立愿' : '尚未立愿'}
               </span>
             </div>
-            <p
+
+            <span
               className={cn(
-                'mt-1 font-serif text-[15px] leading-relaxed line-clamp-2',
-                hasPersonalVow ? 'text-ink' : 'text-ink-2'
+                'inline-flex items-center gap-0.5 text-xs whitespace-nowrap shrink-0 transition-colors',
+                hasPersonalVow
+                  ? 'text-ink-3 group-hover:text-accent'
+                  : 'font-medium text-accent'
               )}
             >
-              {hasPersonalVow ? effectiveVow : '写下今日的一念初心，让日常修行有所归处'}
-            </p>
+              <span>{hasPersonalVow ? '愿簿' : '去立愿'}</span>
+              <ChevronRight
+                className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5"
+                strokeWidth={1.5}
+              />
+            </span>
           </div>
 
-          <span
+          <p
             className={cn(
-              'inline-flex items-center gap-0.5 text-xs whitespace-nowrap shrink-0 transition-colors',
-              hasPersonalVow
-                ? 'text-ink-3 group-hover:text-accent'
-                : 'font-medium text-accent'
+              'font-serif text-[15px] sm:text-[16px] leading-[1.65] line-clamp-2 break-words',
+              hasPersonalVow ? 'text-ink' : 'text-ink-2'
             )}
           >
-            <span>{hasPersonalVow ? '愿簿' : '去立愿'}</span>
-            <ChevronRight
-              className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5"
-              strokeWidth={1.5}
-            />
-          </span>
+            {hasPersonalVow ? effectiveVow : '写下今日的一念初心，让日常修行有所归处'}
+          </p>
         </button>
       </section>
 
       {/* 1. 晨雾区 */}
-      <section className="relative min-h-[22vh] sm:min-h-[26vh] flex flex-col items-center justify-center py-4 sm:py-6 -mx-5 px-5 overflow-hidden">
+      <section className="relative min-h-[20vh] sm:min-h-[24vh] flex flex-col items-center justify-center py-5 sm:py-6 -mx-4 px-4 sm:-mx-6 sm:px-6 overflow-hidden">
         {/* Two subtle radial gradients (top-right accent-mist, bottom-left cloud-mist, 0.7 opacity) */}
         <div
           aria-hidden="true"
