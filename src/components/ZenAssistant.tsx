@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, Sparkles, Loader2, ShieldAlert } from 'lucide-react';
+import { Send, Sparkles, Loader2, ShieldAlert, Compass } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useTranslation } from '../i18n';
 import { sendZenAssistantMessage } from '../services/aiPracticeService';
@@ -149,6 +149,14 @@ export const ZenAssistant: React.FC<{
             清空记录
           </button>
         )}
+      </div>
+
+      <div className="px-4 py-2 bg-accent-mist/40 border-b border-line flex items-start gap-2 text-[11px] leading-relaxed text-ink-2">
+        <Compass className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
+        <span>
+          <strong className="font-medium text-ink">依法不依人</strong>
+          （《卡拉玛经》）：佛陀教导不盲信任何人说的话——包括本助手的回应，请回到生活亲自检验，以离苦清净、不违中道为准。
+        </span>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">

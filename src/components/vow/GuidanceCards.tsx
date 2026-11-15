@@ -93,6 +93,20 @@ export const GuidanceCards: React.FC<GuidanceCardsProps> = ({
           </button>
         </motion.div>
       )}
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{
+          duration: 0.5,
+          delay: 4 * 0.4 + 0.2,
+          ease: [0.22, 1, 0.36, 1],
+        }}
+        className="rounded-xl bg-surface-2/80 border border-line px-3.5 py-2.5 text-[11px] leading-relaxed text-ink-2 text-center"
+      >
+        <span className="font-medium text-ink">依法不依人</span>
+        ：以上回应仅供参考，请结合自己的生活体会亲自检验，取舍自在。
+      </motion.div>
     </div>
   );
 };

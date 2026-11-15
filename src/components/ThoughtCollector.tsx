@@ -1059,13 +1059,16 @@ export const ThoughtCollector = ({
                 }}
               />
             ) : showPlaque.guidance ? (
-              <div className="bg-surface border border-line rounded-2xl p-5 space-y-2">
+              <div className="bg-surface border border-line rounded-2xl p-5 space-y-3">
                 <div className="text-caption !text-accent flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>觉察陪伴者</span>
                 </div>
                 <p className="text-reading !text-[17px] !leading-[1.85] text-ink whitespace-pre-wrap">
                   {showPlaque.guidance}
+                </p>
+                <p className="text-[11px] leading-relaxed text-ink-3 pt-2 border-t border-line">
+                  依法不依人：以上回应仅供参考，请结合自己的生活体会亲自检验，取舍自在。
                 </p>
               </div>
             ) : (
