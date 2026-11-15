@@ -13,6 +13,7 @@ import {
   Send,
   Link2,
   Mail,
+  BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { safeStorage } from '../utils/safeStorage';
@@ -146,7 +147,7 @@ export const DailyZenQuote: React.FC<{ variant?: 'mist' | 'card' }> = ({ variant
   };
 
   const getShareMessage = () =>
-    `「${currentQuote.quote}」\n—— ${currentQuote.source}\n\n${currentQuote.explanation}\n（来自 愿禅助手 Vowzen）`;
+    `「${currentQuote.quote}」\n—— ${currentQuote.source}\n\n${currentQuote.explanation}\n今日践行：${currentQuote.practiceTip}\n（来自 愿禅助手 Vowzen）`;
 
   const shareUrl = getShareUrl();
   const shareMessage = getShareMessage();
@@ -261,30 +262,45 @@ export const DailyZenQuote: React.FC<{ variant?: 'mist' | 'card' }> = ({ variant
           <p className="text-caption mt-2.5">
             —— {currentQuote.source}
           </p>
-          <div className="mt-2 flex items-center justify-center gap-3 opacity-55 hover:opacity-100 transition-opacity">
+
+          <button
+            type="button"
+            onClick={() => setShowCardModal(true)}
+            className="mt-3 max-w-md w-full mx-auto rounded-2xl bg-surface/75 hover:bg-surface/95 backdrop-blur-sm border border-line px-4 py-2.5 text-left transition-colors cursor-pointer"
+          >
+            <p className="text-xs text-ink-2 leading-relaxed">
+              <span className="font-semibold text-accent">今日践行：</span>
+              <span>{currentQuote.practiceTip}</span>
+            </p>
+          </button>
+
+          <div className="mt-2.5 flex items-center justify-center gap-3 text-xs text-ink-2">
             <button
               type="button"
               onClick={handleNext}
               title="换一句"
-              className="p-1.5 rounded-full text-ink-2 hover:text-accent transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full hover:text-accent hover:bg-surface/60 transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
+              <span>换一句</span>
             </button>
             <button
               type="button"
               onClick={handleCopy}
               title="复制禅语"
-              className="p-1.5 rounded-full text-ink-2 hover:text-accent transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full hover:text-accent hover:bg-surface/60 transition-colors cursor-pointer"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-accent" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? '已复制' : '复制'}</span>
             </button>
             <button
               type="button"
               onClick={() => setShowCardModal(true)}
               title="查看释义与分享"
-              className="p-1.5 rounded-full text-ink-2 hover:text-accent transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full hover:text-accent hover:bg-surface/60 transition-colors cursor-pointer"
             >
-              <Share2 className="w-3.5 h-3.5" />
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>释义与分享</span>
             </button>
           </div>
         </motion.div>
@@ -400,9 +416,20 @@ export const DailyZenQuote: React.FC<{ variant?: 'mist' | 'card' }> = ({ variant
                 </p>
               </div>
 
-              <p className="text-xs text-ink-2 leading-relaxed mb-5">
-                {currentQuote.explanation}
-              </p>
+              <div className="space-y-3 mb-5 text-left">
+                <div className="px-1">
+                  <p className="text-[11px] font-medium text-ink-3 mb-1">经义浅释</p>
+                  <p className="text-xs text-ink-2 leading-relaxed">
+                    {currentQuote.explanation}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-surface-2 border border-line p-3.5">
+                  <p className="text-xs text-ink-2 leading-relaxed">
+                    <span className="font-semibold text-accent">今日践行：</span>
+                    <span>{currentQuote.practiceTip}</span>
+                  </p>
+                </div>
+              </div>
 
               {/* Share Link Preview */}
               {shareUrl && (
