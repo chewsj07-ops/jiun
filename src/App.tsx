@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { Toaster, toast } from 'sonner';
-import { Book, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Music, Wind, Plus, Trash2, Check, ChevronDown, ChevronLeft, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Download, ShieldCheck, Upload, UserRound, Minimize2 } from 'lucide-react';
+import { Book, Calendar, Heart, History, MessageCircle, Settings, Trophy, Sparkles, Music, Wind, Plus, Trash2, Check, ChevronDown, ChevronLeft, Users, ThumbsUp, Globe, Leaf, Brain, Target, Share2, X, LogOut, Menu, Home, BookOpen, Moon, Download, ShieldCheck, Upload, UserRound, Minimize2 } from 'lucide-react';
 import { aiGenerate } from './services/geminiClient';
 import { POST_SESSION_REFLECTION_SYSTEM_PROMPT } from './data/zenAssistantPrompt';
 import { useFirebaseSync } from './hooks/useFirebaseSync';
@@ -67,6 +67,7 @@ const LegalModals = React.lazy(() => import('./components/LegalModals').then(m =
 const RejoiceModal = React.lazy(() => import('./components/RejoiceModal').then(m => ({ default: m.RejoiceModal })));
 const DeleteAccountPage = React.lazy(() => import('./components/DeleteAccountPage').then(m => ({ default: m.DeleteAccountPage })));
 const ScriptureLibrary = React.lazy(() => import('./components/ScriptureLibrary').then(m => ({ default: m.ScriptureLibrary })));
+const GoogleCalendarView = React.lazy(() => import('./components/GoogleCalendarView').then(m => ({ default: m.GoogleCalendarView })));
 import { safeStorage } from './utils/safeStorage';
 import { recordVault } from './services/recordVault';
 import { scriptureDatabaseService } from './services/scriptureDatabaseService';
@@ -177,7 +178,7 @@ export default function App() {
     }
   }, []);
 
-  const [activeTab, setActiveTab] = useState<'fish' | 'scripture' | 'assistant' | 'history' | 'meditation' | 'settings' | 'community' | 'vow' | 'merit' | 'dashboard'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'fish' | 'scripture' | 'assistant' | 'history' | 'meditation' | 'settings' | 'community' | 'vow' | 'merit' | 'dashboard' | 'calendar'>('dashboard');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
 
   // Automatically enter immersive mode when entering 木鱼 page, and restore when leaving
@@ -2396,6 +2397,17 @@ export default function App() {
               <div className="p-4 space-y-1.5">
                 <button
                   onClick={() => {
+                    navigateTo('calendar');
+                    setIsMeSheetOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-ink hover:bg-surface-2 transition-colors text-left"
+                >
+                  <Calendar size={20} strokeWidth={1.5} className="text-accent shrink-0" />
+                  <span className="font-medium text-sm">修行日历 (Google)</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     navigateTo('settings');
                     setIsMeSheetOpen(false);
                   }}
@@ -2576,6 +2588,22 @@ export default function App() {
                     >
                       <History className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
                       <span className="font-medium text-sm sm:text-base truncate">功德簿</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        navigateTo('calendar');
+                        setIsSideMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl transition-all",
+                        activeTab === 'calendar'
+                          ? "bg-accent-mist text-accent font-bold"
+                          : "text-ink-2 hover:bg-surface-2 hover:text-accent"
+                      )}
+                    >
+                      <Calendar className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                      <span className="font-medium text-sm sm:text-base truncate">修行日历 (Google)</span>
                     </button>
                   </div>
                 </div>
@@ -3747,6 +3775,15 @@ export default function App() {
             </div>
           </motion.div>
         )}
+          {activeTab === 'calendar' && (
+            <React.Suspense fallback={<ZenSuspenseFallback text="正在载入 Google 日历..." />}>
+              <GoogleCalendarView
+                dailyPractice={dailyPractice}
+                allScriptures={allScriptures}
+                personalVow={personalVow}
+              />
+            </React.Suspense>
+          )}
           {activeTab === 'settings' && (
             <motion.div
               key="settings"
@@ -4012,6 +4049,26 @@ export default function App() {
                                   )}
                                 >
                                   <span className="w-5 h-5 rounded-full bg-surface shadow-sm block" />
+                                </button>
+                              </div>
+
+                              {/* Google Calendar Sync Shortcut */}
+                              <div className="flex items-center justify-between gap-4 p-3.5 rounded-2xl bg-surface-2 border border-line">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold text-ink flex items-center gap-1.5">
+                                    <Calendar className="w-4 h-4 text-accent shrink-0" />
+                                    <span>Google 日历修行同步</span>
+                                  </p>
+                                  <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">
+                                    将晨课、午间一念与晚课回向添加到你的 Google 日历提醒
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => navigateTo('calendar')}
+                                  className="px-4 py-2 rounded-full bg-accent text-on-accent hover:bg-accent-hover text-xs font-bold transition-colors shrink-0"
+                                >
+                                  管理日历
                                 </button>
                               </div>
                             </div>

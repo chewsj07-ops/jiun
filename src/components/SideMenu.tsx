@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Sparkles, BookOpen, Settings, Map, Users, History, Download, ShieldCheck } from 'lucide-react';
+import { X, Sparkles, BookOpen, Settings, Map, Users, History, Download, ShieldCheck, Calendar } from 'lucide-react';
 
 export const SideMenu = ({ isOpen, onClose, onNavigate }: { isOpen: boolean; onClose: () => void; onNavigate: (tab: string) => void }) => {
   if (!isOpen) return null;
@@ -16,6 +16,7 @@ export const SideMenu = ({ isOpen, onClose, onNavigate }: { isOpen: boolean; onC
         
         <nav className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-2">
           <MenuButton icon={<Sparkles />} label="愿禅助手" onClick={() => { onNavigate('assistant'); onClose(); }} />
+          <MenuButton icon={<Calendar />} label="修行日历 (Google)" onClick={() => { onNavigate('calendar'); onClose(); }} />
           <MenuButton icon={<Map />} label="功德地图" onClick={() => { onNavigate('merit'); onClose(); }} />
           <MenuButton icon={<History />} label="修行记录" onClick={() => { onNavigate('history'); onClose(); }} />
           <MenuButton icon={<Users />} label="共修社区" onClick={() => { onNavigate('community'); onClose(); }} />
