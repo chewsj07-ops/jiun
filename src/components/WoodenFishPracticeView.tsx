@@ -9,6 +9,7 @@ import {
   Library,
   Maximize2,
   Metronome,
+  Minimize2,
   Moon,
   MoreHorizontal,
   RotateCcw,
@@ -211,6 +212,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
 
   // Sheets & Menus
   const [showScriptureSheet, setShowScriptureSheet] = useState<boolean>(false);
+  const [isScriptureExpanded, setIsScriptureExpanded] = useState<boolean>(false);
   const [showSheetPinyin, setShowSheetPinyin] = useState<boolean>(false);
   const [showMoreMenu, setShowMoreMenu] = useState<boolean>(false);
   const [showSoundFocusSheet, setShowSoundFocusSheet] = useState<boolean>(false);
@@ -707,6 +709,17 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
     handleLowerHalfTap();
   };
 
+  const handleReadingSheetTap = () => {
+    if (ringFlashActive) return;
+    if (needsPreRitualGate) {
+      setShowScriptureSheet(false);
+      setShowRitualFlow(true);
+      return;
+    }
+    resetIdleTimer();
+    fishRef.current?.triggerHit();
+  };
+
   const dedicationTargetLabel = ritualService.resolveDedicationTargetLabel(
     dailyRitualState.dedicationTargetType,
     dailyRitualState.dedicationCustomName
@@ -978,10 +991,15 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
           )}
         >
           {isLongScripture ? (
-            <div className="relative w-full max-w-md mx-auto">
+            <div className="w-full max-w-lg mx-auto rounded-2xl bg-surface/65 border border-line/70 overflow-hidden">
               <div
                 ref={inlineScriptureScrollRef}
-                className="max-h-[clamp(72px,14dvh,140px)] w-full overflow-y-auto overscroll-contain touch-pan-y px-4 pt-2 pb-6 rounded-2xl bg-surface/60 border border-line/70 select-text"
+                className={cn(
+                  'w-full overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 select-text transition-[max-height] duration-300',
+                  isScriptureExpanded
+                    ? 'max-h-[clamp(240px,45dvh,420px)]'
+                    : 'max-h-[clamp(160px,28dvh,260px)]'
+                )}
               >
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -990,20 +1008,42 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="font-serif text-[15px] sm:text-[16px] leading-[1.8] text-ink text-center whitespace-pre-wrap break-words"
+                    className="font-serif text-[16px] sm:text-[17px] leading-[1.85] text-ink text-center whitespace-pre-wrap break-words"
                   >
                     {inlineScriptureText}
                   </motion.div>
                 </AnimatePresence>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowScriptureSheet(true)}
-                className="absolute right-2 bottom-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface/90 border border-line text-[11px] text-ink-2 hover:text-accent transition-colors"
-              >
-                <Maximize2 size={11} strokeWidth={1.5} />
-                <span>展开全文</span>
-              </button>
+              <div className="px-3 py-1.5 border-t border-line/60 bg-surface/50 flex items-center justify-between gap-2 text-[11px] text-ink-3">
+                <span>{isScriptureExpanded ? '可滑动阅读 · 已加高' : '可上下滑动经文'}</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsScriptureExpanded((v) => !v)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface border border-line text-ink-2 hover:text-accent transition-colors"
+                  >
+                    {isScriptureExpanded ? (
+                      <>
+                        <Minimize2 size={11} strokeWidth={1.5} />
+                        <span>收起高度</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown size={12} strokeWidth={1.5} />
+                        <span>加高经区</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowScriptureSheet(true)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface border border-line text-ink-2 hover:text-accent transition-colors"
+                  >
+                    <Maximize2 size={11} strokeWidth={1.5} />
+                    <span>全屏全文</span>
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="relative w-full max-w-md mx-auto min-h-[42px] flex items-center justify-center px-14">
@@ -1141,13 +1181,20 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
           </AnimatePresence>
         </div>
 
-        {/* Instrument + Wrapping 3px Progress Ring (size = min(60vw, 34dvh), ring = size + 28px) */}
+        {/* Instrument + Wrapping 3px Progress Ring */}
         <div
-          className="relative flex items-center justify-center touch-manipulation cursor-pointer"
-          style={{
-            width: 'calc(min(60vw, 34dvh) + 28px)',
-            height: 'calc(min(60vw, 34dvh) + 28px)',
-          }}
+          className="relative flex items-center justify-center touch-manipulation cursor-pointer transition-[width,height] duration-300"
+          style={
+            isLongScripture && isScriptureExpanded
+              ? {
+                  width: 'calc(min(44vw, 21dvh) + 24px)',
+                  height: 'calc(min(44vw, 21dvh) + 24px)',
+                }
+              : {
+                  width: 'calc(min(56vw, 29dvh) + 28px)',
+                  height: 'calc(min(56vw, 29dvh) + 28px)',
+                }
+          }
         >
           {/* Metronome pulse halo around outer ring */}
           {metronomeEnabled && (
@@ -1558,7 +1605,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="relative z-10 w-full max-w-2xl rounded-t-3xl bg-surface border-t border-line shadow-float flex flex-col max-h-[80dvh] pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
+              className="relative z-10 w-full max-w-2xl rounded-t-3xl bg-surface border-t border-line shadow-float flex flex-col max-h-[88dvh]"
             >
               <div className="w-10 h-1 rounded-full bg-line-strong mx-auto mt-3 mb-2 shrink-0" />
 
@@ -1596,7 +1643,7 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-5">
                 <p className="text-reading text-ink whitespace-pre-wrap text-center">
                   {activeScripture.content}
                 </p>
@@ -1620,6 +1667,25 @@ export const WoodenFishPracticeView: React.FC<WoodenFishPracticeViewProps> = ({
                     </p>
                   </div>
                 )}
+              </div>
+
+              <div className="px-6 py-3 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-line bg-surface flex items-center justify-between gap-3 shrink-0">
+                <div className="text-xs text-ink-2 tabular-nums">
+                  <span>本次 {sessionCount}</span>
+                  <span className="mx-1.5 text-ink-3">·</span>
+                  <span>
+                    {isTodayGoalReached
+                      ? `今日已圆满 (${todayCount} ${unit})`
+                      : `今日 ${todayCount} / ${goalLabel}`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleReadingSheetTap}
+                  className="px-4 py-2 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-xs font-medium transition-colors active:scale-95"
+                >
+                  边读边敲 +1
+                </button>
               </div>
             </motion.div>
           </div>

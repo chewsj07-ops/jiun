@@ -43,8 +43,8 @@ export const GuidanceCards: React.FC<GuidanceCardsProps> = ({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{
-            duration: 0.45,
-            delay: idx * 0.4,
+            duration: 0.28,
+            delay: idx * 0.08,
             ease: [0.22, 1, 0.36, 1],
           }}
           className="bg-surface border border-line rounded-2xl p-5"
@@ -63,8 +63,8 @@ export const GuidanceCards: React.FC<GuidanceCardsProps> = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{
-            duration: 0.5,
-            delay: 4 * 0.4,
+            duration: 0.3,
+            delay: 4 * 0.08,
             ease: [0.22, 1, 0.36, 1],
           }}
           className="text-caption italic font-serif text-center pt-2 px-2"
@@ -78,8 +78,8 @@ export const GuidanceCards: React.FC<GuidanceCardsProps> = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{
-            duration: 0.5,
-            delay: 4 * 0.4 + 0.15,
+            duration: 0.3,
+            delay: 4 * 0.08 + 0.06,
             ease: [0.22, 1, 0.36, 1],
           }}
           className="pt-1 text-center"
@@ -98,8 +98,8 @@ export const GuidanceCards: React.FC<GuidanceCardsProps> = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{
-          duration: 0.5,
-          delay: 4 * 0.4 + 0.2,
+          duration: 0.3,
+          delay: 4 * 0.08 + 0.1,
           ease: [0.22, 1, 0.36, 1],
         }}
         className="rounded-xl bg-surface-2/80 border border-line px-3.5 py-2.5 text-[11px] leading-relaxed text-ink-2 text-center"

@@ -172,6 +172,15 @@ export function containsThoughtCrisis(thought: Partial<Thought>): boolean {
   );
 }
 
+function isCrisisThoughtRecord(thought: Partial<Thought>): boolean {
+  if (containsThoughtCrisis(thought)) return true;
+  if (!thought.isLocalOnly) return false;
+  // Morning ritual confessions mark isLocalOnly for privacy even without crisis content
+  const isPeacefulConfession =
+    typeof thought.event === 'string' && thought.event.startsWith('【诵经前忏悔】');
+  return !isPeacefulConfession;
+}
+
 function parseStructuredGuidance(raw?: string): StructuredGuidance | null {
   if (!raw) return null;
   try {
@@ -558,7 +567,7 @@ export const ThoughtCollector = ({
   };
 
   useEffect(() => {
-    if (embedded) return;
+    if (embedded || !hideTrigger) return;
     const handleOpen = (e: Event) => {
       const custom = e as CustomEvent<{
         mode?: 'quick' | 'full';
@@ -569,7 +578,7 @@ export const ThoughtCollector = ({
     window.addEventListener('open-thought-collector', handleOpen);
     return () =>
       window.removeEventListener('open-thought-collector', handleOpen);
-  }, [embedded, thoughts]);
+  }, [embedded, hideTrigger, thoughts]);
 
   // Monitor live text inputs for crisis keywords
   const checkCrisisInDraft = (nextValues?: {
@@ -602,8 +611,8 @@ export const ThoughtCollector = ({
     );
   };
 
-  const getEmotionLabels = (emotionIds: string[]) =>
-    emotionIds
+  const getEmotionLabels = (emotionIds?: string[]) =>
+    (Array.isArray(emotionIds) ? emotionIds : [])
       .map((id) => ALL_EMOTIONS.find((e) => e.id === id)?.label || id)
       .filter(Boolean);
 
@@ -710,6 +719,13 @@ export const ThoughtCollector = ({
       saveGuidanceToThought(buildOfflineGuidanceJson(thought));
     } finally {
       setIsLoadingGuidance(null);
+    }
+  };
+
+  const handleOpenPlaque = (thought: Thought) => {
+    setShowPlaque(thought);
+    if (!isCrisisThoughtRecord(thought) && !thought.guidance) {
+      void handleGetGuidance(thought);
     }
   };
 
@@ -973,29 +989,41 @@ export const ThoughtCollector = ({
     Boolean(vowText.trim());
 
   const renderPlaque = () => {
-    if (!showPlaque) return null;
+    if (!showPlaque || typeof document === 'undefined') return null;
     const emoLabels =
       getEmotionLabels(showPlaque.emotions).join('、') || '平静';
-    const isCrisisPlaque =
-      Boolean(showPlaque.isLocalOnly) || containsThoughtCrisis(showPlaque);
+    const isCrisisPlaque = isCrisisThoughtRecord(showPlaque);
     const parsedGuidance = !isCrisisPlaque
       ? parseStructuredGuidance(showPlaque.guidance)
       : null;
+    const hasTextSummary = Boolean(
+      showPlaque.event ||
+        showPlaque.action ||
+        showPlaque.result ||
+        showPlaque.learning ||
+        showPlaque.vow
+    );
 
     return createPortal(
       <div
-        className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+        className="fixed inset-0 z-[115] flex items-center justify-center p-4 bg-black/45 backdrop-blur-sm"
         onClick={() => setShowPlaque(null)}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.96, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
           onClick={(e) => e.stopPropagation()}
           className="relative w-full max-w-md bg-surface border border-line rounded-3xl shadow-float max-h-[90vh] flex flex-col overflow-hidden"
         >
           <div className="flex justify-between items-center px-6 py-4 shrink-0 border-b border-line bg-surface">
-            <h3 className="text-title text-ink">念头封存</h3>
+            <div>
+              <h3 className="text-title text-ink">念头封存</h3>
+              <p className="text-[11px] text-ink-3 mt-0.5">
+                {new Date(showPlaque.timestamp || showPlaque.id).toLocaleString()}
+                {showPlaque.mode === 'quick' ? ' · 一念速记' : ''}
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => setShowPlaque(null)}
@@ -1006,7 +1034,7 @@ export const ThoughtCollector = ({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
             <div className="bg-surface-2 rounded-2xl p-4 border border-line space-y-2 text-sm text-ink leading-relaxed">
               <p>
                 <span className="text-ink-2">此刻感受：</span>
@@ -1042,6 +1070,11 @@ export const ThoughtCollector = ({
                   <span className="font-serif text-accent">{showPlaque.vow}</span>
                 </p>
               )}
+              {!hasTextSummary && (
+                <p className="text-xs text-ink-3">
+                  已封存此刻的一念觉察。
+                </p>
+              )}
             </div>
 
             {isCrisisPlaque ? (
@@ -1071,10 +1104,24 @@ export const ThoughtCollector = ({
                   依法不依人：以上回应仅供参考，请结合自己的生活体会亲自检验，取舍自在。
                 </p>
               </div>
-            ) : (
+            ) : isLoadingGuidance === showPlaque.id ? (
               <div className="py-6 flex flex-col items-center justify-center text-ink-3 gap-2">
                 <Loader2 className="w-5 h-5 animate-spin text-accent" />
                 <p className="text-caption">正在整理觉察回应……</p>
+              </div>
+            ) : (
+              <div className="py-5 px-4 rounded-2xl bg-surface-2 border border-line text-center space-y-3">
+                <p className="text-xs text-ink-2 leading-relaxed">
+                  尚未为这条记录生成觉察木牌回应。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleGetGuidance(showPlaque)}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full bg-accent hover:bg-accent-hover text-on-accent text-xs font-medium transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>生成觉察回应</span>
+                </button>
               </div>
             )}
           </div>
@@ -1743,12 +1790,13 @@ export const ThoughtCollector = ({
                     </div>
 
                     {monthThoughts.map((thought) => {
-                      const isLocalCrisis =
-                        Boolean(thought.isLocalOnly) ||
-                        containsThoughtCrisis(thought);
+                      const isLocalCrisis = isCrisisThoughtRecord(thought);
                       const structured = !isLocalCrisis
                         ? parseStructuredGuidance(thought.guidance)
                         : null;
+                      const safeEmotions = Array.isArray(thought.emotions)
+                        ? thought.emotions
+                        : [];
 
                       return (
                         <div
@@ -1757,7 +1805,7 @@ export const ThoughtCollector = ({
                         >
                           <div className="flex justify-between items-start gap-2">
                             <div className="flex flex-wrap gap-1.5">
-                              {thought.emotions.map((emoId) => {
+                              {safeEmotions.map((emoId) => {
                                 const emo = ALL_EMOTIONS.find(
                                   (e) => e.id === emoId
                                 );
@@ -1867,7 +1915,7 @@ export const ThoughtCollector = ({
                             )}
                             <button
                               type="button"
-                              onClick={() => setShowPlaque(thought)}
+                              onClick={() => handleOpenPlaque(thought)}
                               className="flex-1 py-2 bg-surface border border-line rounded-xl text-xs font-medium text-ink-2 hover:text-accent hover:border-accent transition-colors"
                             >
                               {isLocalCrisis ? '查看陪伴资源' : '查看念头木牌'}
